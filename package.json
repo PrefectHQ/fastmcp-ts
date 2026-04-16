@@ -1,7 +1,7 @@
 {
   "name": "fastmcp-ts",
   "version": "0.0.1",
-  "description": "🏎️  The official FastMCP TypeScript library - build MCP servers and clients fast 🏎️",
+  "description": "🏎️  The official FastMCP TypeScript library - build MCP servers and clients, fast 🏎️",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
