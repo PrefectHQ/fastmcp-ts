@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest'
 
-describe('Authentication', () => {
+describe('Client — Authentication', () => {
   describe('Bearer token', () => {
     it.todo('a token string passed to auth is sent as Authorization: Bearer <token>')
     it.todo('does not prepend Bearer if the string already includes it')

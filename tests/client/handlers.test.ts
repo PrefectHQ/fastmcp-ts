@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest'
 
-describe('Handlers', () => {
+describe('Client — Handlers', () => {
   describe('logHandler', () => {
     it.todo('is called with a LogMessage when the server emits a log notification')
     it.todo('LogMessage includes level, optional logger name, and data payload')

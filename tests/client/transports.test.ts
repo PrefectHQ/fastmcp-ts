@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest'
 
-describe('Transports', () => {
+describe('Client — Transports', () => {
   describe('Stdio', () => {
     it.todo('spawns a process with the given command and args')
     it.todo('does not inherit the shell environment by default')

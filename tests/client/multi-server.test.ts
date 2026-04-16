@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest'
 
-describe('Multi-server', () => {
+describe('Client — Multi-server', () => {
   describe('MCPConfig', () => {
     it.todo('accepts a configuration object describing multiple servers')
     it.todo('establishes a connection to each configured server on connect()')

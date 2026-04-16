@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest'
 
-describe('Roots', () => {
+describe('Client — Roots', () => {
   describe('static roots', () => {
     it.todo('an array of paths provided at construction is sent to the server when roots are requested')
     it.todo('paths are normalised to absolute URIs before being sent')

@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest'
 
-describe('Tools', () => {
+describe('Client — Tools', () => {
   describe('listTools()', () => {
     it.todo('returns an array of tool definitions')
     it.todo('each definition includes name, description, and inputSchema')

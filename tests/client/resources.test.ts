@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest'
 
-describe('Resources', () => {
+describe('Client — Resources', () => {
   describe('listResources()', () => {
     it.todo('returns an array of static resource definitions with uri and name')
   })

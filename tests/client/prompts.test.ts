@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest'
 
-describe('Prompts', () => {
+describe('Client — Prompts', () => {
   describe('listPrompts()', () => {
     it.todo('returns an array of prompt definitions with name and description')
     it.todo('each definition includes the expected argument schema')
