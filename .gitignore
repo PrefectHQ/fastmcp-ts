@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# test coverage
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+
+# editors
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
