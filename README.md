@@ -34,7 +34,7 @@ Auto-detected from the argument passed to `Client`:
   - [ ] TLS/`rejectUnauthorized` option
 - [ ] **SSE** — legacy Server-Sent Events transport for backward compatibility
   - [ ] Custom `headers`
-- [ ] **In-process** — pass a `fastmcp` (npm) server instance directly; zero-network, ideal for testing
+- [ ] **In-process** — pass a `FastMCP` server instance (from `@modelcontextprotocol/sdk`) directly; zero-network, ideal for testing
 
 ---
 
@@ -135,7 +135,6 @@ A lightweight CLI for interacting with any MCP server during development:
 | Package | Role |
 |---|---|
 | [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk) | Official low-level MCP protocol implementation — this library's foundation |
-| [`fastmcp` (npm)](https://github.com/punkpeye/fastmcp) | FastMCP-style ergonomics for building MCP **servers** in TypeScript |
 | [`fastmcp` (PyPI)](https://github.com/PrefectHQ/fastmcp) | The Python reference this project models its client API after |
 
 `fastmcp-ts` fills the gap: a FastMCP-quality **client** for TypeScript/Node.js.
