@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport'
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types'
+import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider'
 import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
@@ -20,10 +21,25 @@ import type { AuthCheck } from './auth/authorization'
 import { contextStore } from './context'
 import type { McpContext } from './context'
 
+export interface OAuthConfig {
+  /** OAuth server provider implementing the authorization and token flow. */
+  provider: OAuthServerProvider
+  /**
+   * Issuer URL for the OAuth server (used in metadata endpoints).
+   * Defaults to the HTTP server's bound address when not specified.
+   */
+  issuerUrl?: URL
+  /** Scopes supported by this server, advertised in OAuth metadata. */
+  scopes?: string[]
+}
+
 export interface FastMCPOptions {
   name: string
   version?: string
+  /** Simple bearer-token verifier for non-OAuth auth scenarios. */
   auth?: TokenVerifier
+  /** Full OAuth 2.1 server with Dynamic Client Registration support. */
+  oauth?: OAuthConfig
 }
 
 export interface RunOptions {
@@ -98,6 +114,7 @@ export class FastMCP {
   readonly version: string
 
   private _auth: TokenVerifier | undefined
+  private _oauth: OAuthConfig | undefined
   private _tools = new Map<string, RegisteredTool>()
   private _resources = new Map<string, RegisteredResource>()
   private _httpServer: HttpServer | null = null
@@ -111,6 +128,7 @@ export class FastMCP {
     this.name = options.name
     this.version = options.version ?? '0.0.1'
     this._auth = options.auth
+    this._oauth = options.oauth
     this._primaryServer = this._makeServer()
   }
 
@@ -254,90 +272,160 @@ export class FastMCP {
     if (transport === 'stdio') {
       const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio')
       await this.connect(new StdioServerTransport(options?.stdin, options?.stdout))
+    } else if (this._oauth) {
+      await this._runHttpOAuth(port, host, path)
     } else {
-      const { StreamableHTTPServerTransport } = await import(
-        '@modelcontextprotocol/sdk/server/streamableHttp'
-      )
-      const { createServer } = await import('node:http')
+      await this._runHttpSimple(port, host, path)
+    }
+  }
 
-      const auth = this._auth
+  private async _runHttpOAuth(port: number, host: string, path: string): Promise<void> {
+    const { StreamableHTTPServerTransport } = await import(
+      '@modelcontextprotocol/sdk/server/streamableHttp'
+    )
+    const express = (await import('express')).default
+    const { mcpAuthRouter } = await import('@modelcontextprotocol/sdk/server/auth/router')
+    const { requireBearerAuth } = await import(
+      '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth'
+    )
 
-      const httpServer = createServer(async (req, res) => {
-        if (req.url?.split('?')[0] !== path) {
-          res.writeHead(404).end()
-          return
-        }
+    const oauth = this._oauth!
+    const app = express()
 
-        // Auth middleware
-        if (auth) {
-          const authHeader = req.headers.authorization
-          const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    // Bind first so we can infer the issuerUrl from the actual bound port (handles port=0)
+    const httpServer = await new Promise<HttpServer>((resolve, reject) => {
+      const srv = app.listen(port, host, () => resolve(srv))
+      srv.on('error', reject)
+    })
 
-          if (!bearer) {
-            res
-              .writeHead(401, { 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ error: 'Missing bearer token' }))
-            return
-          }
+    const bound = httpServer.address() as AddressInfo
+    const issuerUrl = oauth.issuerUrl ?? new URL(`http://${bound.address}:${bound.port}`)
 
-          try {
-            const accessToken = await auth.verify(bearer)
-            ;(req as IncomingMessage & { auth: AuthInfo }).auth = {
-              token: accessToken.token,
-              clientId: accessToken.clientId ?? '',
-              scopes: accessToken.scopes,
-              expiresAt: accessToken.expiresAt,
-              extra: accessToken.claims,
-            }
-          } catch (err) {
-            const status = err instanceof AuthorizationError ? 403 : 401
-            res
-              .writeHead(status, { 'Content-Type': 'application/json' })
-              .end(
-                JSON.stringify({
-                  error: err instanceof Error ? err.message : 'Authentication failed',
-                }),
-              )
-            return
-          }
-        }
+    // OAuth endpoints (authorize, token, register, metadata)
+    app.use(
+      mcpAuthRouter({
+        provider: oauth.provider,
+        issuerUrl,
+        scopesSupported: oauth.scopes,
+      }),
+    )
 
-        // Session routing: each client connection gets its own transport + server
+    // MCP endpoint — protected by bearer auth
+    app.all(
+      path,
+      requireBearerAuth({ verifier: oauth.provider }),
+      async (req, res, _next) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined
         let mcpTransport: StreamableHTTPServerTransport
 
         if (sessionId) {
           const existing = this._sessions.get(sessionId)
           if (!existing) {
-            res
-              .writeHead(404, { 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ error: 'Session not found' }))
+            res.status(404).json({ error: 'Session not found' })
             return
           }
           mcpTransport = existing
         } else {
           mcpTransport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => this._sessions.set(id, mcpTransport),
-            onsessionclosed: (id) => this._sessions.delete(id),
+            onsessioninitialized: (id) => { this._sessions.set(id, mcpTransport) },
+            onsessionclosed: (id) => { this._sessions.delete(id) },
           })
           const sessionServer = this._makeServer()
           await sessionServer.connect(mcpTransport)
         }
 
         await mcpTransport.handleRequest(req, res)
-      })
+      },
+    )
 
-      this._httpServer = httpServer
+    this._httpServer = httpServer
+    this._address = { host: bound.address, port: bound.port, path }
+  }
 
-      await new Promise<void>((resolve, reject) => {
-        httpServer.once('error', reject)
-        httpServer.listen(port, host, resolve)
-      })
+  private async _runHttpSimple(port: number, host: string, path: string): Promise<void> {
+    const { StreamableHTTPServerTransport } = await import(
+      '@modelcontextprotocol/sdk/server/streamableHttp'
+    )
+    const { createServer } = await import('node:http')
 
-      const bound = httpServer.address() as AddressInfo
-      this._address = { host: bound.address, port: bound.port, path }
-    }
+    const auth = this._auth
+
+    const httpServer = createServer(async (req, res) => {
+      if (req.url?.split('?')[0] !== path) {
+        res.writeHead(404).end()
+        return
+      }
+
+      // Auth middleware
+      if (auth) {
+        const authHeader = req.headers.authorization
+        const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+        if (!bearer) {
+          res
+            .writeHead(401, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Missing bearer token' }))
+          return
+        }
+
+        try {
+          const accessToken = await auth.verify(bearer)
+          ;(req as IncomingMessage & { auth: AuthInfo }).auth = {
+            token: accessToken.token,
+            clientId: accessToken.clientId ?? '',
+            scopes: accessToken.scopes,
+            expiresAt: accessToken.expiresAt,
+            extra: accessToken.claims,
+          }
+        } catch (err) {
+          const status = err instanceof AuthorizationError ? 403 : 401
+          res
+            .writeHead(status, { 'Content-Type': 'application/json' })
+            .end(
+              JSON.stringify({
+                error: err instanceof Error ? err.message : 'Authentication failed',
+              }),
+            )
+          return
+        }
+      }
+
+      // Session routing: each client connection gets its own transport + server
+      const sessionId = req.headers['mcp-session-id'] as string | undefined
+      let mcpTransport: StreamableHTTPServerTransport
+
+      if (sessionId) {
+        const existing = this._sessions.get(sessionId)
+        if (!existing) {
+          res
+            .writeHead(404, { 'Content-Type': 'application/json' })
+            .end(JSON.stringify({ error: 'Session not found' }))
+          return
+        }
+        mcpTransport = existing
+      } else {
+        mcpTransport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (id) => { this._sessions.set(id, mcpTransport) },
+          onsessionclosed: (id) => { this._sessions.delete(id) },
+        })
+        const sessionServer = this._makeServer()
+        await sessionServer.connect(mcpTransport)
+      }
+
+      await mcpTransport.handleRequest(req, res)
+    })
+
+    this._httpServer = httpServer
+
+    await new Promise<void>((resolve, reject) => {
+      httpServer.once('error', reject)
+      httpServer.listen(port, host, resolve)
+    })
+
+    const bound = httpServer.address() as AddressInfo
+    this._address = { host: bound.address, port: bound.port, path }
   }
 
   async close(): Promise<void> {

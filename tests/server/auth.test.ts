@@ -1,6 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createServer } from 'node:http'
+import http from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { generateKeyPair, exportJWK, SignJWT } from 'jose'
 import {
   FastMCP,
@@ -10,6 +13,8 @@ import {
   debugTokenVerifier,
   requireScopes,
   multiAuth,
+  oauthProvider,
+  oauthProxy,
 } from 'fastmcp-ts/server'
 import type { AccessToken } from 'fastmcp-ts/server'
 import { connectHttpClient, rawPost } from '../helpers/http'
@@ -17,6 +22,27 @@ import { connectHttpClient, rawPost } from '../helpers/http'
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Make an HTTP GET and return the Location header without following the redirect. */
+function getRedirectLocation(url: URL): Promise<string> {
+  return new Promise((resolve, reject) => {
+    http
+      .get(url.toString(), (res) => {
+        const location = res.headers.location
+        res.resume()
+        if (!location) reject(new Error(`No Location header (status: ${res.statusCode})`))
+        else resolve(location)
+      })
+      .on('error', reject)
+  })
+}
+
+/** Generate a PKCE code_verifier and corresponding S256 code_challenge. */
+function generatePKCE() {
+  const codeVerifier = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '')
+  const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url')
+  return { codeVerifier, codeChallenge }
+}
 
 async function createJwksSetup(issuer = 'https://example.com', audience = 'test') {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
@@ -151,7 +177,7 @@ describe('Server — Authentication', () => {
       cleanup.push(close)
 
       const result = await client.callTool({ name: 'whoami', arguments: {} })
-      expect(result.content[0]).toMatchObject({ type: 'text', text: 'user-123' })
+      expect((result.content as unknown[])[0]).toMatchObject({ type: 'text', text: 'user-123' })
     })
   })
 
@@ -232,13 +258,242 @@ describe('Server — Authentication', () => {
   })
 
   describe('OAuth with Dynamic Client Registration', () => {
-    it.todo('a client without credentials can register dynamically and obtain tokens')
-    it.todo('registered clients authenticate successfully on subsequent requests')
+    const cleanup: Array<() => Promise<void>> = []
+    afterEach(async () => {
+      await Promise.all(cleanup.map((c) => c()))
+      cleanup.length = 0
+    })
+
+    it('a client without credentials can register dynamically and obtain tokens', async () => {
+      const provider = oauthProvider()
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      // Dynamic Client Registration — public client (no secret)
+      const regRes = await fetch(`${baseUrl}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['http://localhost/callback'],
+          token_endpoint_auth_method: 'none',
+        }),
+      })
+      expect(regRes.status).toBe(201)
+      const clientInfo = (await regRes.json()) as Record<string, string>
+      expect(clientInfo.client_id).toBeTruthy()
+
+      // Authorization — auto-approve redirects immediately with a code
+      const { codeVerifier, codeChallenge } = generatePKCE()
+      const authUrl = new URL(`${baseUrl}/authorize`)
+      authUrl.searchParams.set('response_type', 'code')
+      authUrl.searchParams.set('client_id', clientInfo.client_id)
+      authUrl.searchParams.set('redirect_uri', 'http://localhost/callback')
+      authUrl.searchParams.set('code_challenge', codeChallenge)
+      authUrl.searchParams.set('code_challenge_method', 'S256')
+      authUrl.searchParams.set('state', 'test-state')
+
+      const location = await getRedirectLocation(authUrl)
+      const code = new URL(location).searchParams.get('code')!
+      expect(code).toBeTruthy()
+      expect(new URL(location).searchParams.get('state')).toBe('test-state')
+
+      // Token exchange
+      const tokenRes = await fetch(`${baseUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: clientInfo.client_id,
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: 'http://localhost/callback',
+        }).toString(),
+      })
+      expect(tokenRes.status).toBe(200)
+      const { access_token } = (await tokenRes.json()) as Record<string, string>
+      expect(access_token).toBeTruthy()
+
+      // Use the token to call an MCP tool
+      mcp.tool({ name: 'ping' }, () => 'pong')
+      const { client, close } = await connectHttpClient(
+        new URL(`${baseUrl}${mcp.address!.path}`),
+        access_token,
+      )
+      cleanup.push(close)
+      const result = await client.callTool({ name: 'ping', arguments: {} })
+      expect((result.content as unknown[])[0]).toMatchObject({ type: 'text', text: 'pong' })
+    })
+
+    it('registered clients authenticate successfully on subsequent requests', async () => {
+      const provider = oauthProvider()
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider } })
+      mcp.tool({ name: 'ping' }, () => 'pong')
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+      const mcpUrl = new URL(`${baseUrl}${mcp.address!.path}`)
+
+      // Register + complete auth flow to obtain a token
+      const regRes = await fetch(`${baseUrl}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['http://localhost/callback'],
+          token_endpoint_auth_method: 'none',
+        }),
+      })
+      const { client_id } = (await regRes.json()) as Record<string, string>
+
+      const { codeVerifier, codeChallenge } = generatePKCE()
+      const authUrl = new URL(`${baseUrl}/authorize`)
+      authUrl.searchParams.set('response_type', 'code')
+      authUrl.searchParams.set('client_id', client_id)
+      authUrl.searchParams.set('redirect_uri', 'http://localhost/callback')
+      authUrl.searchParams.set('code_challenge', codeChallenge)
+      authUrl.searchParams.set('code_challenge_method', 'S256')
+
+      const location = await getRedirectLocation(authUrl)
+      const code = new URL(location).searchParams.get('code')!
+
+      const tokenRes = await fetch(`${baseUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id,
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: 'http://localhost/callback',
+        }).toString(),
+      })
+      const { access_token } = (await tokenRes.json()) as Record<string, string>
+
+      // Multiple calls with the same token all succeed
+      const { client, close } = await connectHttpClient(mcpUrl, access_token)
+      cleanup.push(close)
+      for (let i = 0; i < 3; i++) {
+        const result = await client.callTool({ name: 'ping', arguments: {} })
+        expect((result.content as unknown[])[0]).toMatchObject({ type: 'text', text: 'pong' })
+      }
+    })
   })
 
   describe('OAuth proxy', () => {
-    it.todo('the proxy presents a DCR-compliant interface to MCP clients')
-    it.todo('the proxy uses pre-registered credentials when talking to the upstream provider')
+    const cleanup: Array<() => Promise<void>> = []
+    afterEach(async () => {
+      await Promise.all(cleanup.map((c) => c()))
+      cleanup.length = 0
+    })
+
+    it('the proxy presents a DCR-compliant interface to MCP clients', async () => {
+      const proxy = oauthProxy({
+        upstreamCredentials: { clientId: 'proxy-upstream-id' },
+        endpoints: {
+          authorizationUrl: 'http://127.0.0.1:1/authorize', // not reached in this test
+          tokenUrl: 'http://127.0.0.1:1/token',
+        },
+        verifyAccessToken: async (token) => ({
+          token,
+          clientId: 'proxy-upstream-id',
+          scopes: [],
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      })
+
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider: proxy } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      const regRes = await fetch(`${baseUrl}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['http://localhost/callback'],
+          token_endpoint_auth_method: 'none',
+        }),
+      })
+      expect(regRes.status).toBe(201)
+      const clientInfo = (await regRes.json()) as Record<string, string>
+      expect(clientInfo.client_id).toBeTruthy()
+    })
+
+    it('the proxy uses pre-registered credentials when talking to the upstream provider', async () => {
+      // Mock upstream that captures token exchange requests
+      const upstreamRequests: Array<Record<string, string>> = []
+      const upstreamServer = createServer((req, res) => {
+        let body = ''
+        req.on('data', (chunk) => {
+          body += chunk
+        })
+        req.on('end', () => {
+          upstreamRequests.push(Object.fromEntries(new URLSearchParams(body)))
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ access_token: 'upstream-token', token_type: 'bearer', expires_in: 3600 }))
+        })
+      })
+      await new Promise<void>((r) => upstreamServer.listen(0, '127.0.0.1', r))
+      const upstreamPort = (upstreamServer.address() as AddressInfo).port
+      cleanup.push(
+        () => new Promise<void>((r, j) => upstreamServer.close((e) => (e ? j(e) : r()))),
+      )
+
+      const proxy = oauthProxy({
+        upstreamCredentials: { clientId: 'my-proxy-client', clientSecret: 'my-proxy-secret' },
+        endpoints: {
+          authorizationUrl: `http://127.0.0.1:${upstreamPort}/authorize`,
+          tokenUrl: `http://127.0.0.1:${upstreamPort}/token`,
+        },
+        verifyAccessToken: async (token) => ({
+          token,
+          clientId: 'my-proxy-client',
+          scopes: [],
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      })
+
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider: proxy } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      // Register an MCP client with the proxy
+      const regRes = await fetch(`${baseUrl}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redirect_uris: ['http://localhost/callback'],
+          token_endpoint_auth_method: 'none',
+        }),
+      })
+      const { client_id: mcpClientId } = (await regRes.json()) as Record<string, string>
+
+      // Exchange a code via the proxy — it must forward using its pre-registered credentials
+      const tokenRes = await fetch(`${baseUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: mcpClientId,
+          code: 'auth-code-from-upstream',
+          code_verifier: 'pkce-verifier',
+          redirect_uri: 'http://localhost/callback',
+        }).toString(),
+      })
+      expect(tokenRes.status).toBe(200)
+
+      // The upstream must have received the PROXY's credentials, not the MCP client's
+      expect(upstreamRequests).toHaveLength(1)
+      expect(upstreamRequests[0].client_id).toBe('my-proxy-client')
+      expect(upstreamRequests[0].client_secret).toBe('my-proxy-secret')
+      expect(upstreamRequests[0].code).toBe('auth-code-from-upstream')
+    })
   })
 
   describe('scope-based authorization', () => {

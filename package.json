@@ -52,6 +52,8 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@standard-schema/spec": "^1.1.0",
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1",
     "jose": "6.2.2"
   }
 }
