@@ -2,8 +2,6 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { generateKeyPair, exportJWK, SignJWT } from 'jose'
-import { Client } from '@modelcontextprotocol/sdk/client'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
 import {
   FastMCP,
   jwtVerifier,
@@ -11,6 +9,7 @@ import {
   staticTokenVerifier,
   debugTokenVerifier,
 } from 'fastmcp-ts/server'
+import { connectHttpClient, rawPost } from '../helpers/http'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,42 +57,10 @@ async function createJwksSetup(issuer = 'https://example.com', audience = 'test'
   return { jwksUri, issuer, audience, signToken, signExpiredToken, close }
 }
 
-/** Minimal FastMCP HTTP server. Returns the running instance and its URL base. */
 async function startServer(mcp: FastMCP) {
   await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
   const { port, path } = mcp.address!
   return { url: new URL(`http://127.0.0.1:${port}${path}`) }
-}
-
-/** Make a raw POST to the MCP endpoint with a given Authorization header (or none). */
-async function rawPost(url: URL, bearer?: string) {
-  return fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2024-11-05',
-        capabilities: {},
-        clientInfo: { name: 'test', version: '0.0.0' },
-      },
-    }),
-  })
-}
-
-/** Connect a full MCP client to the server with an optional bearer token. */
-async function connectClient(url: URL, bearer?: string) {
-  const client = new Client({ name: 'test-client', version: '0.0.0' }, { capabilities: {} })
-  const transport = new StreamableHTTPClientTransport(url, {
-    requestInit: bearer ? { headers: { Authorization: `Bearer ${bearer}` } } : {},
-  })
-  await client.connect(transport)
-  return { client, close: () => client.close() }
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +87,7 @@ describe('Server — Authentication', () => {
       cleanup.push(() => mcp.close())
 
       const token = await jwks.signToken()
-      const { close } = await connectClient(url, token)
+      const { close } = await connectHttpClient(url, token)
       cleanup.push(close)
     })
 
