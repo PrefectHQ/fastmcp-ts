@@ -5,6 +5,8 @@ import {
   ListResourcesRequestSchema,
   ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   McpError,
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types'
@@ -29,6 +31,8 @@ import {
   matchTemplate,
 } from './resource'
 import type { ResourceConfig } from './resource'
+import { convertPromptResult } from './prompt'
+import type { PromptConfig } from './prompt'
 
 export interface OAuthConfig {
   /** OAuth server provider implementing the authorization and token flow. */
@@ -53,6 +57,8 @@ export interface FastMCPOptions {
   toolsPageSize?: number
   /** Maximum number of resources (or templates) returned per page. Default: 50. */
   resourcesPageSize?: number
+  /** Maximum number of prompts returned per prompts/list page. Default: 50. */
+  promptsPageSize?: number
 }
 
 export interface RunOptions {
@@ -109,9 +115,31 @@ interface RegisteredResource {
   handler: (params?: Record<string, string>) => unknown
 }
 
+interface ResolvedPromptConfig extends Required<Pick<PromptConfig, 'name' | 'description'>> {
+  title?: string
+  arguments?: PromptConfig['arguments']
+  disabled?: boolean
+  tags?: string[]
+  auth?: PromptConfig['auth']
+}
+
+interface RegisteredPrompt {
+  config: ResolvedPromptConfig
+  handler: (args: Record<string, string>) => unknown
+}
+
 interface Session {
   transport: StreamableHTTPServerTransport
   server: Server
+}
+
+/** Converts a camelCase or PascalCase name to space-separated words. e.g. `getWeather` → `"get weather"` */
+function inferDescription(name: string): string {
+  return name
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/[-_]+/g, ' ')
+    .trim()
+    .toLowerCase()
 }
 
 function toAccessToken(authInfo: AuthInfo | undefined): AccessToken | undefined {
@@ -148,6 +176,8 @@ export class FastMCP {
   private _tools = new Map<string, RegisteredTool>()
   private _staticResources = new Map<string, RegisteredResource>()
   private _templateResources = new Map<string, RegisteredResource>()
+  private _prompts = new Map<string, RegisteredPrompt>()
+  private _promptsPageSize: number
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
   private _sessions = new Map<string, Session>()
@@ -161,6 +191,7 @@ export class FastMCP {
     this._oauth = options.oauth
     this._toolsPageSize = options.toolsPageSize ?? 50
     this._resourcesPageSize = options.resourcesPageSize ?? 50
+    this._promptsPageSize = options.promptsPageSize ?? 50
     this._primaryServer = this._makeServer()
   }
 
@@ -168,7 +199,7 @@ export class FastMCP {
   private _makeServer(): Server {
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: {}, resources: { listChanged: true } } },
+      { capabilities: { tools: {}, resources: { listChanged: true }, prompts: { listChanged: true } } },
     )
     this._setupHandlers(server)
     return server
@@ -429,6 +460,75 @@ export class FastMCP {
       const result = await executePromise
       return convertResourceResult(result, requestedUri, resource.config.mimeType)
     })
+
+    server.setRequestHandler(ListPromptsRequestSchema, async (req, extra) => {
+      const token = toAccessToken(extra.authInfo)
+      const allVisible = (
+        await Promise.all(
+          [...this._prompts.values()].map(async (p) => {
+            if (p.config.disabled) return null
+            if (!p.config.auth) return p
+            if (!token) return null
+            try {
+              await p.config.auth(token)
+              return p
+            } catch {
+              return null
+            }
+          }),
+        )
+      ).filter((p): p is RegisteredPrompt => p !== null)
+
+      const pageSize = this._promptsPageSize
+      const cursorName = req.params?.cursor
+        ? Buffer.from(req.params.cursor, 'base64url').toString()
+        : null
+      let startIdx = 0
+      if (cursorName !== null) {
+        const idx = allVisible.findIndex((p) => p.config.name === cursorName)
+        startIdx = idx >= 0 ? idx + 1 : 0
+      }
+      const page = allVisible.slice(startIdx, startIdx + pageSize)
+      const nextCursor =
+        startIdx + pageSize < allVisible.length
+          ? Buffer.from(page[page.length - 1].config.name).toString('base64url')
+          : undefined
+
+      return {
+        prompts: page.map((p) => ({
+          name: p.config.name,
+          ...(p.config.title !== undefined ? { title: p.config.title } : {}),
+          ...(p.config.description !== undefined ? { description: p.config.description } : {}),
+          ...(p.config.arguments?.length ? { arguments: p.config.arguments } : {}),
+        })),
+        ...(nextCursor ? { nextCursor } : {}),
+      }
+    })
+
+    server.setRequestHandler(GetPromptRequestSchema, async (req, extra) => {
+      const prompt = this._prompts.get(req.params.name)
+      if (!prompt || prompt.config.disabled) {
+        throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${req.params.name}"`)
+      }
+
+      const token = toAccessToken(extra.authInfo)
+      if (prompt.config.auth) await runAuthCheck(prompt.config.auth, token)
+
+      // Validate required arguments
+      const suppliedArgs = req.params.arguments ?? {}
+      for (const arg of prompt.config.arguments ?? []) {
+        if (arg.required && !(arg.name in suppliedArgs)) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Missing required argument "${arg.name}" for prompt "${req.params.name}"`,
+          )
+        }
+      }
+
+      const ctx: McpContext = { auth: token }
+      const raw = await contextStore.run(ctx, async () => prompt.handler(suppliedArgs))
+      return convertPromptResult(raw)
+    })
   }
 
   private _notifyToolListChanged(): void {
@@ -445,6 +545,13 @@ export class FastMCP {
     }
   }
 
+  private _notifyPromptListChanged(): void {
+    this._primaryServer.sendPromptListChanged().catch(() => {})
+    for (const { server } of this._sessions.values()) {
+      server.sendPromptListChanged().catch(() => {})
+    }
+  }
+
   // Overload: typed handler inferred from input schema
   tool<S extends StandardSchemaV1>(
     config: Omit<ToolConfig, 'input'> & { input: S },
@@ -457,6 +564,15 @@ export class FastMCP {
   tool(config: ToolConfig, handler: (args: any) => any): void {
     this._tools.set(config.name, { config, handler })
     this._notifyToolListChanged()
+  }
+
+  prompt(config: PromptConfig, handler: (args: Record<string, string>) => unknown): void {
+    const name = config.name ?? (handler as { name?: string }).name
+    if (!name) throw new Error('Prompt name must be provided in config or inferrable from the handler function name')
+    const description = config.description ?? inferDescription(name)
+    const resolvedConfig: ResolvedPromptConfig = { ...config, name, description }
+    this._prompts.set(name, { config: resolvedConfig, handler })
+    this._notifyPromptListChanged()
   }
 
   resource(config: ResourceConfig, handler: (params?: Record<string, string>) => unknown): void {

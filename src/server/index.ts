@@ -9,6 +9,8 @@ export type {
 export { Image, File, ToolResult } from './tool'
 export { ResourceResult } from './resource'
 export type { ResourceConfig, ResourceAnnotations } from './resource'
+export { PromptResult } from './prompt'
+export type { PromptConfig, PromptArgument, PromptMessage, PromptContent } from './prompt'
 export type { McpContext } from './context'
 export type { AccessToken, TokenVerifier } from './auth/types'
 export { AuthorizationError } from './auth/types'
