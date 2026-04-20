@@ -1,1 +1,7 @@
 export { FastMCP } from './FastMCP'
+export type { FastMCPOptions, RunOptions, ServerAddress } from './FastMCP'
+export type { AccessToken, TokenVerifier } from './auth/types'
+export { AuthorizationError } from './auth/types'
+export { jwtVerifier } from './auth/verifiers/jwt'
+export { introspectionVerifier } from './auth/verifiers/introspection'
+export { staticTokenVerifier, debugTokenVerifier } from './auth/verifiers/static'
