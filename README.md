@@ -2,18 +2,18 @@
 
 A TypeScript/Node.js library for building and consuming [FastMCP](https://github.com/PrefectHQ/fastmcp) servers, clients, and apps. Built on top of the official [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk).
 
-> **Status:** Pre-implementation. This checklist tracks what is planned and what has shipped.
+> **Status:** In active development. Checked items have shipped; unchecked items are planned.
 
 ---
 
 ## Servers
 
-- [ ] Tools — declare callable functions with auto-generated schemas, type validation, structured output, and timeout support
+- [ ] Tools — declare callable functions with Standard Schema input validation, structured output, return value conversion, and timeout support
 - [ ] Resources — expose URI-addressed data as static files, dynamic functions, or parameterized templates
 - [ ] Prompts — reusable parameterized message templates with multi-turn conversation support
-- [ ] Context — dependency-injected runtime for logging, progress reporting, LLM sampling, user elicitation, and session state
-- [ ] Transports — run over stdio, HTTP (Streamable), or SSE
-- [ ] Authentication — JWT validation, OAuth 2.1 with Dynamic Client Registration, OAuth proxy, and composable multi-source auth
+- [ ] Context — ambient runtime via `AsyncLocalStorage` for logging, progress reporting, LLM sampling, user elicitation, and session state
+- [x] Transports — stdio and HTTP (Streamable HTTP); env-var-driven transport selection (`MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`, `MCP_PATH`); `address` getter for the bound HTTP port
+- [x] Authentication — JWT validation, OAuth 2.1 with Dynamic Client Registration, OAuth proxy, and composable multi-source auth
 - [ ] Middleware — cross-cutting request/response interception with built-ins for logging, caching, rate limiting, and retries
 - [ ] Transforms — rename, filter, reshape, or type-convert components as they flow to clients
 - [ ] Composition — mount and proxy servers together with namespacing and live updates
