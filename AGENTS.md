@@ -57,9 +57,37 @@ Binary types (`Buffer`, `Uint8Array`) always require an explicit wrapper — MIM
 
 **Output schema validation:** When `output` is provided, the handler's raw return value is validated against it before `convertResult` runs. Validation uses `~standard.validate()`, so it works across all Standard Schema libraries. Primitives, objects, and arrays are all valid output types — the output schema describes the handler's contract, not the MCP content shape. Validation failure returns `isError: true`.
 
-**Pagination:** `tools/list` supports cursor-based pagination per the MCP spec. Page size defaults to 50 and is configurable via `FastMCPOptions.toolsPageSize`. Cursors are base64url-encoded tool names; a stale or invalid cursor falls back to the first page. `InvalidParams` (not `MethodNotFound`) is used for unknown tool names in `tools/call` — the tool name is a parameter, not a method.
+**Pagination:** `tools/list` and `resources/list` / `resources/templates/list` support cursor-based pagination per the MCP spec. Page sizes default to 50 and are configurable via `FastMCPOptions.toolsPageSize` / `FastMCPOptions.resourcesPageSize`. Cursors are base64url-encoded identifiers (tool name or resource URI); a stale or invalid cursor falls back to the first page. `InvalidParams` (not `MethodNotFound`) is used for unknown identifiers — the name/URI is a parameter, not a method.
 
 **Dynamic registration:** Tools, resources, and prompts can be registered before or after `run()` is called. Adding a component to a running server automatically sends the appropriate `list_changed` notification to connected clients.
+
+**Resources:** Registered with `mcp.resource(config, handler)`. FastMCP auto-detects whether the URI is a static resource or a URI template by checking for `{` in the URI string — no separate method needed:
+
+```typescript
+// Static resource
+mcp.resource({ uri: 'memo://readme', name: 'readme' }, () => 'Hello!')
+
+// URI template — handler receives extracted params
+mcp.resource({ uri: 'user://{id}' }, ({ id }) => `User ${id}`)
+```
+
+Static resources are served via `resources/list` + `resources/read`. Templates appear in `resources/templates/list` and are matched at read-time using RFC 6570 regex extraction. Three template parameter styles are supported: simple `{id}` (single path segment), wildcard `{path*}` (multi-segment), and query `{?q,lang}`.
+
+**Resource return value conversion:** The `convertResourceResult()` function maps handler output to MCP `ReadResourceResult`:
+
+| Returned value | Conversion |
+|---|---|
+| `string` | Text content (`mimeType` defaults to `text/plain`) |
+| `Buffer` / `Uint8Array` | Base64 blob content (`mimeType` defaults to `application/octet-stream`) |
+| Plain object / array | JSON-serialised text content (`mimeType` forced to `application/json`) |
+| `null` / `undefined` | Empty text content |
+| `ResourceResult(contents)` | Passed through as-is (escape hatch for full control) |
+
+**Resource config fields:** `uri` (required), `name`, `title`, `description`, `mimeType`, `size` (bytes hint, static resources only), `annotations` (`audience`, `priority`, `lastModified`), `timeout` (ms), `disabled`, `tags`, `auth`. `title`, `size`, and `annotations` are forwarded verbatim in list responses. `size` is omitted from template list responses (unknown for parameterized URIs).
+
+**Resource timeout:** Same `Promise.race` + `clearTimeout` pattern as tools. A timed-out handler throws an error that propagates as a JSON-RPC error to the client.
+
+**Resource subscriptions:** Not implemented. Python FastMCP also omits subscription support. The `subscribe` capability flag is not advertised. The four subscription todos in the test file are deferred.
 
 **Transport / `run()` API:** Single `mcp.run()` method with optional config object. Transport and HTTP options are resolved via the priority chain: **code > env vars > defaults**. This means a deployed server needs no code changes to switch transports — only env vars.
 
