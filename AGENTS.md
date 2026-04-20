@@ -16,21 +16,17 @@ mcp.tool({ name: 'add', input: z.object({ a: z.number(), b: z.number() }) }, ({ 
 
 This also gives TypeScript left-to-right generic inference: the schema type is resolved from the first argument before the handler type is checked.
 
-**Context injection:** Ambient via `AsyncLocalStorage` — tool handlers call `mcp.getContext()` rather than receiving context as an argument. Context type `T` is inferred from a `context` factory function provided at server construction; no explicit generic annotation needed at call sites:
+**Context injection:** Ambient via `AsyncLocalStorage` — tool, resource, and prompt handlers call `mcp.getContext()` anywhere in the call tree during a request. Returns a fixed `McpContext` type (no generics):
 
 ```typescript
-const mcp = new FastMCP({
-  name: 'my server',
-  context: (request: McpRequest): MyCustomType => {
-    return { ... }
-  }
+mcp.tool({ name: 'add', input: z.object({ a: z.number(), b: z.number() }) }, async ({ a, b }) => {
+  const ctx = mcp.getContext()
+  await ctx.info('adding numbers')
+  return a + b
 })
-
-// Anywhere in the call tree during a request:
-const ctx = mcp.getContext() // typed as McpContext<MyCustomType>
 ```
 
-User data is nested under `ctx.data` to avoid collisions with built-in context fields (`log`, `reportProgress`, etc.).
+`mcp.getContext()` throws if called outside a live request handler.
 
 **Tool return value conversion:** Magic conversion with an explicit escape hatch. The framework automatically converts return values to MCP content:
 
@@ -57,7 +53,7 @@ Binary types (`Buffer`, `Uint8Array`) always require an explicit wrapper — MIM
 
 **Output schema validation:** When `output` is provided, the handler's raw return value is validated against it before `convertResult` runs. Validation uses `~standard.validate()`, so it works across all Standard Schema libraries. Primitives, objects, and arrays are all valid output types — the output schema describes the handler's contract, not the MCP content shape. Validation failure returns `isError: true`.
 
-**Pagination:** `tools/list` and `resources/list` / `resources/templates/list` support cursor-based pagination per the MCP spec. Page sizes default to 50 and are configurable via `FastMCPOptions.toolsPageSize` / `FastMCPOptions.resourcesPageSize`. Cursors are base64url-encoded identifiers (tool name or resource URI); a stale or invalid cursor falls back to the first page. `InvalidParams` (not `MethodNotFound`) is used for unknown identifiers — the name/URI is a parameter, not a method.
+**Pagination:** `tools/list`, `resources/list`, `resources/templates/list`, and `prompts/list` all support cursor-based pagination per the MCP spec. Page sizes default to 50 and are configurable via `FastMCPOptions.toolsPageSize` / `FastMCPOptions.resourcesPageSize` / `FastMCPOptions.promptsPageSize`. Cursors are base64url-encoded identifiers (tool name, resource URI, or prompt name); a stale or invalid cursor falls back to the first page. `InvalidParams` (not `MethodNotFound`) is used for unknown identifiers — the name/URI is a parameter, not a method.
 
 **Dynamic registration:** Tools, resources, and prompts can be registered before or after `run()` is called. Adding a component to a running server automatically sends the appropriate `list_changed` notification to connected clients.
 
@@ -88,6 +84,35 @@ Static resources are served via `resources/list` + `resources/read`. Templates a
 **Resource timeout:** Same `Promise.race` + `clearTimeout` pattern as tools. A timed-out handler throws an error that propagates as a JSON-RPC error to the client.
 
 **Resource subscriptions:** Not implemented. Python FastMCP also omits subscription support. The `subscribe` capability flag is not advertised. The four subscription todos in the test file are deferred.
+
+**Prompts:** Registered with `mcp.prompt(config, handler)`. Config fields: `name` (inferred from `handler.name` when omitted), `title`, `description` (inferred via camelCase→words when omitted), `arguments` (array of `{ name, description?, required? }`), `disabled`, `timeout`, `auth`. Required arguments are validated before the handler runs — missing a required arg returns `InvalidParams` without invoking the handler. Handler receives a `Record<string, string>` of the supplied arguments and can return:
+
+| Returned value | Conversion |
+|---|---|
+| `string` | Single user text message |
+| `PromptMessage` | Wrapped in a one-element array |
+| `PromptMessage[]` | Used as-is (multi-turn sequence) |
+| `PromptResult(messages, description?)` | Passed through as-is (escape hatch) |
+
+Content types for `PromptMessage.content`: `text`, `image`, `audio`, `resource` (embedded), `resource_link`.
+
+**Context (`McpContext`):** The object returned by `mcp.getContext()` during a request. Fields and methods:
+
+| Member | Description |
+|---|---|
+| `auth` | `AccessToken \| undefined` — verified bearer token for the request |
+| `requestId` | `string \| undefined` — MCP request ID from the incoming message |
+| `log(level, message, loggerName?)` | Send a log notification to the client (RFC 5424 levels) |
+| `debug/info/notice/warning/error/critical/alert/emergency(msg, loggerName?)` | Convenience log shorthands |
+| `reportProgress(progress, total?, message?)` | Send `notifications/progress` — no-op when no `progressToken` in the request |
+| `sample(params)` | Ask the client to perform LLM inference (`sampling/createMessage`) — throws if client lacks `sampling` capability |
+| `elicit(message, schema)` | Ask the client to collect user input via a form — throws if client lacks `elicitation` capability |
+| `listRoots()` | Fetch declared filesystem roots from the client — throws if client lacks `roots` capability |
+| `getState(key)` | Read a value from per-session state |
+| `setState(key, value)` | Write a value to per-session state (survives across requests in the same session) |
+| `deleteState(key)` | Remove a value from per-session state |
+
+Session state is scoped to a single transport connection: HTTP sessions each get an isolated `Map<string, unknown>`; the stdio transport uses a single shared map for its lifetime.
 
 **Transport / `run()` API:** Single `mcp.run()` method with optional config object. Transport and HTTP options are resolved via the priority chain: **code > env vars > defaults**. This means a deployed server needs no code changes to switch transports — only env vars.
 
