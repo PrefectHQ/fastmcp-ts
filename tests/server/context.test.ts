@@ -9,6 +9,8 @@ import {
   ListRootsRequestSchema,
 } from '@modelcontextprotocol/sdk/types'
 import { FastMCP } from 'fastmcp-ts/server'
+import { createContext } from '../../src/server/context'
+import { Server } from '@modelcontextprotocol/sdk/server'
 import { createTestClient } from '../helpers/createTestClient'
 
 // ---------------------------------------------------------------------------
@@ -103,6 +105,13 @@ describe('Server — Context', () => {
       } finally {
         await close()
       }
+    })
+
+    it('createContext with undefined requestId produces ctx.requestId === undefined, not "undefined"', () => {
+      const server = new Server({ name: 'test', version: '0.0.0' }, { capabilities: {} })
+      const ctx = createContext(server, undefined, undefined, undefined, new Map())
+      // String(undefined) === "undefined" (truthy); the fix must produce genuine undefined
+      expect(ctx.requestId).toBeUndefined()
     })
   })
 

@@ -218,7 +218,7 @@ export class FastMCP {
   private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
     server.setRequestHandler(ListToolsRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
+      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
           const allVisible = (
@@ -285,7 +285,7 @@ export class FastMCP {
       const rawArgs: unknown = req.params.arguments ?? {}
       const ctx = createContext(
         server,
-        String(extra.requestId),
+        extra.requestId !== undefined ? String(extra.requestId) : undefined,
         extra._meta?.progressToken,
         token,
         sessionState,
@@ -328,7 +328,7 @@ export class FastMCP {
 
     server.setRequestHandler(ListResourcesRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
+      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
           const allVisible = (
@@ -375,7 +375,7 @@ export class FastMCP {
 
     server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
+      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
@@ -442,7 +442,7 @@ export class FastMCP {
 
       const ctx = createContext(
         server,
-        String(extra.requestId),
+        extra.requestId !== undefined ? String(extra.requestId) : undefined,
         extra._meta?.progressToken,
         token,
         sessionState,
@@ -474,7 +474,7 @@ export class FastMCP {
 
     server.setRequestHandler(ListPromptsRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
+      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
           const allVisible = (
@@ -538,7 +538,7 @@ export class FastMCP {
 
       const ctx = createContext(
         server,
-        String(extra.requestId),
+        extra.requestId !== undefined ? String(extra.requestId) : undefined,
         extra._meta?.progressToken,
         token,
         sessionState,
