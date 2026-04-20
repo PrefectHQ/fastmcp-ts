@@ -8,7 +8,7 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 
 ## Servers
 
-- [ ] Tools — declare callable functions with Standard Schema input validation, structured output, return value conversion, and timeout support
+- [x] Tools — declare callable functions with Standard Schema input validation, structured output, return value conversion, and timeout support
 - [ ] Resources — expose URI-addressed data as static files, dynamic functions, or parameterized templates
 - [ ] Prompts — reusable parameterized message templates with multi-turn conversation support
 - [ ] Context — ambient runtime via `AsyncLocalStorage` for logging, progress reporting, LLM sampling, user elicitation, and session state

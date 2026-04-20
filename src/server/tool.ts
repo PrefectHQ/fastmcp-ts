@@ -52,8 +52,10 @@ export function convertResult(value: unknown): CallToolResult {
   if (value === undefined || value === null) {
     return { content: [] }
   }
-  // Arrays: JSON text block only — structuredContent requires a plain object per MCP spec
   if (Array.isArray(value)) {
+    console.warn(
+      '[fastmcp] Tool returned an array — structuredContent will not be set (MCP spec requires a plain object). Wrap in an object or use ToolResult to suppress this warning.',
+    )
     return {
       content: [{ type: 'text', text: JSON.stringify(value) }],
     }
@@ -71,11 +73,20 @@ export function convertResult(value: unknown): CallToolResult {
   }
 }
 
-export async function toJsonSchema(schema: StandardSchemaV1): Promise<Record<string, unknown>> {
+export async function toJsonSchema(
+  schema: StandardSchemaV1,
+  context?: string,
+): Promise<Record<string, unknown>> {
   try {
     const { z } = await import('zod')
-    return (z as unknown as { toJSONSchema: (s: unknown) => Record<string, unknown> }).toJSONSchema(schema)
+    return (z as unknown as { toJSONSchema: (s: unknown) => Record<string, unknown> }).toJSONSchema(
+      schema,
+    )
   } catch {
+    const where = context ? ` for ${context}` : ''
+    console.warn(
+      `[fastmcp] Could not auto-generate JSON schema${where}: schema does not appear to be a Zod v4 schema. Sending { type: 'object' } to clients. Provide an explicit 'inputSchema' in ToolConfig to suppress this warning.`,
+    )
     return { type: 'object' }
   }
 }

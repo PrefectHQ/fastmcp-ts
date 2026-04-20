@@ -8,7 +8,6 @@ import { createTestClient } from '../helpers/createTestClient'
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Create a server + connected in-memory client. Close both in afterEach via `close()`. */
 async function setup(mcp?: FastMCP) {
   const server = mcp ?? new FastMCP({ name: 'test' })
   const { client, close } = await createTestClient(server)
@@ -22,19 +21,15 @@ async function setup(mcp?: FastMCP) {
 describe('Server — Tools', () => {
   describe('declaration', () => {
     it('a function registered as a tool is discoverable by clients via listTools', async () => {
-      const { client, close } = await setup()
-
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'greet', description: 'Say hello' }, () => 'hello')
-      const { client: c2, close: close2 } = await setup(mcp)
-
+      const { client, close } = await setup(mcp)
       try {
-        const result = await c2.listTools()
+        const result = await client.listTools()
         expect(result.tools).toHaveLength(1)
         expect(result.tools[0].name).toBe('greet')
       } finally {
         await close()
-        await close2()
       }
     })
 
@@ -48,7 +43,6 @@ describe('Server — Tools', () => {
       const { client, close } = await setup(mcp)
       try {
         const result = await client.listTools()
-        expect(result.tools).toHaveLength(1)
         expect(result.tools[0].name).toBe('getWeather')
         expect(result.tools[0].description).toBe('get weather')
       } finally {
@@ -66,38 +60,65 @@ describe('Server — Tools', () => {
       const { client, close } = await setup(mcp)
       try {
         const result = await client.listTools()
-        const tool = result.tools[0]
-        expect(tool.inputSchema.type).toBe('object')
-        expect((tool.inputSchema as Record<string, unknown>).properties).toMatchObject({
+        const schema = result.tools[0].inputSchema as Record<string, unknown>
+        expect(schema.type).toBe('object')
+        expect((schema.properties as Record<string, unknown>)).toMatchObject({
           a: { type: 'number' },
           b: { type: 'number' },
         })
-        expect((tool.inputSchema as Record<string, unknown>).required).toContain('a')
-        expect((tool.inputSchema as Record<string, unknown>).required).toContain('b')
+        expect(schema.required).toContain('a')
+        expect(schema.required).toContain('b')
       } finally {
         await close()
+      }
+    })
+
+    it('an explicit inputSchema in config overrides auto-generation and suppresses warnings', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        // A fake non-Zod Standard Schema — auto-generation would warn and fall back
+        const fakeSchema = {
+          '~standard': { version: 1 as const, vendor: 'fake', validate: (v: unknown) => ({ value: v }) },
+        }
+        mcp.tool(
+          {
+            name: 'typed',
+            input: fakeSchema,
+            inputSchema: { type: 'object', properties: { x: { type: 'number' } } },
+          },
+          () => 'ok',
+        )
+
+        const { client, close } = await setup(mcp)
+        try {
+          const result = await client.listTools()
+          const schema = result.tools[0].inputSchema as Record<string, unknown>
+          expect((schema.properties as Record<string, unknown>)).toMatchObject({ x: { type: 'number' } })
+          // No warning should have been emitted (explicit schema took precedence)
+          expect(warnSpy).not.toHaveBeenCalled()
+        } finally {
+          await close()
+        }
+      } finally {
+        warnSpy.mockRestore()
       }
     })
 
     it('an output schema provided as a Standard Schema validator is advertised as outputSchema for clients', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool(
-        {
-          name: 'getUser',
-          output: z.object({ id: z.number(), name: z.string() }),
-        },
+        { name: 'getUser', output: z.object({ id: z.number(), name: z.string() }) },
         () => ({ id: 1, name: 'Alice' }),
       )
 
       const { client, close } = await setup(mcp)
       try {
         const result = await client.listTools()
-        const tool = result.tools[0]
-        expect(tool.outputSchema).toBeDefined()
-        expect((tool.outputSchema as Record<string, unknown>)?.type).toBe('object')
-        expect(
-          (tool.outputSchema as Record<string, unknown>)?.properties as Record<string, unknown>,
-        ).toMatchObject({
+        const outputSchema = result.tools[0].outputSchema as Record<string, unknown> | undefined
+        expect(outputSchema).toBeDefined()
+        expect(outputSchema?.type).toBe('object')
+        expect((outputSchema?.properties as Record<string, unknown>)).toMatchObject({
           id: { type: 'number' },
           name: { type: 'string' },
         })
@@ -119,9 +140,62 @@ describe('Server — Tools', () => {
       const { client, close } = await setup(mcp)
       try {
         const result = await client.listTools()
-        const tool = result.tools[0]
-        expect(tool.name).toBe('fetch-weather')
-        expect(tool.description).toBe('Fetch current weather conditions')
+        expect(result.tools[0].name).toBe('fetch-weather')
+        expect(result.tools[0].description).toBe('Fetch current weather conditions')
+      } finally {
+        await close()
+      }
+    })
+
+    it('tools/list paginates when the tool count exceeds toolsPageSize', async () => {
+      const mcp = new FastMCP({ name: 'test', toolsPageSize: 2 })
+      mcp.tool({ name: 'alpha' }, () => 1)
+      mcp.tool({ name: 'beta' }, () => 2)
+      mcp.tool({ name: 'gamma' }, () => 3)
+
+      const { client, close } = await setup(mcp)
+      try {
+        // First page
+        const page1 = await client.listTools()
+        expect(page1.tools.map((t) => t.name)).toEqual(['alpha', 'beta'])
+        expect(page1.nextCursor).toBeDefined()
+
+        // Second page
+        const page2 = await client.listTools({ cursor: page1.nextCursor! })
+        expect(page2.tools.map((t) => t.name)).toEqual(['gamma'])
+        expect(page2.nextCursor).toBeUndefined()
+      } finally {
+        await close()
+      }
+    })
+
+    it('tools/list returns all tools on a single page when count is within toolsPageSize', async () => {
+      const mcp = new FastMCP({ name: 'test', toolsPageSize: 10 })
+      mcp.tool({ name: 'alpha' }, () => 1)
+      mcp.tool({ name: 'beta' }, () => 2)
+
+      const { client, close } = await setup(mcp)
+      try {
+        const result = await client.listTools()
+        expect(result.tools).toHaveLength(2)
+        expect(result.nextCursor).toBeUndefined()
+      } finally {
+        await close()
+      }
+    })
+
+    it('an invalid or stale cursor falls back to the first page', async () => {
+      const mcp = new FastMCP({ name: 'test', toolsPageSize: 2 })
+      mcp.tool({ name: 'alpha' }, () => 1)
+      mcp.tool({ name: 'beta' }, () => 2)
+
+      const { client, close } = await setup(mcp)
+      try {
+        const result = await client.listTools({
+          cursor: Buffer.from('nonexistent-tool').toString('base64url'),
+        })
+        // Stale cursor → falls back to start
+        expect(result.tools[0].name).toBe('alpha')
       } finally {
         await close()
       }
@@ -170,7 +244,7 @@ describe('Server — Tools', () => {
       try {
         const result = await client.callTool({ name: 'explode', arguments: {} })
         expect(result.isError).toBe(true)
-        expect((result.content[0] as { type: string; text: string }).text).toBe('kaboom')
+        expect(((result.content as unknown[])[0] as { type: string; text: string }).text).toBe('kaboom')
         // Server should still be usable after an error
         const again = await client.callTool({ name: 'explode', arguments: {} })
         expect(again.isError).toBe(true)
@@ -190,7 +264,23 @@ describe('Server — Tools', () => {
       try {
         const result = await client.callTool({ name: 'slow', arguments: {} })
         expect(result.isError).toBe(true)
-        expect((result.content[0] as { type: string; text: string }).text).toMatch(/timed out/)
+        expect(((result.content as unknown[])[0] as { type: string; text: string }).text).toMatch(/timed out/)
+      } finally {
+        await close()
+      }
+    })
+
+    it('the timeout timer is cleared after a successful call', async () => {
+      // If the timer leaked, the test runner would hang or show open handles.
+      // A successful fast call with a timeout configured should complete cleanly.
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'fast', timeout: 1000 }, () => 'done')
+
+      const { client, close } = await setup(mcp)
+      try {
+        const result = await client.callTool({ name: 'fast', arguments: {} })
+        expect(result.isError).toBeFalsy()
+        expect(result.content).toEqual([{ type: 'text', text: 'done' }])
       } finally {
         await close()
       }
@@ -201,10 +291,7 @@ describe('Server — Tools', () => {
     it('arguments are validated against the Standard Schema before the handler is called', async () => {
       const mcp = new FastMCP({ name: 'test' })
       const handlerSpy = vi.fn(() => 'ok')
-      mcp.tool(
-        { name: 'typed', input: z.object({ x: z.number() }) },
-        handlerSpy,
-      )
+      mcp.tool({ name: 'typed', input: z.object({ x: z.number() }) }, handlerSpy)
 
       const { client, close } = await setup(mcp)
       try {
@@ -219,10 +306,7 @@ describe('Server — Tools', () => {
     it('a call with missing required parameters is rejected before the handler runs', async () => {
       const mcp = new FastMCP({ name: 'test' })
       const handlerSpy = vi.fn(() => 'ok')
-      mcp.tool(
-        { name: 'greet', input: z.object({ name: z.string() }) },
-        handlerSpy,
-      )
+      mcp.tool({ name: 'greet', input: z.object({ name: z.string() }) }, handlerSpy)
 
       const { client, close } = await setup(mcp)
       try {
@@ -265,9 +349,61 @@ describe('Server — Tools', () => {
       const { client, close } = await setup(mcp)
       try {
         await client.callTool({ name: 'typed', arguments: { n: '42' } })
-        // After coercion the handler receives a number, not the string "42"
         expect(typeof received).toBe('number')
         expect(received).toBe(42)
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  describe('output schema', () => {
+    it('a handler whose return value matches the output schema succeeds', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool(
+        { name: 'greet', output: z.string() },
+        () => 'hello',
+      )
+
+      const { client, close } = await setup(mcp)
+      try {
+        const result = await client.callTool({ name: 'greet', arguments: {} })
+        expect(result.isError).toBeFalsy()
+        expect(result.content).toEqual([{ type: 'text', text: 'hello' }])
+      } finally {
+        await close()
+      }
+    })
+
+    it('a handler whose return value violates the output schema returns an error result', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool(
+        { name: 'typed', output: z.string() },
+        () => 42 as unknown as string, // deliberate mismatch
+      )
+
+      const { client, close } = await setup(mcp)
+      try {
+        const result = await client.callTool({ name: 'typed', arguments: {} })
+        expect(result.isError).toBe(true)
+      } finally {
+        await close()
+      }
+    })
+
+    it('output validation applies before result conversion — primitives and objects are both valid', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool(
+        { name: 'count', output: z.number() },
+        () => 7,
+      )
+
+      const { client, close } = await setup(mcp)
+      try {
+        const result = await client.callTool({ name: 'count', arguments: {} })
+        expect(result.isError).toBeFalsy()
+        // After validation, the number still goes through convertResult → text block
+        expect(result.content).toEqual([{ type: 'text', text: '7' }])
       } finally {
         await close()
       }
@@ -313,15 +449,21 @@ describe('Server — Tools', () => {
     })
 
     it('an array return produces a JSON text block', async () => {
-      const result = await callTool(() => [1, 2, 3])
-      expect(result.content).toEqual([{ type: 'text', text: '[1,2,3]' }])
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const result = await callTool(() => [1, 2, 3])
+        expect(result.content).toEqual([{ type: 'text', text: '[1,2,3]' }])
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('structuredContent will not be set'))
+      } finally {
+        warnSpy.mockRestore()
+      }
     })
 
     it('an Image(buffer, mimeType) return produces an image content block', async () => {
       const buf = Buffer.from('fake-png-data')
       const result = await callTool(() => new Image(buf, 'image/png'))
-      expect(result.content).toHaveLength(1)
-      const block = result.content[0] as { type: string; data: string; mimeType: string }
+      expect((result.content as unknown[]).length).toBe(1)
+      const block = (result.content as unknown[])[0] as { type: string; data: string; mimeType: string }
       expect(block.type).toBe('image')
       expect(block.mimeType).toBe('image/png')
       expect(block.data).toBe(buf.toString('base64'))
@@ -330,8 +472,8 @@ describe('Server — Tools', () => {
     it('a File(buffer, name, mimeType) return produces a resource content block with the correct MIME type', async () => {
       const buf = Buffer.from('%PDF-1.4 ...')
       const result = await callTool(() => new File(buf, 'report.pdf', 'application/pdf'))
-      expect(result.content).toHaveLength(1)
-      const block = result.content[0] as {
+      expect((result.content as unknown[]).length).toBe(1)
+      const block = (result.content as unknown[])[0] as {
         type: string
         resource: { uri: string; mimeType: string; blob: string }
       }
@@ -371,15 +513,15 @@ describe('Server — Tools', () => {
       }
     })
 
-    it('a disabled tool remains callable when invoked directly', async () => {
+    it('a disabled tool cannot be invoked and rejects with an error', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'hidden', disabled: true }, () => 'secret')
 
       const { client, close } = await setup(mcp)
       try {
-        const result = await client.callTool({ name: 'hidden', arguments: {} })
-        expect(result.isError).toBeFalsy()
-        expect(result.content).toEqual([{ type: 'text', text: 'secret' }])
+        await expect(
+          client.callTool({ name: 'hidden', arguments: {} }),
+        ).rejects.toThrow()
       } finally {
         await close()
       }
@@ -412,7 +554,6 @@ describe('Server — Tools', () => {
         const before = await client.listTools()
         expect(before.tools.map((t) => t.name)).toEqual(['first'])
 
-        // Register a second tool while the client is already connected
         mcp.tool({ name: 'second' }, () => 2)
 
         const after = await client.listTools()
@@ -435,7 +576,6 @@ describe('Server — Tools', () => {
 
         mcp.tool({ name: 'new-tool' }, () => 'hi')
 
-        // Notification should arrive within a reasonable time
         await expect(notified).resolves.toBeUndefined()
       } finally {
         await close()

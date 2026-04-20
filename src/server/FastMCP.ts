@@ -47,6 +47,8 @@ export interface FastMCPOptions {
   auth?: TokenVerifier
   /** Full OAuth 2.1 server with Dynamic Client Registration support. */
   oauth?: OAuthConfig
+  /** Maximum number of tools returned per listTools page. Default: 50. */
+  toolsPageSize?: number
 }
 
 export interface RunOptions {
@@ -70,13 +72,24 @@ export interface ToolConfig {
   /** Tool name. If omitted, inferred from the handler function's name. */
   name?: string
   description?: string
-  /** Standard Schema validator for the tool's input arguments. */
+  /** Standard Schema validator for the tool's input arguments. Used for runtime validation. */
   input?: StandardSchemaV1
-  /** Standard Schema validator describing the tool's return value structure. */
+  /**
+   * Explicit JSON Schema advertised to clients as `inputSchema`. Overrides auto-generation from
+   * `input`. Use this when `input` is not a Zod v4 schema and auto-generation falls back to
+   * `{ type: 'object' }`.
+   */
+  inputSchema?: Record<string, unknown>
+  /** Standard Schema validator for the tool's return value. Validated before result conversion. */
   output?: StandardSchemaV1
+  /**
+   * Explicit JSON Schema advertised to clients as `outputSchema`. Overrides auto-generation from
+   * `output`.
+   */
+  outputSchema?: Record<string, unknown>
   /** Execution timeout in milliseconds. No timeout by default. */
   timeout?: number
-  /** When true the tool is hidden from listTools but still callable. */
+  /** When true the tool is hidden from listTools and cannot be invoked via tools/call. */
   disabled?: boolean
   /** Arbitrary tags for server-side filtering. */
   tags?: string[]
@@ -135,6 +148,7 @@ export class FastMCP {
 
   private _auth: TokenVerifier | undefined
   private _oauth: OAuthConfig | undefined
+  private _toolsPageSize: number
   private _tools = new Map<string, RegisteredTool>()
   private _resources = new Map<string, RegisteredResource>()
   private _httpServer: HttpServer | null = null
@@ -148,6 +162,7 @@ export class FastMCP {
     this.version = options.version ?? '0.0.1'
     this._auth = options.auth
     this._oauth = options.oauth
+    this._toolsPageSize = options.toolsPageSize ?? 50
     this._primaryServer = this._makeServer()
   }
 
@@ -162,46 +177,68 @@ export class FastMCP {
   }
 
   private _setupHandlers(server: Server): void {
-    server.setRequestHandler(ListToolsRequestSchema, async (_req, extra) => {
+    server.setRequestHandler(ListToolsRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const visible = await Promise.all(
-        [...this._tools.values()].map(async (t) => {
-          if (t.config.disabled) return null
-          if (!t.config.auth) return t
-          if (!token) return null
-          try {
-            await t.config.auth(token)
-            return t
-          } catch {
-            return null
+      const allVisible = (
+        await Promise.all(
+          [...this._tools.values()].map(async (t) => {
+            if (t.config.disabled) return null
+            if (!t.config.auth) return t
+            if (!token) return null
+            try {
+              await t.config.auth(token)
+              return t
+            } catch {
+              return null
+            }
+          }),
+        )
+      ).filter((t): t is RegisteredTool => t !== null)
+
+      // Cursor-based pagination
+      const pageSize = this._toolsPageSize
+      const cursorName = req.params?.cursor
+        ? Buffer.from(req.params.cursor, 'base64url').toString()
+        : null
+      let startIdx = 0
+      if (cursorName !== null) {
+        const idx = allVisible.findIndex((t) => t.config.name === cursorName)
+        startIdx = idx >= 0 ? idx + 1 : 0
+      }
+      const page = allVisible.slice(startIdx, startIdx + pageSize)
+      const nextCursor =
+        startIdx + pageSize < allVisible.length
+          ? Buffer.from(page[page.length - 1].config.name).toString('base64url')
+          : undefined
+
+      const tools = await Promise.all(
+        page.map(async (t) => {
+          const inputSchema =
+            t.config.inputSchema ??
+            (t.config.input
+              ? await toJsonSchema(t.config.input, `tool "${t.config.name}" input`)
+              : { type: 'object' as const })
+          const outputSchema =
+            t.config.outputSchema ??
+            (t.config.output
+              ? await toJsonSchema(t.config.output, `tool "${t.config.name}" output`)
+              : undefined)
+          return {
+            name: t.config.name,
+            description: t.config.description,
+            inputSchema,
+            ...(outputSchema ? { outputSchema } : {}),
           }
         }),
       )
 
-      const tools = await Promise.all(
-        visible
-          .filter((t): t is RegisteredTool => t !== null)
-          .map(async (t) => {
-            const inputSchema = t.config.input
-              ? await toJsonSchema(t.config.input)
-              : { type: 'object' as const }
-            const outputSchema = t.config.output ? await toJsonSchema(t.config.output) : undefined
-            return {
-              name: t.config.name,
-              description: t.config.description,
-              inputSchema,
-              ...(outputSchema ? { outputSchema } : {}),
-            }
-          }),
-      )
-
-      return { tools }
+      return { tools, ...(nextCursor ? { nextCursor } : {}) }
     })
 
     server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
       const tool = this._tools.get(req.params.name)
-      if (!tool) {
-        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: "${req.params.name}"`)
+      if (!tool || tool.config.disabled) {
+        throw new McpError(ErrorCode.InvalidParams, `Unknown tool: "${req.params.name}"`)
       }
 
       const token = toAccessToken(extra.authInfo)
@@ -219,16 +256,25 @@ export class FastMCP {
 
         if (tool.config.timeout) {
           const ms = tool.config.timeout
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(
+          let timer!: ReturnType<typeof setTimeout>
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timer = setTimeout(
               () => reject(new Error(`Tool "${req.params.name}" timed out after ${ms}ms`)),
               ms,
-            ),
+            )
+          })
+          executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+            clearTimeout(timer),
           )
-          executePromise = Promise.race([executePromise, timeoutPromise])
         }
 
-        const resultValue = await executePromise
+        let resultValue = await executePromise
+
+        // Validate output schema against the raw handler return value
+        if (tool.config.output) {
+          resultValue = await validateInput(tool.config.output, resultValue)
+        }
+
         return convertResult(resultValue)
       } catch (err) {
         return {

@@ -39,12 +39,25 @@ User data is nested under `ctx.data` to avoid collisions with built-in context f
 | `string` | Text content block |
 | `number`, `boolean` | Stringified text content block |
 | `undefined` / `void` | Empty result |
-| Plain object or array | JSON text content block + `structuredContent` |
+| Plain object | JSON text content block + `structuredContent` |
+| Array | JSON text content block (no `structuredContent` — MCP spec requires it to be a plain object) |
 | `Image(buffer, mimeType)` | Image content block |
 | `File(buffer, name, mimeType)` | Binary blob content block |
 | `ToolResult(...)` | Passed through as-is (escape hatch for full control) |
 
 Binary types (`Buffer`, `Uint8Array`) always require an explicit wrapper — MIME type cannot be inferred. `ToolResult` is the escape hatch for returning multiple content blocks, suppressing `structuredContent`, or constructing raw MCP output.
+
+**Tool name and description inference:** When `name` is omitted from `ToolConfig`, the handler function's `.name` property is used. When `description` is omitted, it is derived from the resolved name by converting camelCase to words (`getWeather` → `"get weather"`). Both are overridable by explicit values in config.
+
+**Disabled tools:** A tool registered with `disabled: true` is completely inaccessible — it is hidden from `listTools` responses and rejected with `InvalidParams` on `tools/call`. Clients cannot distinguish a disabled tool from a non-existent one. This matches Python FastMCP's behavior.
+
+**JSON Schema advertisement vs Standard Schema validation:** `ToolConfig` has two orthogonal layers for schemas:
+- `input` / `output` — Standard Schema validators used for runtime validation. Works with any Standard Schema-compliant library (Zod, Valibot, ArkType, etc.) via `~standard.validate()`.
+- `inputSchema` / `outputSchema` — explicit JSON Schema objects advertised to clients in `tools/list`. If omitted, FastMCP auto-generates from `input`/`output` via Zod v4's `z.toJSONSchema()`. A `console.warn` is emitted when auto-generation falls back to `{ type: 'object' }` (i.e., when the schema is not a Zod v4 schema).
+
+**Output schema validation:** When `output` is provided, the handler's raw return value is validated against it before `convertResult` runs. Validation uses `~standard.validate()`, so it works across all Standard Schema libraries. Primitives, objects, and arrays are all valid output types — the output schema describes the handler's contract, not the MCP content shape. Validation failure returns `isError: true`.
+
+**Pagination:** `tools/list` supports cursor-based pagination per the MCP spec. Page size defaults to 50 and is configurable via `FastMCPOptions.toolsPageSize`. Cursors are base64url-encoded tool names; a stale or invalid cursor falls back to the first page. `InvalidParams` (not `MethodNotFound`) is used for unknown tool names in `tools/call` — the tool name is a parameter, not a method.
 
 **Dynamic registration:** Tools, resources, and prompts can be registered before or after `run()` is called. Adding a component to a running server automatically sends the appropriate `list_changed` notification to connected clients.
 
