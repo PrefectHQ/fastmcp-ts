@@ -23,11 +23,6 @@ import { contextStore } from './context'
 import type { McpContext } from './context'
 import { convertResult, toJsonSchema, validateInput } from './tool'
 
-/** Convert a camelCase or PascalCase identifier to a human-readable description. */
-function inferDescription(name: string): string {
-  return name.replace(/([A-Z])/g, ' $1').toLowerCase().trim()
-}
-
 export interface OAuthConfig {
   /** OAuth server provider implementing the authorization and token flow. */
   provider: OAuthServerProvider
@@ -69,9 +64,8 @@ export interface ServerAddress {
 }
 
 export interface ToolConfig {
-  /** Tool name. If omitted, inferred from the handler function's name. */
-  name?: string
-  description?: string
+  name: string
+  description: string
   /** Standard Schema validator for the tool's input arguments. Used for runtime validation. */
   input?: StandardSchemaV1
   /**
@@ -105,7 +99,7 @@ export interface ResourceConfig {
 }
 
 interface RegisteredTool {
-  config: ToolConfig & { name: string }
+  config: ToolConfig
   handler: (args: unknown) => unknown
 }
 
@@ -356,15 +350,7 @@ export class FastMCP {
   // Implementation (handler typed as any to satisfy both overload signatures)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tool(config: ToolConfig, handler: (args: any) => any): void {
-    const name = config.name ?? (handler as { name?: string }).name
-    if (!name) {
-      throw new Error(
-        'Tool name must be provided in config or inferrable from the handler function name',
-      )
-    }
-    const description = config.description ?? inferDescription(name)
-    const resolvedConfig = { ...config, name, description }
-    this._tools.set(name, { config: resolvedConfig, handler })
+    this._tools.set(config.name, { config, handler })
     this._notifyToolListChanged()
   }
 

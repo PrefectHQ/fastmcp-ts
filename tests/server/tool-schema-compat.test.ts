@@ -25,7 +25,7 @@ async function withTool(
   handler: (args: any) => unknown,
 ) {
   const mcp = new FastMCP({ name: 'test' })
-  mcp.tool({ name: 'x', input: schema }, handler)
+  mcp.tool({ name: 'x', description: 'test tool', input: schema }, handler)
   const { client, close } = await createTestClient(mcp)
   return { client, close }
 }
@@ -199,7 +199,7 @@ describe('Valibot', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const mcp = new FastMCP({ name: 'test' })
-      mcp.tool({ name: 'x', input: schema, inputSchema: explicitSchema }, () => 'ok')
+      mcp.tool({ name: 'x', description: 'test tool', input: schema, inputSchema: explicitSchema }, () => 'ok')
       const { client, close } = await createTestClient(mcp)
       try {
         const { tools } = await client.listTools()

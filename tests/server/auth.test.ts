@@ -187,7 +187,7 @@ describe('Server — Authentication', () => {
         auth: jwtVerifier({ jwksUri: jwks.jwksUri, issuer: jwks.issuer, audience: jwks.audience }),
       })
 
-      mcp.tool({ name: 'whoami' }, () => {
+      mcp.tool({ name: 'whoami', description: 'Return the caller identity' }, () => {
         const ctx = mcp.getContext()
         return ctx.auth?.claims.sub ?? 'anonymous'
       })
@@ -374,7 +374,7 @@ describe('Server — Authentication', () => {
       expect(access_token).toBeTruthy()
 
       // Use the token to call an MCP tool
-      mcp.tool({ name: 'ping' }, () => 'pong')
+      mcp.tool({ name: 'ping', description: 'test tool' }, () => 'pong')
       const { client, close } = await connectHttpClient(
         new URL(`${baseUrl}${mcp.address!.path}`),
         access_token,
@@ -387,7 +387,7 @@ describe('Server — Authentication', () => {
     it('registered clients authenticate successfully on subsequent requests', async () => {
       const provider = oauthProvider()
       const mcp = new FastMCP({ name: 'test-server', oauth: { provider } })
-      mcp.tool({ name: 'ping' }, () => 'pong')
+      mcp.tool({ name: 'ping', description: 'test tool' }, () => 'pong')
       await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
       cleanup.push(() => mcp.close())
 
@@ -801,7 +801,7 @@ describe('Server — Authentication', () => {
           'admin-token': { scopes: ['admin'] },
         }),
       })
-      mcp.tool({ name: 'admin-tool', auth: requireScopes('admin') }, () => 'secret data')
+      mcp.tool({ name: 'admin-tool', description: 'Admin only tool', auth: requireScopes('admin') }, () => 'secret data')
       const { url } = await startServer(mcp)
       cleanup.push(() => mcp.close())
 
@@ -845,8 +845,8 @@ describe('Server — Authentication', () => {
         name: 'test-server',
         auth: staticTokenVerifier({ 'reader-token': { scopes: ['read'] } }),
       })
-      mcp.tool({ name: 'public-tool' }, () => 'public')
-      mcp.tool({ name: 'admin-tool', auth: requireScopes('admin') }, () => 'secret')
+      mcp.tool({ name: 'public-tool', description: 'Public tool' }, () => 'public')
+      mcp.tool({ name: 'admin-tool', description: 'Admin only tool', auth: requireScopes('admin') }, () => 'secret')
       const { url } = await startServer(mcp)
       cleanup.push(() => mcp.close())
 
