@@ -8,14 +8,16 @@ import {
   introspectionVerifier,
   staticTokenVerifier,
   debugTokenVerifier,
+  requireScopes,
+  multiAuth,
 } from 'fastmcp-ts/server'
+import type { AccessToken } from 'fastmcp-ts/server'
 import { connectHttpClient, rawPost } from '../helpers/http'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Spin up a local JWKS server backed by a freshly generated RSA key pair. */
 async function createJwksSetup(issuer = 'https://example.com', audience = 'test') {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
   const jwk = { ...(await exportJWK(publicKey)), kid: 'test-key', use: 'sig', alg: 'RS256' }
@@ -127,7 +129,30 @@ describe('Server — Authentication', () => {
       await expect(verifier.verify('')).rejects.toThrow()
     })
 
-    it.todo('claims from the validated token are available to tools via context')
+    it('claims from the validated token are available to tools via context', async () => {
+      const jwks = await createJwksSetup()
+      cleanup.push(jwks.close)
+
+      const mcp = new FastMCP({
+        name: 'test-server',
+        auth: jwtVerifier({ jwksUri: jwks.jwksUri, issuer: jwks.issuer, audience: jwks.audience }),
+      })
+
+      mcp.tool({ name: 'whoami' }, () => {
+        const ctx = mcp.getContext()
+        return ctx.auth?.claims.sub ?? 'anonymous'
+      })
+
+      const { url } = await startServer(mcp)
+      cleanup.push(() => mcp.close())
+
+      const token = await jwks.signToken()
+      const { client, close } = await connectHttpClient(url, token)
+      cleanup.push(close)
+
+      const result = await client.callTool({ name: 'whoami', arguments: {} })
+      expect(result.content[0]).toMatchObject({ type: 'text', text: 'user-123' })
+    })
   })
 
   describe('opaque token introspection', () => {
@@ -145,13 +170,13 @@ describe('Server — Authentication', () => {
         )
       })
       await new Promise<void>((r) => introspectionServer.listen(0, '127.0.0.1', r))
-      const introspectionPort = (introspectionServer.address() as AddressInfo).port
+      const port = (introspectionServer.address() as AddressInfo).port
       cleanup.push(
         () => new Promise<void>((r, j) => introspectionServer.close((e) => (e ? j(e) : r()))),
       )
 
       const verifier = introspectionVerifier({
-        endpoint: `http://127.0.0.1:${introspectionPort}/introspect`,
+        endpoint: `http://127.0.0.1:${port}/introspect`,
         credentials: { clientId: 'fastmcp', clientSecret: 'secret' },
       })
 
@@ -166,13 +191,13 @@ describe('Server — Authentication', () => {
         res.end(JSON.stringify({ active: false }))
       })
       await new Promise<void>((r) => introspectionServer.listen(0, '127.0.0.1', r))
-      const introspectionPort = (introspectionServer.address() as AddressInfo).port
+      const port = (introspectionServer.address() as AddressInfo).port
       cleanup.push(
         () => new Promise<void>((r, j) => introspectionServer.close((e) => (e ? j(e) : r()))),
       )
 
       const verifier = introspectionVerifier({
-        endpoint: `http://127.0.0.1:${introspectionPort}/introspect`,
+        endpoint: `http://127.0.0.1:${port}/introspect`,
         credentials: { clientId: 'fastmcp', clientSecret: 'secret' },
       })
 
@@ -187,13 +212,13 @@ describe('Server — Authentication', () => {
         res.end(JSON.stringify({ active: true, scope: 'read' }))
       })
       await new Promise<void>((r) => introspectionServer.listen(0, '127.0.0.1', r))
-      const introspectionPort = (introspectionServer.address() as AddressInfo).port
+      const port = (introspectionServer.address() as AddressInfo).port
       cleanup.push(
         () => new Promise<void>((r, j) => introspectionServer.close((e) => (e ? j(e) : r()))),
       )
 
       const verifier = introspectionVerifier({
-        endpoint: `http://127.0.0.1:${introspectionPort}/introspect`,
+        endpoint: `http://127.0.0.1:${port}/introspect`,
         credentials: { clientId: 'fastmcp', clientSecret: 'secret' },
         cacheTtl: 60,
       })
@@ -217,19 +242,124 @@ describe('Server — Authentication', () => {
   })
 
   describe('scope-based authorization', () => {
-    it.todo('requireScopes() grants access when the token carries all required scopes')
-    it.todo('requireScopes() denies access when the token is missing a required scope')
-    it.todo('multiple scopes passed to requireScopes() use AND logic — all must be present')
+    it('requireScopes() grants access when the token carries all required scopes', async () => {
+      const check = requireScopes('read', 'write')
+      const token: AccessToken = { token: 'x', scopes: ['read', 'write'], claims: {} }
+      await expect(check(token)).resolves.toBeUndefined()
+    })
+
+    it('requireScopes() denies access when the token is missing a required scope', async () => {
+      const check = requireScopes('admin')
+      const token: AccessToken = { token: 'x', scopes: ['read'], claims: {} }
+      await expect(check(token)).rejects.toThrow('"admin"')
+    })
+
+    it('multiple scopes passed to requireScopes() use AND logic — all must be present', async () => {
+      const check = requireScopes('read', 'write', 'admin')
+
+      const partial: AccessToken = { token: 'x', scopes: ['read', 'write'], claims: {} }
+      await expect(check(partial)).rejects.toThrow('"admin"')
+
+      const full: AccessToken = { token: 'x', scopes: ['read', 'write', 'admin'], claims: {} }
+      await expect(check(full)).resolves.toBeUndefined()
+    })
   })
 
   describe('per-component authorization', () => {
-    it.todo('a tool registered with an auth check is blocked when the check fails')
-    it.todo('a resource registered with an auth check is blocked when the check fails')
-    it.todo('an unauthorized component does not appear in list results')
+    const cleanup: Array<() => Promise<void>> = []
+    afterEach(async () => {
+      await Promise.all(cleanup.map((c) => c()))
+      cleanup.length = 0
+    })
+
+    it('a tool registered with an auth check is blocked when the check fails', async () => {
+      const mcp = new FastMCP({
+        name: 'test-server',
+        auth: staticTokenVerifier({
+          'reader-token': { scopes: ['read'] },
+          'admin-token': { scopes: ['admin'] },
+        }),
+      })
+      mcp.tool({ name: 'admin-tool', auth: requireScopes('admin') }, () => 'secret data')
+      const { url } = await startServer(mcp)
+      cleanup.push(() => mcp.close())
+
+      // Admin token: access granted
+      const { client: adminClient, close: closeAdmin } = await connectHttpClient(url, 'admin-token')
+      cleanup.push(closeAdmin)
+      const ok = await adminClient.callTool({ name: 'admin-tool', arguments: {} })
+      expect(ok.isError).not.toBe(true)
+
+      // Reader token: access denied (McpError thrown)
+      const { client: readerClient, close: closeReader } = await connectHttpClient(
+        url,
+        'reader-token',
+      )
+      cleanup.push(closeReader)
+      await expect(readerClient.callTool({ name: 'admin-tool', arguments: {} })).rejects.toThrow()
+    })
+
+    it('a resource registered with an auth check is blocked when the check fails', async () => {
+      const mcp = new FastMCP({
+        name: 'test-server',
+        auth: staticTokenVerifier({
+          'reader-token': { scopes: ['read'] },
+          'admin-token': { scopes: ['admin'] },
+        }),
+      })
+      mcp.resource(
+        { name: 'secret', uri: 'secret://data', auth: requireScopes('admin') },
+        () => 'classified',
+      )
+      const { url } = await startServer(mcp)
+      cleanup.push(() => mcp.close())
+
+      const { client, close } = await connectHttpClient(url, 'reader-token')
+      cleanup.push(close)
+      await expect(client.readResource({ uri: 'secret://data' })).rejects.toThrow()
+    })
+
+    it('an unauthorized component does not appear in list results', async () => {
+      const mcp = new FastMCP({
+        name: 'test-server',
+        auth: staticTokenVerifier({ 'reader-token': { scopes: ['read'] } }),
+      })
+      mcp.tool({ name: 'public-tool' }, () => 'public')
+      mcp.tool({ name: 'admin-tool', auth: requireScopes('admin') }, () => 'secret')
+      const { url } = await startServer(mcp)
+      cleanup.push(() => mcp.close())
+
+      const { client, close } = await connectHttpClient(url, 'reader-token')
+      cleanup.push(close)
+
+      const { tools } = await client.listTools()
+      const names = tools.map((t) => t.name)
+      expect(names).toContain('public-tool')
+      expect(names).not.toContain('admin-tool')
+    })
   })
 
   describe('multi-source auth', () => {
-    it.todo('sources are tried in order and the first successful one grants access')
-    it.todo('access is denied only when all sources reject the request')
+    it('sources are tried in order and the first successful one grants access', async () => {
+      const multi = multiAuth(
+        staticTokenVerifier({ 'token-a': { scopes: ['read'] } }),
+        staticTokenVerifier({ 'token-b': { scopes: ['write'] } }),
+      )
+
+      const resultA = await multi.verify('token-a')
+      expect(resultA.scopes).toEqual(['read'])
+
+      const resultB = await multi.verify('token-b')
+      expect(resultB.scopes).toEqual(['write'])
+    })
+
+    it('access is denied only when all sources reject the request', async () => {
+      const multi = multiAuth(
+        staticTokenVerifier({ 'token-a': { scopes: ['read'] } }),
+        staticTokenVerifier({ 'token-b': { scopes: ['write'] } }),
+      )
+
+      await expect(multi.verify('unknown-token')).rejects.toThrow()
+    })
   })
 })
