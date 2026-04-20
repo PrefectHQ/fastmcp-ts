@@ -24,4 +24,10 @@ describe('Server — Transforms', () => {
     it.todo('the namespace transform prefixes all component names with a given string')
     it.todo('a namespaced request is correctly routed back to the original component')
   })
+
+  describe('version filtering', () => {
+    it.todo('version filter exposes only components whose tags match the configured version range')
+    it.todo('components without a version tag are excluded when a version filter is active')
+    it.todo('multiple servers can be mounted with different version filters to serve versioned APIs from one instance')
+  })
 })

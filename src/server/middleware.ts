@@ -118,7 +118,7 @@ export class CachingMiddleware implements Middleware {
   }
 }
 
-/** Token-bucket rate limiter. Resets to full after every windowMs. */
+/** Fixed-window counter rate limiter. Resets to full capacity after every windowMs interval. */
 export class RateLimitingMiddleware implements Middleware {
   private _tokens: number
   private _lastRefill: number
@@ -154,7 +154,7 @@ export class SizeLimitingMiddleware implements Middleware {
     const size = Buffer.byteLength(JSON.stringify(result), 'utf8')
     if (size > this.maxBytes) {
       throw new McpError(
-        ErrorCode.InvalidRequest,
+        ErrorCode.InternalError,
         `Response size (${size} bytes) exceeds limit (${this.maxBytes} bytes)`,
       )
     }
@@ -215,7 +215,7 @@ export class CancellationMiddleware implements Middleware {
 
     const abortPromise = new Promise<never>((_, reject) => {
       controller.signal.addEventListener('abort', () =>
-        reject(new McpError(ErrorCode.InvalidRequest, 'Request cancelled')),
+        reject(new McpError(ErrorCode.InternalError, 'Request was cancelled by the client')),
       )
     })
 
