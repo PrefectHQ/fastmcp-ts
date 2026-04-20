@@ -300,6 +300,42 @@ describe('Server — Resources', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // Pagination (stale cursor)
+  // ---------------------------------------------------------------------------
+
+  describe('pagination (stale cursor)', () => {
+    it('an invalid cursor for resources/list throws an InvalidParams error', async () => {
+      const mcp = new FastMCP({ name: 'test', resourcesPageSize: 2 })
+      mcp.resource({ uri: 'r://a', name: 'a' }, () => 'a')
+      mcp.resource({ uri: 'r://b', name: 'b' }, () => 'b')
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await expect(
+          client.listResources({ cursor: Buffer.from('r://nonexistent').toString('base64url') }),
+        ).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+
+    it('an invalid cursor for resources/templates/list throws an InvalidParams error', async () => {
+      const mcp = new FastMCP({ name: 'test', resourcesPageSize: 2 })
+      mcp.resource({ uri: 'r://{a}' }, () => 'a')
+      mcp.resource({ uri: 'r://{b}' }, () => 'b')
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await expect(
+          client.listResourceTemplates({ cursor: Buffer.from('r://{nonexistent}').toString('base64url') }),
+        ).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // Error handling
   // ---------------------------------------------------------------------------
 

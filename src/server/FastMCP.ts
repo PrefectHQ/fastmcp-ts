@@ -239,7 +239,8 @@ export class FastMCP {
           let startIdx = 0
           if (cursorName !== null) {
             const idx = allVisible.findIndex((t) => t.config.name === cursorName)
-            startIdx = idx >= 0 ? idx + 1 : 0
+            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            startIdx = idx + 1
           }
           const page = allVisible.slice(startIdx, startIdx + pageSize)
           const nextCursor =
@@ -349,7 +350,8 @@ export class FastMCP {
           let startIdx = 0
           if (cursorUri !== null) {
             const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
-            startIdx = idx >= 0 ? idx + 1 : 0
+            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            startIdx = idx + 1
           }
           const page = allVisible.slice(startIdx, startIdx + pageSize)
           const nextCursor =
@@ -396,7 +398,8 @@ export class FastMCP {
           let startIdx = 0
           if (cursorUri !== null) {
             const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
-            startIdx = idx >= 0 ? idx + 1 : 0
+            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            startIdx = idx + 1
           }
           const page = allVisible.slice(startIdx, startIdx + pageSize)
           const nextCursor =

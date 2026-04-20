@@ -165,18 +165,16 @@ describe('Server — Tools', () => {
       }
     })
 
-    it('an invalid or stale cursor falls back to the first page', async () => {
+    it('an invalid or stale cursor throws an InvalidParams error', async () => {
       const mcp = new FastMCP({ name: 'test', toolsPageSize: 2 })
       mcp.tool({ name: 'alpha', description: 'test tool' }, () => 1)
       mcp.tool({ name: 'beta', description: 'test tool' }, () => 2)
 
       const { client, close } = await setup(mcp)
       try {
-        const result = await client.listTools({
-          cursor: Buffer.from('nonexistent-tool').toString('base64url'),
-        })
-        // Stale cursor → falls back to start
-        expect(result.tools[0].name).toBe('alpha')
+        await expect(
+          client.listTools({ cursor: Buffer.from('nonexistent-tool').toString('base64url') }),
+        ).rejects.toThrow()
       } finally {
         await close()
       }
