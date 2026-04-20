@@ -148,6 +148,29 @@ describe('Server — Authentication', () => {
       await expect(verifier.verify('unknown')).rejects.toThrow()
     })
 
+    it('staticTokenVerifier rejects a token whose expiresAt is in the past', async () => {
+      const pastTimestamp = Math.floor(Date.now() / 1000) - 60
+      const verifier = staticTokenVerifier({
+        'expired-token': { scopes: ['read'], expiresAt: pastTimestamp },
+      })
+      await expect(verifier.verify('expired-token')).rejects.toThrow(/expired/i)
+    })
+
+    it('staticTokenVerifier accepts a token whose expiresAt is in the future', async () => {
+      const futureTimestamp = Math.floor(Date.now() / 1000) + 3600
+      const verifier = staticTokenVerifier({
+        'live-token': { scopes: ['read'], expiresAt: futureTimestamp },
+      })
+      const result = await verifier.verify('live-token')
+      expect(result.scopes).toEqual(['read'])
+    })
+
+    it('staticTokenVerifier accepts a token with no expiresAt (non-expiring)', async () => {
+      const verifier = staticTokenVerifier({ 'permanent-token': { scopes: ['admin'] } })
+      const result = await verifier.verify('permanent-token')
+      expect(result.scopes).toEqual(['admin'])
+    })
+
     it('a debug token verifier accepts any non-empty bearer token (dev only)', async () => {
       const verifier = debugTokenVerifier()
       const result = await verifier.verify('anything')
@@ -178,6 +201,40 @@ describe('Server — Authentication', () => {
 
       const result = await client.callTool({ name: 'whoami', arguments: {} })
       expect((result.content as unknown[])[0]).toMatchObject({ type: 'text', text: 'user-123' })
+    })
+  })
+
+  describe('WWW-Authenticate header on 401 responses', () => {
+    const cleanup: Array<() => Promise<void>> = []
+    afterEach(async () => {
+      await Promise.all(cleanup.map((c) => c()))
+      cleanup.length = 0
+    })
+
+    it('missing bearer token returns 401 with WWW-Authenticate: Bearer realm="mcp"', async () => {
+      const mcp = new FastMCP({
+        name: 'test-server',
+        auth: staticTokenVerifier({ tok: { scopes: [] } }),
+      })
+      const { url } = await startServer(mcp)
+      cleanup.push(() => mcp.close())
+
+      const res = await fetch(url.toString(), { method: 'POST' })
+      expect(res.status).toBe(401)
+      expect(res.headers.get('www-authenticate')).toBe('Bearer realm="mcp"')
+    })
+
+    it('invalid bearer token returns 401 with WWW-Authenticate: Bearer realm="mcp"', async () => {
+      const mcp = new FastMCP({
+        name: 'test-server',
+        auth: staticTokenVerifier({ tok: { scopes: [] } }),
+      })
+      const { url } = await startServer(mcp)
+      cleanup.push(() => mcp.close())
+
+      const res = await rawPost(url, 'bad-token')
+      expect(res.status).toBe(401)
+      expect(res.headers.get('www-authenticate')).toBe('Bearer realm="mcp"')
     })
   })
 
@@ -380,6 +437,122 @@ describe('Server — Authentication', () => {
         expect((result.content as unknown[])[0]).toMatchObject({ type: 'text', text: 'pong' })
       }
     })
+
+    it('a refresh_token grant returns 400 unsupported_grant_type', async () => {
+      const provider = oauthProvider()
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      // Register a client first — the SDK validates client_id before calling exchangeRefreshToken
+      const regRes = await fetch(`${baseUrl}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ redirect_uris: ['http://localhost/callback'], token_endpoint_auth_method: 'none' }),
+      })
+      const { client_id } = (await regRes.json()) as Record<string, string>
+
+      const tokenRes = await fetch(`${baseUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id,
+          refresh_token: 'some-refresh-token',
+        }).toString(),
+      })
+      expect(tokenRes.status).toBe(400)
+      const body = (await tokenRes.json()) as Record<string, string>
+      expect(body.error).toBe('unsupported_grant_type')
+    })
+
+    it('scopes outside the server-advertised list are stripped from issued tokens', async () => {
+      const provider = oauthProvider({ scopes: ['read', 'write'] })
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      const regRes = await fetch(`${baseUrl}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ redirect_uris: ['http://localhost/callback'], token_endpoint_auth_method: 'none' }),
+      })
+      const { client_id } = (await regRes.json()) as Record<string, string>
+
+      const { codeVerifier, codeChallenge } = generatePKCE()
+      const authUrl = new URL(`${baseUrl}/authorize`)
+      authUrl.searchParams.set('response_type', 'code')
+      authUrl.searchParams.set('client_id', client_id)
+      authUrl.searchParams.set('redirect_uri', 'http://localhost/callback')
+      authUrl.searchParams.set('code_challenge', codeChallenge)
+      authUrl.searchParams.set('code_challenge_method', 'S256')
+      authUrl.searchParams.set('scope', 'read admin')
+
+      const location = await getRedirectLocation(authUrl)
+      const code = new URL(location).searchParams.get('code')!
+
+      const tokenRes = await fetch(`${baseUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id,
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: 'http://localhost/callback',
+        }).toString(),
+      })
+      expect(tokenRes.status).toBe(200)
+      const { scope } = (await tokenRes.json()) as Record<string, string>
+      expect(scope.split(' ')).toContain('read')
+      expect(scope.split(' ')).not.toContain('admin')
+    })
+
+    it('when no scopes are configured, all requested scopes are granted', async () => {
+      const provider = oauthProvider()
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      const regRes = await fetch(`${baseUrl}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ redirect_uris: ['http://localhost/callback'], token_endpoint_auth_method: 'none' }),
+      })
+      const { client_id } = (await regRes.json()) as Record<string, string>
+
+      const { codeVerifier, codeChallenge } = generatePKCE()
+      const authUrl = new URL(`${baseUrl}/authorize`)
+      authUrl.searchParams.set('response_type', 'code')
+      authUrl.searchParams.set('client_id', client_id)
+      authUrl.searchParams.set('redirect_uri', 'http://localhost/callback')
+      authUrl.searchParams.set('code_challenge', codeChallenge)
+      authUrl.searchParams.set('code_challenge_method', 'S256')
+      authUrl.searchParams.set('scope', 'read admin custom')
+
+      const location = await getRedirectLocation(authUrl)
+      const code = new URL(location).searchParams.get('code')!
+
+      const tokenRes = await fetch(`${baseUrl}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id,
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: 'http://localhost/callback',
+        }).toString(),
+      })
+      const { scope } = (await tokenRes.json()) as Record<string, string>
+      expect(scope.split(' ')).toEqual(expect.arrayContaining(['read', 'admin', 'custom']))
+    })
   })
 
   describe('OAuth proxy', () => {
@@ -493,6 +666,99 @@ describe('Server — Authentication', () => {
       expect(upstreamRequests[0].client_id).toBe('my-proxy-client')
       expect(upstreamRequests[0].client_secret).toBe('my-proxy-secret')
       expect(upstreamRequests[0].code).toBe('auth-code-from-upstream')
+    })
+
+    it('revokeToken is present when revocationUrl is configured, absent otherwise', () => {
+      const withRevocation = oauthProxy({
+        upstreamCredentials: { clientId: 'proxy-client', clientSecret: 'proxy-secret' },
+        endpoints: {
+          authorizationUrl: 'http://127.0.0.1:1/authorize',
+          tokenUrl: 'http://127.0.0.1:1/token',
+          revocationUrl: 'http://127.0.0.1:1/revoke',
+        },
+        verifyAccessToken: async (token) => ({
+          token,
+          clientId: 'proxy-client',
+          scopes: [],
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      })
+      expect(typeof withRevocation.revokeToken).toBe('function')
+
+      const withoutRevocation = oauthProxy({
+        upstreamCredentials: { clientId: 'proxy-client' },
+        endpoints: {
+          authorizationUrl: 'http://127.0.0.1:1/authorize',
+          tokenUrl: 'http://127.0.0.1:1/token',
+        },
+        verifyAccessToken: async (token) => ({
+          token,
+          clientId: 'proxy-client',
+          scopes: [],
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      })
+      expect(withoutRevocation.revokeToken).toBeUndefined()
+    })
+
+    it('the proxy forwards revocation to the upstream with proxy credentials', async () => {
+      const revokeRequests: Array<Record<string, string>> = []
+      const upstreamServer = createServer((req, res) => {
+        let body = ''
+        req.on('data', (chunk) => { body += chunk })
+        req.on('end', () => {
+          revokeRequests.push(Object.fromEntries(new URLSearchParams(body)))
+          res.writeHead(200).end()
+        })
+      })
+      await new Promise<void>((r) => upstreamServer.listen(0, '127.0.0.1', r))
+      const upstreamPort = (upstreamServer.address() as AddressInfo).port
+      cleanup.push(() => new Promise<void>((r, j) => upstreamServer.close((e) => (e ? j(e) : r()))))
+
+      const proxy = oauthProxy({
+        upstreamCredentials: { clientId: 'proxy-client', clientSecret: 'proxy-secret' },
+        endpoints: {
+          authorizationUrl: `http://127.0.0.1:${upstreamPort}/authorize`,
+          tokenUrl: `http://127.0.0.1:${upstreamPort}/token`,
+          revocationUrl: `http://127.0.0.1:${upstreamPort}/revoke`,
+        },
+        verifyAccessToken: async (token) => ({
+          token,
+          clientId: 'proxy-client',
+          scopes: [],
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      })
+
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider: proxy } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      const regRes = await fetch(`${baseUrl}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ redirect_uris: ['http://localhost/callback'], token_endpoint_auth_method: 'none' }),
+      })
+      const { client_id: mcpClientId } = (await regRes.json()) as Record<string, string>
+
+      const revokeRes = await fetch(`${baseUrl}/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: mcpClientId,
+          token: 'access-token-to-revoke',
+          token_type_hint: 'access_token',
+        }).toString(),
+      })
+      expect(revokeRes.status).toBe(200)
+
+      expect(revokeRequests).toHaveLength(1)
+      expect(revokeRequests[0].client_id).toBe('proxy-client')
+      expect(revokeRequests[0].client_secret).toBe('proxy-secret')
+      expect(revokeRequests[0].token).toBe('access-token-to-revoke')
+      expect(revokeRequests[0].token_type_hint).toBe('access_token')
     })
   })
 

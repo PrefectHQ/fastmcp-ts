@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { UnsupportedGrantTypeError } from '@modelcontextprotocol/sdk/server/auth/errors'
 import type { Response } from 'express'
 import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider'
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients'
@@ -80,21 +81,26 @@ export function oauthProvider(options: OAuthProviderOptions = {}): OAuthServerPr
 
       const token = randomUUID()
       const ttl = options.tokenTtl ?? 3600
+      const requestedScopes = data.params.scopes ?? []
+      const grantedScopes =
+        options.scopes !== undefined
+          ? requestedScopes.filter((s) => options.scopes!.includes(s))
+          : requestedScopes
       tokens.set(token, {
         clientId: client.client_id,
-        scopes: data.params.scopes ?? [],
+        scopes: grantedScopes,
         expiresAt: Math.floor(Date.now() / 1000) + ttl,
       })
       return {
         access_token: token,
         token_type: 'bearer',
         expires_in: ttl,
-        scope: (data.params.scopes ?? []).join(' '),
+        scope: grantedScopes.join(' '),
       }
     },
 
     async exchangeRefreshToken() {
-      throw new Error('Refresh tokens are not supported by this provider')
+      throw new UnsupportedGrantTypeError('Refresh tokens are not supported by this provider')
     },
 
     async verifyAccessToken(token): Promise<AuthInfo> {

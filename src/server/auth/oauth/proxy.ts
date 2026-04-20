@@ -1,6 +1,6 @@
 import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider'
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients'
-import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth'
+import type { OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth'
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types'
 
 export interface OAuthProxyOptions {
@@ -116,5 +116,34 @@ export function oauthProxy(options: OAuthProxyOptions): OAuthServerProvider {
     },
 
     verifyAccessToken: options.verifyAccessToken,
+
+    ...(options.endpoints.revocationUrl
+      ? {
+          async revokeToken(
+            _client: OAuthClientInformationFull,
+            request: OAuthTokenRevocationRequest,
+          ): Promise<void> {
+            const body = new URLSearchParams({
+              token: request.token,
+              client_id: options.upstreamCredentials.clientId,
+            })
+            if (options.upstreamCredentials.clientSecret) {
+              body.set('client_secret', options.upstreamCredentials.clientSecret)
+            }
+            if (request.token_type_hint) {
+              body.set('token_type_hint', request.token_type_hint)
+            }
+            const response = await fetch(options.endpoints.revocationUrl!, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: body.toString(),
+            })
+            if (!response.ok) {
+              await response.body?.cancel()
+              // RFC 7009 §2.2: servers should not signal errors on revocation
+            }
+          },
+        }
+      : {}),
   }
 }

@@ -364,7 +364,7 @@ export class FastMCP {
 
         if (!bearer) {
           res
-            .writeHead(401, { 'Content-Type': 'application/json' })
+            .writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="mcp"' })
             .end(JSON.stringify({ error: 'Missing bearer token' }))
           return
         }
@@ -379,14 +379,15 @@ export class FastMCP {
             extra: accessToken.claims,
           }
         } catch (err) {
-          const status = err instanceof AuthorizationError ? 403 : 401
-          res
-            .writeHead(status, { 'Content-Type': 'application/json' })
-            .end(
-              JSON.stringify({
-                error: err instanceof Error ? err.message : 'Authentication failed',
-              }),
-            )
+          if (err instanceof AuthorizationError) {
+            res
+              .writeHead(403, { 'Content-Type': 'application/json' })
+              .end(JSON.stringify({ error: err.message }))
+          } else {
+            res
+              .writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="mcp"' })
+              .end(JSON.stringify({ error: err instanceof Error ? err.message : 'Authentication failed' }))
+          }
           return
         }
       }

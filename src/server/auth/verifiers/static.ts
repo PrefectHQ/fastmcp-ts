@@ -9,6 +9,9 @@ export function staticTokenVerifier(
       if (!entry) {
         throw new Error('Unknown token')
       }
+      if (entry.expiresAt !== undefined && entry.expiresAt < Math.floor(Date.now() / 1000)) {
+        throw new Error('Token has expired')
+      }
       return {
         token,
         clientId: entry.clientId,
