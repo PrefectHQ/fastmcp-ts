@@ -7,8 +7,12 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "fastmcp-ts/server": ["./src/server/index.ts"],
+      "fastmcp-ts/client": ["./src/client/index.ts"]
+    }
   },
-  "include": ["src"],
+  "include": ["src", "tests"],
   "exclude": ["node_modules", "dist"]
 }

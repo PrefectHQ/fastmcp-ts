@@ -1,4 +1,5 @@
 import { Server } from '@modelcontextprotocol/sdk/server'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport'
 
 export interface FastMCPOptions {
   name: string
@@ -19,5 +20,13 @@ export class FastMCP {
       { name: this.name, version: this.version },
       { capabilities: {} },
     )
+  }
+
+  async connect(transport: Transport): Promise<void> {
+    await this._server.connect(transport)
+  }
+
+  async close(): Promise<void> {
+    await this._server.close()
   }
 }
