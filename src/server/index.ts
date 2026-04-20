@@ -21,6 +21,15 @@ export type {
   ElicitationResult,
   Root,
 } from './context'
+export type { Middleware, MiddlewareContext, Next } from './middleware'
+export {
+  LoggingMiddleware,
+  CachingMiddleware,
+  RateLimitingMiddleware,
+  SizeLimitingMiddleware,
+  ErrorNormalizationMiddleware,
+  CancellationMiddleware,
+} from './middleware'
 export type { AccessToken, TokenVerifier } from './auth/types'
 export { AuthorizationError } from './auth/types'
 export type { AuthCheck } from './auth/authorization'

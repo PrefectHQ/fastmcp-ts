@@ -24,6 +24,8 @@ import type { TokenVerifier, AccessToken } from './auth/types'
 import type { AuthCheck } from './auth/authorization'
 import { contextStore, createContext } from './context'
 import type { McpContext } from './context'
+import { runMiddlewareChain } from './middleware'
+import type { Middleware } from './middleware'
 import { convertResult, toJsonSchema, validateInput } from './tool'
 import {
   convertResourceResult,
@@ -59,6 +61,8 @@ export interface FastMCPOptions {
   resourcesPageSize?: number
   /** Maximum number of prompts returned per prompts/list page. Default: 50. */
   promptsPageSize?: number
+  /** Middleware applied to every request in registration order. */
+  middleware?: Middleware[]
 }
 
 export interface RunOptions {
@@ -179,6 +183,7 @@ export class FastMCP {
   private _templateResources = new Map<string, RegisteredResource>()
   private _prompts = new Map<string, RegisteredPrompt>()
   private _promptsPageSize: number
+  private _middleware: Middleware[]
   private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
@@ -194,6 +199,7 @@ export class FastMCP {
     this._toolsPageSize = options.toolsPageSize ?? 50
     this._resourcesPageSize = options.resourcesPageSize ?? 50
     this._promptsPageSize = options.promptsPageSize ?? 50
+    this._middleware = options.middleware ? [...options.middleware] : []
     this._primaryServer = this._makeServer()
   }
 
@@ -204,6 +210,7 @@ export class FastMCP {
       { name: this.name, version: this.version },
       { capabilities: { tools: {}, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {} } },
     )
+    for (const mw of this._middleware) mw.setup?.(server)
     this._setupHandlers(server, state)
     return server
   }
@@ -211,60 +218,59 @@ export class FastMCP {
   private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
     server.setRequestHandler(ListToolsRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const allVisible = (
-        await Promise.all(
-          [...this._tools.values()].map(async (t) => {
-            if (t.config.disabled) return null
-            if (!t.config.auth) return t
-            if (!token) return null
-            try {
-              await t.config.auth(token)
-              return t
-            } catch {
-              return null
-            }
-          }),
-        )
-      ).filter((t): t is RegisteredTool => t !== null)
+      const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
+          const allVisible = (
+            await Promise.all(
+              [...this._tools.values()].map(async (t) => {
+                if (t.config.disabled) return null
+                if (!t.config.auth) return t
+                if (!token) return null
+                try { await t.config.auth(token); return t } catch { return null }
+              }),
+            )
+          ).filter((t): t is RegisteredTool => t !== null)
 
-      // Cursor-based pagination
-      const pageSize = this._toolsPageSize
-      const cursorName = req.params?.cursor
-        ? Buffer.from(req.params.cursor, 'base64url').toString()
-        : null
-      let startIdx = 0
-      if (cursorName !== null) {
-        const idx = allVisible.findIndex((t) => t.config.name === cursorName)
-        startIdx = idx >= 0 ? idx + 1 : 0
-      }
-      const page = allVisible.slice(startIdx, startIdx + pageSize)
-      const nextCursor =
-        startIdx + pageSize < allVisible.length
-          ? Buffer.from(page[page.length - 1].config.name).toString('base64url')
-          : undefined
-
-      const tools = await Promise.all(
-        page.map(async (t) => {
-          const inputSchema =
-            t.config.inputSchema ??
-            (t.config.input
-              ? await toJsonSchema(t.config.input, `tool "${t.config.name}" input`)
-              : { type: 'object' as const })
-          const outputSchema =
-            t.config.outputSchema ??
-            (t.config.output
-              ? await toJsonSchema(t.config.output, `tool "${t.config.name}" output`)
-              : undefined)
-          return {
-            name: t.config.name,
-            description: t.config.description,
-            inputSchema,
-            ...(outputSchema ? { outputSchema } : {}),
+          const pageSize = this._toolsPageSize
+          const cursorName = req.params?.cursor
+            ? Buffer.from(req.params.cursor, 'base64url').toString()
+            : null
+          let startIdx = 0
+          if (cursorName !== null) {
+            const idx = allVisible.findIndex((t) => t.config.name === cursorName)
+            startIdx = idx >= 0 ? idx + 1 : 0
           }
+          const page = allVisible.slice(startIdx, startIdx + pageSize)
+          const nextCursor =
+            startIdx + pageSize < allVisible.length
+              ? Buffer.from(page[page.length - 1].config.name).toString('base64url')
+              : undefined
+
+          const tools = await Promise.all(
+            page.map(async (t) => {
+              const inputSchema =
+                t.config.inputSchema ??
+                (t.config.input
+                  ? await toJsonSchema(t.config.input, `tool "${t.config.name}" input`)
+                  : { type: 'object' as const })
+              const outputSchema =
+                t.config.outputSchema ??
+                (t.config.output
+                  ? await toJsonSchema(t.config.output, `tool "${t.config.name}" output`)
+                  : undefined)
+              return {
+                name: t.config.name,
+                description: t.config.description,
+                inputSchema,
+                ...(outputSchema ? { outputSchema } : {}),
+              }
+            }),
+          )
+
+          return { tools, ...(nextCursor ? { nextCursor } : {}) }
         }),
       )
-
-      return { tools, ...(nextCursor ? { nextCursor } : {}) }
     })
 
     server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
@@ -286,42 +292,35 @@ export class FastMCP {
       )
 
       try {
-        const args = tool.config.input ? await validateInput(tool.config.input, rawArgs) : rawArgs
+        return await contextStore.run(ctx, () =>
+          runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
+            const args = tool.config.input ? await validateInput(tool.config.input, rawArgs) : rawArgs
 
-        let executePromise: Promise<unknown> = contextStore.run(ctx, async () =>
-          tool.handler(args),
+            let executePromise: Promise<unknown> = Promise.resolve(tool.handler(args))
+
+            if (tool.config.timeout) {
+              const ms = tool.config.timeout
+              let timer!: ReturnType<typeof setTimeout>
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                  () => reject(new Error(`Tool "${req.params.name}" timed out after ${ms}ms`)),
+                  ms,
+                )
+              })
+              executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+                clearTimeout(timer),
+              )
+            }
+
+            let resultValue = await executePromise
+            if (tool.config.output) resultValue = await validateInput(tool.config.output, resultValue)
+            return convertResult(resultValue)
+          }),
         )
-
-        if (tool.config.timeout) {
-          const ms = tool.config.timeout
-          let timer!: ReturnType<typeof setTimeout>
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timer = setTimeout(
-              () => reject(new Error(`Tool "${req.params.name}" timed out after ${ms}ms`)),
-              ms,
-            )
-          })
-          executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
-            clearTimeout(timer),
-          )
-        }
-
-        let resultValue = await executePromise
-
-        // Validate output schema against the raw handler return value
-        if (tool.config.output) {
-          resultValue = await validateInput(tool.config.output, resultValue)
-        }
-
-        return convertResult(resultValue)
       } catch (err) {
+        if (err instanceof McpError) throw err
         return {
-          content: [
-            {
-              type: 'text' as const,
-              text: err instanceof Error ? err.message : String(err),
-            },
-          ],
+          content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
           isError: true,
         }
       }
@@ -329,115 +328,109 @@ export class FastMCP {
 
     server.setRequestHandler(ListResourcesRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const allVisible = (
-        await Promise.all(
-          [...this._staticResources.values()].map(async (r) => {
-            if (r.config.disabled) return null
-            if (!r.config.auth) return r
-            if (!token) return null
-            try {
-              await r.config.auth(token)
-              return r
-            } catch {
-              return null
-            }
-          }),
-        )
-      ).filter((r): r is RegisteredResource => r !== null)
+      const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
+          const allVisible = (
+            await Promise.all(
+              [...this._staticResources.values()].map(async (r) => {
+                if (r.config.disabled) return null
+                if (!r.config.auth) return r
+                if (!token) return null
+                try { await r.config.auth(token); return r } catch { return null }
+              }),
+            )
+          ).filter((r): r is RegisteredResource => r !== null)
 
-      const pageSize = this._resourcesPageSize
-      const cursorUri = req.params?.cursor
-        ? Buffer.from(req.params.cursor, 'base64url').toString()
-        : null
-      let startIdx = 0
-      if (cursorUri !== null) {
-        const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
-        startIdx = idx >= 0 ? idx + 1 : 0
-      }
-      const page = allVisible.slice(startIdx, startIdx + pageSize)
-      const nextCursor =
-        startIdx + pageSize < allVisible.length
-          ? Buffer.from(page[page.length - 1].config.uri).toString('base64url')
-          : undefined
+          const pageSize = this._resourcesPageSize
+          const cursorUri = req.params?.cursor
+            ? Buffer.from(req.params.cursor, 'base64url').toString()
+            : null
+          let startIdx = 0
+          if (cursorUri !== null) {
+            const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
+            startIdx = idx >= 0 ? idx + 1 : 0
+          }
+          const page = allVisible.slice(startIdx, startIdx + pageSize)
+          const nextCursor =
+            startIdx + pageSize < allVisible.length
+              ? Buffer.from(page[page.length - 1].config.uri).toString('base64url')
+              : undefined
 
-      return {
-        resources: page.map((r) => ({
-          uri: r.config.uri,
-          name: r.config.name ?? r.config.uri,
-          ...(r.config.title !== undefined ? { title: r.config.title } : {}),
-          ...(r.config.description !== undefined ? { description: r.config.description } : {}),
-          ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
-          ...(r.config.size !== undefined ? { size: r.config.size } : {}),
-          ...(r.config.annotations !== undefined ? { annotations: r.config.annotations } : {}),
-        })),
-        ...(nextCursor ? { nextCursor } : {}),
-      }
+          return {
+            resources: page.map((r) => ({
+              uri: r.config.uri,
+              name: r.config.name ?? r.config.uri,
+              ...(r.config.title !== undefined ? { title: r.config.title } : {}),
+              ...(r.config.description !== undefined ? { description: r.config.description } : {}),
+              ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
+              ...(r.config.size !== undefined ? { size: r.config.size } : {}),
+              ...(r.config.annotations !== undefined ? { annotations: r.config.annotations } : {}),
+            })),
+            ...(nextCursor ? { nextCursor } : {}),
+          }
+        }),
+      )
     })
 
     server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const allVisible = (
-        await Promise.all(
-          [...this._templateResources.values()].map(async (r) => {
-            if (r.config.disabled) return null
-            if (!r.config.auth) return r
-            if (!token) return null
-            try {
-              await r.config.auth(token)
-              return r
-            } catch {
-              return null
-            }
-          }),
-        )
-      ).filter((r): r is RegisteredResource => r !== null)
+      const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
+          const allVisible = (
+            await Promise.all(
+              [...this._templateResources.values()].map(async (r) => {
+                if (r.config.disabled) return null
+                if (!r.config.auth) return r
+                if (!token) return null
+                try { await r.config.auth(token); return r } catch { return null }
+              }),
+            )
+          ).filter((r): r is RegisteredResource => r !== null)
 
-      const pageSize = this._resourcesPageSize
-      const cursorUri = req.params?.cursor
-        ? Buffer.from(req.params.cursor, 'base64url').toString()
-        : null
-      let startIdx = 0
-      if (cursorUri !== null) {
-        const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
-        startIdx = idx >= 0 ? idx + 1 : 0
-      }
-      const page = allVisible.slice(startIdx, startIdx + pageSize)
-      const nextCursor =
-        startIdx + pageSize < allVisible.length
-          ? Buffer.from(page[page.length - 1].config.uri).toString('base64url')
-          : undefined
+          const pageSize = this._resourcesPageSize
+          const cursorUri = req.params?.cursor
+            ? Buffer.from(req.params.cursor, 'base64url').toString()
+            : null
+          let startIdx = 0
+          if (cursorUri !== null) {
+            const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
+            startIdx = idx >= 0 ? idx + 1 : 0
+          }
+          const page = allVisible.slice(startIdx, startIdx + pageSize)
+          const nextCursor =
+            startIdx + pageSize < allVisible.length
+              ? Buffer.from(page[page.length - 1].config.uri).toString('base64url')
+              : undefined
 
-      return {
-        resourceTemplates: page.map((r) => ({
-          uriTemplate: r.config.uri,
-          name: r.config.name ?? r.config.uri,
-          ...(r.config.title !== undefined ? { title: r.config.title } : {}),
-          ...(r.config.description !== undefined ? { description: r.config.description } : {}),
-          ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
-          ...(r.config.annotations !== undefined ? { annotations: r.config.annotations } : {}),
-        })),
-        ...(nextCursor ? { nextCursor } : {}),
-      }
+          return {
+            resourceTemplates: page.map((r) => ({
+              uriTemplate: r.config.uri,
+              name: r.config.name ?? r.config.uri,
+              ...(r.config.title !== undefined ? { title: r.config.title } : {}),
+              ...(r.config.description !== undefined ? { description: r.config.description } : {}),
+              ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
+              ...(r.config.annotations !== undefined ? { annotations: r.config.annotations } : {}),
+            })),
+            ...(nextCursor ? { nextCursor } : {}),
+          }
+        }),
+      )
     })
 
     server.setRequestHandler(ReadResourceRequestSchema, async (req, extra) => {
       const requestedUri = req.params.uri
       const token = toAccessToken(extra.authInfo)
 
-      // 1. Exact match against static resources
       let resource = this._staticResources.get(requestedUri)
       let templateParams: Record<string, string> | undefined
 
-      // 2. Template match
       if (!resource) {
         for (const r of this._templateResources.values()) {
           if (r.config.disabled) continue
           const params = matchTemplate(r.config.uri, requestedUri)
-          if (params !== null) {
-            resource = r
-            templateParams = params
-            break
-          }
+          if (params !== null) { resource = r; templateParams = params; break }
         }
       }
 
@@ -454,71 +447,74 @@ export class FastMCP {
         token,
         sessionState,
       )
-      let executePromise: Promise<unknown> = contextStore.run(ctx, async () =>
-        resource!.handler(templateParams),
+
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
+          let executePromise: Promise<unknown> = Promise.resolve(resource!.handler(templateParams))
+
+          if (resource!.config.timeout) {
+            const ms = resource!.config.timeout
+            let timer!: ReturnType<typeof setTimeout>
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error(`Resource "${requestedUri}" timed out after ${ms}ms`)),
+                ms,
+              )
+            })
+            executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+              clearTimeout(timer),
+            ) as Promise<unknown>
+          }
+
+          const result = await executePromise
+          return convertResourceResult(result, requestedUri, resource!.config.mimeType)
+        }),
       )
-
-      if (resource.config.timeout) {
-        const ms = resource.config.timeout
-        let timer!: ReturnType<typeof setTimeout>
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`Resource "${requestedUri}" timed out after ${ms}ms`)),
-            ms,
-          )
-        })
-        executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
-          clearTimeout(timer),
-        ) as Promise<unknown>
-      }
-
-      const result = await executePromise
-      return convertResourceResult(result, requestedUri, resource.config.mimeType)
     })
 
     server.setRequestHandler(ListPromptsRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const allVisible = (
-        await Promise.all(
-          [...this._prompts.values()].map(async (p) => {
-            if (p.config.disabled) return null
-            if (!p.config.auth) return p
-            if (!token) return null
-            try {
-              await p.config.auth(token)
-              return p
-            } catch {
-              return null
-            }
-          }),
-        )
-      ).filter((p): p is RegisteredPrompt => p !== null)
+      const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
+          const allVisible = (
+            await Promise.all(
+              [...this._prompts.values()].map(async (p) => {
+                if (p.config.disabled) return null
+                if (!p.config.auth) return p
+                if (!token) return null
+                try { await p.config.auth(token); return p } catch { return null }
+              }),
+            )
+          ).filter((p): p is RegisteredPrompt => p !== null)
 
-      const pageSize = this._promptsPageSize
-      const cursorName = req.params?.cursor
-        ? Buffer.from(req.params.cursor, 'base64url').toString()
-        : null
-      let startIdx = 0
-      if (cursorName !== null) {
-        const idx = allVisible.findIndex((p) => p.config.name === cursorName)
-        if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
-        startIdx = idx + 1
-      }
-      const page = allVisible.slice(startIdx, startIdx + pageSize)
-      const nextCursor =
-        startIdx + pageSize < allVisible.length
-          ? Buffer.from(page[page.length - 1].config.name).toString('base64url')
-          : undefined
+          const pageSize = this._promptsPageSize
+          const cursorName = req.params?.cursor
+            ? Buffer.from(req.params.cursor, 'base64url').toString()
+            : null
+          let startIdx = 0
+          if (cursorName !== null) {
+            const idx = allVisible.findIndex((p) => p.config.name === cursorName)
+            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            startIdx = idx + 1
+          }
+          const page = allVisible.slice(startIdx, startIdx + pageSize)
+          const nextCursor =
+            startIdx + pageSize < allVisible.length
+              ? Buffer.from(page[page.length - 1].config.name).toString('base64url')
+              : undefined
 
-      return {
-        prompts: page.map((p) => ({
-          name: p.config.name,
-          ...(p.config.title !== undefined ? { title: p.config.title } : {}),
-          ...(p.config.description !== undefined ? { description: p.config.description } : {}),
-          ...(p.config.arguments?.length ? { arguments: p.config.arguments } : {}),
-        })),
-        ...(nextCursor ? { nextCursor } : {}),
-      }
+          return {
+            prompts: page.map((p) => ({
+              name: p.config.name,
+              ...(p.config.title !== undefined ? { title: p.config.title } : {}),
+              ...(p.config.description !== undefined ? { description: p.config.description } : {}),
+              ...(p.config.arguments?.length ? { arguments: p.config.arguments } : {}),
+            })),
+            ...(nextCursor ? { nextCursor } : {}),
+          }
+        }),
+      )
     })
 
     server.setRequestHandler(GetPromptRequestSchema, async (req, extra) => {
@@ -530,7 +526,6 @@ export class FastMCP {
       const token = toAccessToken(extra.authInfo)
       if (prompt.config.auth) await runAuthCheck(prompt.config.auth, token)
 
-      // Validate required arguments
       const suppliedArgs = req.params.arguments ?? {}
       for (const arg of prompt.config.arguments ?? []) {
         if (arg.required && !(arg.name in suppliedArgs)) {
@@ -548,22 +543,26 @@ export class FastMCP {
         token,
         sessionState,
       )
-      let executePromise = contextStore.run(ctx, async () => prompt.handler(suppliedArgs))
-      if (prompt.config.timeout) {
-        const ms = prompt.config.timeout
-        let timer!: ReturnType<typeof setTimeout>
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`Prompt "${req.params.name}" timed out after ${ms}ms`)),
-            ms,
-          )
-        })
-        executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
-          clearTimeout(timer),
-        )
-      }
-      const raw = await executePromise
-      return convertPromptResult(raw)
+
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'prompts/get', req.params, ctx, async () => {
+          let executePromise = Promise.resolve(prompt.handler(suppliedArgs))
+          if (prompt.config.timeout) {
+            const ms = prompt.config.timeout
+            let timer!: ReturnType<typeof setTimeout>
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error(`Prompt "${req.params.name}" timed out after ${ms}ms`)),
+                ms,
+              )
+            })
+            executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+              clearTimeout(timer),
+            )
+          }
+          return convertPromptResult(await executePromise)
+        }),
+      )
     })
   }
 
@@ -618,6 +617,12 @@ export class FastMCP {
       this._staticResources.set(config.uri, { config, handler })
     }
     this._notifyResourceListChanged()
+  }
+
+  /** Add a middleware to the pipeline. Must be called before run(). */
+  use(mw: Middleware): this {
+    this._middleware.push(mw)
+    return this
   }
 
   getContext(): McpContext {
