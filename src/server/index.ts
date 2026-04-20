@@ -11,7 +11,16 @@ export { ResourceResult } from './resource'
 export type { ResourceConfig, ResourceAnnotations } from './resource'
 export { PromptResult } from './prompt'
 export type { PromptConfig, PromptArgument, PromptMessage, PromptContent } from './prompt'
-export type { McpContext } from './context'
+export type {
+  McpContext,
+  LogLevel,
+  SamplingParams,
+  SamplingResult,
+  SamplingMessage,
+  ElicitationSchema,
+  ElicitationResult,
+  Root,
+} from './context'
 export type { AccessToken, TokenVerifier } from './auth/types'
 export { AuthorizationError } from './auth/types'
 export type { AuthCheck } from './auth/authorization'

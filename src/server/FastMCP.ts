@@ -22,7 +22,7 @@ import type { AddressInfo } from 'node:net'
 import { AuthorizationError } from './auth/types'
 import type { TokenVerifier, AccessToken } from './auth/types'
 import type { AuthCheck } from './auth/authorization'
-import { contextStore } from './context'
+import { contextStore, createContext } from './context'
 import type { McpContext } from './context'
 import { convertResult, toJsonSchema, validateInput } from './tool'
 import {
@@ -119,18 +119,19 @@ interface ResolvedPromptConfig extends Required<Pick<PromptConfig, 'name' | 'des
   title?: string
   arguments?: PromptConfig['arguments']
   disabled?: boolean
-  tags?: string[]
+  timeout?: number
   auth?: PromptConfig['auth']
 }
 
 interface RegisteredPrompt {
   config: ResolvedPromptConfig
-  handler: (args: Record<string, string>) => unknown
+  handler: (args?: Record<string, string>) => unknown
 }
 
 interface Session {
   transport: StreamableHTTPServerTransport
   server: Server
+  state: Map<string, unknown>
 }
 
 /** Converts a camelCase or PascalCase name to space-separated words. e.g. `getWeather` → `"get weather"` */
@@ -178,6 +179,7 @@ export class FastMCP {
   private _templateResources = new Map<string, RegisteredResource>()
   private _prompts = new Map<string, RegisteredPrompt>()
   private _promptsPageSize: number
+  private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
   private _sessions = new Map<string, Session>()
@@ -196,16 +198,17 @@ export class FastMCP {
   }
 
   /** Create a new Server instance with all request handlers wired up. */
-  private _makeServer(): Server {
+  private _makeServer(sessionState?: Map<string, unknown>): Server {
+    const state = sessionState ?? this._primaryState
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: {}, resources: { listChanged: true }, prompts: { listChanged: true } } },
+      { capabilities: { tools: {}, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {} } },
     )
-    this._setupHandlers(server)
+    this._setupHandlers(server, state)
     return server
   }
 
-  private _setupHandlers(server: Server): void {
+  private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
     server.setRequestHandler(ListToolsRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
       const allVisible = (
@@ -274,7 +277,13 @@ export class FastMCP {
       if (tool.config.auth) await runAuthCheck(tool.config.auth, token)
 
       const rawArgs: unknown = req.params.arguments ?? {}
-      const ctx: McpContext = { auth: token }
+      const ctx = createContext(
+        server,
+        String(extra.requestId),
+        extra._meta?.progressToken,
+        token,
+        sessionState,
+      )
 
       try {
         const args = tool.config.input ? await validateInput(tool.config.input, rawArgs) : rawArgs
@@ -438,7 +447,13 @@ export class FastMCP {
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx: McpContext = { auth: token }
+      const ctx = createContext(
+        server,
+        String(extra.requestId),
+        extra._meta?.progressToken,
+        token,
+        sessionState,
+      )
       let executePromise: Promise<unknown> = contextStore.run(ctx, async () =>
         resource!.handler(templateParams),
       )
@@ -486,7 +501,8 @@ export class FastMCP {
       let startIdx = 0
       if (cursorName !== null) {
         const idx = allVisible.findIndex((p) => p.config.name === cursorName)
-        startIdx = idx >= 0 ? idx + 1 : 0
+        if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+        startIdx = idx + 1
       }
       const page = allVisible.slice(startIdx, startIdx + pageSize)
       const nextCursor =
@@ -525,8 +541,28 @@ export class FastMCP {
         }
       }
 
-      const ctx: McpContext = { auth: token }
-      const raw = await contextStore.run(ctx, async () => prompt.handler(suppliedArgs))
+      const ctx = createContext(
+        server,
+        String(extra.requestId),
+        extra._meta?.progressToken,
+        token,
+        sessionState,
+      )
+      let executePromise = contextStore.run(ctx, async () => prompt.handler(suppliedArgs))
+      if (prompt.config.timeout) {
+        const ms = prompt.config.timeout
+        let timer!: ReturnType<typeof setTimeout>
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Prompt "${req.params.name}" timed out after ${ms}ms`)),
+            ms,
+          )
+        })
+        executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+          clearTimeout(timer),
+        )
+      }
+      const raw = await executePromise
       return convertPromptResult(raw)
     })
   }
@@ -566,7 +602,7 @@ export class FastMCP {
     this._notifyToolListChanged()
   }
 
-  prompt(config: PromptConfig, handler: (args: Record<string, string>) => unknown): void {
+  prompt(config: PromptConfig, handler: (args?: Record<string, string>) => unknown): void {
     const name = config.name ?? (handler as { name?: string }).name
     if (!name) throw new Error('Prompt name must be provided in config or inferrable from the handler function name')
     const description = config.description ?? inferDescription(name)
@@ -667,11 +703,12 @@ export class FastMCP {
           }
           mcpTransport = existing.transport
         } else {
-          const sessionServer = this._makeServer()
+          const sessionState = new Map<string, unknown>()
+          const sessionServer = this._makeServer(sessionState)
           mcpTransport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (id) => {
-              this._sessions.set(id, { transport: mcpTransport, server: sessionServer })
+              this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
             },
             onsessionclosed: (id) => {
               this._sessions.delete(id)
@@ -751,11 +788,12 @@ export class FastMCP {
         }
         mcpTransport = existing.transport
       } else {
-        const sessionServer = this._makeServer()
+        const sessionState = new Map<string, unknown>()
+        const sessionServer = this._makeServer(sessionState)
         mcpTransport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (id) => {
-            this._sessions.set(id, { transport: mcpTransport, server: sessionServer })
+            this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
           },
           onsessionclosed: (id) => {
             this._sessions.delete(id)

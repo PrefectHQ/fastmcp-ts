@@ -18,8 +18,8 @@ export interface PromptConfig {
   arguments?: PromptArgument[]
   /** When true the prompt is hidden from list responses and cannot be invoked. */
   disabled?: boolean
-  /** Arbitrary tags for server-side filtering. */
-  tags?: string[]
+  /** Execution timeout in milliseconds. No timeout by default. */
+  timeout?: number
   auth?: AuthCheck
 }
 
@@ -29,12 +29,20 @@ export interface PromptConfig {
 
 export type TextContent = { type: 'text'; text: string }
 export type ImageContent = { type: 'image'; data: string; mimeType: string }
+export type AudioContent = { type: 'audio'; data: string; mimeType: string }
+export type ResourceLinkContent = {
+  type: 'resource_link'
+  uri: string
+  name?: string
+  description?: string
+  mimeType?: string
+}
 export type EmbeddedResource = {
   type: 'resource'
-  resource: { uri: string; mimeType?: string; text?: string; blob?: string }
+  resource: { uri: string; mimeType?: string } & ({ text: string } | { blob: string })
 }
 
-export type PromptContent = TextContent | ImageContent | EmbeddedResource
+export type PromptContent = TextContent | ImageContent | AudioContent | EmbeddedResource | ResourceLinkContent
 
 export interface PromptMessage {
   role: 'user' | 'assistant'
@@ -58,13 +66,11 @@ export class PromptResult {
 // ---------------------------------------------------------------------------
 
 function isPromptMessage(value: unknown): value is PromptMessage {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'role' in value &&
-    'content' in value &&
-    ((value as PromptMessage).role === 'user' || (value as PromptMessage).role === 'assistant')
-  )
+  if (value === null || typeof value !== 'object') return false
+  const v = value as Record<string, unknown>
+  if (v.role !== 'user' && v.role !== 'assistant') return false
+  if (!v.content || typeof v.content !== 'object') return false
+  return typeof (v.content as Record<string, unknown>).type === 'string'
 }
 
 /**

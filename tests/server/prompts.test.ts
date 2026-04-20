@@ -345,4 +345,201 @@ describe('Server — Prompts', () => {
       }
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // Content types (extended)
+  // ---------------------------------------------------------------------------
+
+  describe('content types (extended)', () => {
+    it('handler can return an audio content block', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      const msg: PromptMessage = {
+        role: 'user',
+        content: { type: 'audio', data: 'abc123', mimeType: 'audio/wav' },
+      }
+      mcp.prompt({ name: 'aud', description: 'test' }, () => msg)
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.getPrompt({ name: 'aud', arguments: {} })
+        expect(result.messages[0].content).toMatchObject({ type: 'audio', mimeType: 'audio/wav' })
+      } finally {
+        await close()
+      }
+    })
+
+    it('handler can return a resource_link content block', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      const msg: PromptMessage = {
+        role: 'user',
+        content: { type: 'resource_link', uri: 'file://readme.md', name: 'README', mimeType: 'text/markdown' },
+      }
+      mcp.prompt({ name: 'link', description: 'test' }, () => msg)
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.getPrompt({ name: 'link', arguments: {} })
+        expect(result.messages[0].content).toMatchObject({ type: 'resource_link', uri: 'file://readme.md' })
+      } finally {
+        await close()
+      }
+    })
+
+    it('handler can return an embedded resource with blob instead of text', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      const msg: PromptMessage = {
+        role: 'user',
+        content: {
+          type: 'resource',
+          resource: { uri: 'file://data.bin', mimeType: 'application/octet-stream', blob: 'SGVsbG8=' },
+        },
+      }
+      mcp.prompt({ name: 'bin', description: 'test' }, () => msg)
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.getPrompt({ name: 'bin', arguments: {} })
+        expect(result.messages[0].content).toMatchObject({
+          type: 'resource',
+          resource: { uri: 'file://data.bin', blob: 'SGVsbG8=' },
+        })
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Invalid return values
+  // ---------------------------------------------------------------------------
+
+  describe('invalid return values', () => {
+    it('handler returning null throws a descriptive error', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.prompt({ name: 'bad', description: 'test' }, () => null)
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await expect(client.getPrompt({ name: 'bad', arguments: {} })).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+
+    it('handler returning a number throws a descriptive error', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.prompt({ name: 'bad', description: 'test' }, () => 42)
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await expect(client.getPrompt({ name: 'bad', arguments: {} })).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+
+    it('handler returning an object without content throws a descriptive error', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.prompt({ name: 'bad', description: 'test' }, () => ({ role: 'user' }))
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await expect(client.getPrompt({ name: 'bad', arguments: {} })).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Timeout
+  // ---------------------------------------------------------------------------
+
+  describe('timeout', () => {
+    it('a slow handler exceeding the timeout rejects', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.prompt(
+        { name: 'slow', description: 'test', timeout: 50 },
+        () => new Promise((r) => setTimeout(() => r('done'), 500)),
+      )
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await expect(client.getPrompt({ name: 'slow', arguments: {} })).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+
+    it('a fast handler completing before the timeout succeeds', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.prompt(
+        { name: 'fast', description: 'test', timeout: 500 },
+        async () => {
+          await new Promise((r) => setTimeout(r, 10))
+          return 'done in time'
+        },
+      )
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.getPrompt({ name: 'fast', arguments: {} })
+        expect((result.messages[0].content as { text: string }).text).toBe('done in time')
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Pagination (stale cursor)
+  // ---------------------------------------------------------------------------
+
+  describe('pagination (stale cursor)', () => {
+    it('an invalid cursor returns an error', async () => {
+      const mcp = new FastMCP({ name: 'test', promptsPageSize: 2 })
+      mcp.prompt({ name: 'a', description: 'test' }, () => 'a')
+      mcp.prompt({ name: 'b', description: 'test' }, () => 'b')
+      mcp.prompt({ name: 'c', description: 'test' }, () => 'c')
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const fakeCursor = Buffer.from('nonexistent-prompt').toString('base64url')
+        await expect(client.listPrompts({ cursor: fakeCursor })).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Zero-argument handlers
+  // ---------------------------------------------------------------------------
+
+  describe('zero-argument handlers', () => {
+    it('a handler with no parameters can be registered and called', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.prompt({ name: 'noargs', description: 'test' }, () => 'no args needed')
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.getPrompt({ name: 'noargs', arguments: {} })
+        expect((result.messages[0].content as { text: string }).text).toBe('no args needed')
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Context access
+  // ---------------------------------------------------------------------------
+
+  describe('context access', () => {
+    it('getContext() is accessible inside a prompt handler', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.prompt({ name: 'ctx', description: 'test' }, () => {
+        const ctx = mcp.getContext()
+        expect(ctx).toBeDefined()
+        return 'context ok'
+      })
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.getPrompt({ name: 'ctx', arguments: {} })
+        expect((result.messages[0].content as { text: string }).text).toBe('context ok')
+      } finally {
+        await close()
+      }
+    })
+  })
 })
