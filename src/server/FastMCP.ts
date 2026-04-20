@@ -619,9 +619,18 @@ export class FastMCP {
     this._notifyResourceListChanged()
   }
 
-  /** Add a middleware to the pipeline. Must be called before run(). */
+  /**
+   * Add a middleware to the pipeline.
+   *
+   * Can be called at any point before the first request arrives. `setup()` is
+   * called immediately on the primary server so that notification handlers and
+   * other server-level side-effects are active before `connect()` / `run()` is
+   * called. HTTP sessions created after `use()` will also have `setup()` called
+   * via `_makeServer()`.
+   */
   use(mw: Middleware): this {
     this._middleware.push(mw)
+    mw.setup?.(this._primaryServer)
     return this
   }
 

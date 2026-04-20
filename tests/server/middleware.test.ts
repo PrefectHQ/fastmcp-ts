@@ -117,6 +117,34 @@ describe('Server — Middleware', () => {
         await close()
       }
     })
+
+    it('setup() is called on the primary server synchronously when middleware is registered via use()', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+
+      let setupCalled = false
+      let setupReceivedServer = false
+
+      const mw: Middleware = {
+        setup(server) {
+          setupCalled = true
+          setupReceivedServer = typeof server.setNotificationHandler === 'function'
+        },
+      }
+
+      mcp.use(mw)
+
+      // setup() must have been called synchronously by use(), before connect()
+      expect(setupCalled).toBe(true)
+      expect(setupReceivedServer).toBe(true)
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await client.callTool({ name: 'ping', arguments: {} })
+      } finally {
+        await close()
+      }
+    })
   })
 
   // ---------------------------------------------------------------------------
