@@ -3,6 +3,7 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
   ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ReadResourceRequestSchema,
   McpError,
   ErrorCode,
@@ -22,6 +23,12 @@ import type { AuthCheck } from './auth/authorization'
 import { contextStore } from './context'
 import type { McpContext } from './context'
 import { convertResult, toJsonSchema, validateInput } from './tool'
+import {
+  convertResourceResult,
+  isUriTemplate,
+  matchTemplate,
+} from './resource'
+import type { ResourceConfig } from './resource'
 
 export interface OAuthConfig {
   /** OAuth server provider implementing the authorization and token flow. */
@@ -44,6 +51,8 @@ export interface FastMCPOptions {
   oauth?: OAuthConfig
   /** Maximum number of tools returned per listTools page. Default: 50. */
   toolsPageSize?: number
+  /** Maximum number of resources (or templates) returned per page. Default: 50. */
+  resourcesPageSize?: number
 }
 
 export interface RunOptions {
@@ -90,14 +99,6 @@ export interface ToolConfig {
   auth?: AuthCheck
 }
 
-export interface ResourceConfig {
-  name: string
-  uri: string
-  description?: string
-  mimeType?: string
-  auth?: AuthCheck
-}
-
 interface RegisteredTool {
   config: ToolConfig
   handler: (args: unknown) => unknown
@@ -105,7 +106,7 @@ interface RegisteredTool {
 
 interface RegisteredResource {
   config: ResourceConfig
-  handler: () => unknown
+  handler: (params?: Record<string, string>) => unknown
 }
 
 interface Session {
@@ -143,8 +144,10 @@ export class FastMCP {
   private _auth: TokenVerifier | undefined
   private _oauth: OAuthConfig | undefined
   private _toolsPageSize: number
+  private _resourcesPageSize: number
   private _tools = new Map<string, RegisteredTool>()
-  private _resources = new Map<string, RegisteredResource>()
+  private _staticResources = new Map<string, RegisteredResource>()
+  private _templateResources = new Map<string, RegisteredResource>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
   private _sessions = new Map<string, Session>()
@@ -157,6 +160,7 @@ export class FastMCP {
     this._auth = options.auth
     this._oauth = options.oauth
     this._toolsPageSize = options.toolsPageSize ?? 50
+    this._resourcesPageSize = options.resourcesPageSize ?? 50
     this._primaryServer = this._makeServer()
   }
 
@@ -164,7 +168,7 @@ export class FastMCP {
   private _makeServer(): Server {
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: {}, resources: {} } },
+      { capabilities: { tools: {}, resources: { listChanged: true } } },
     )
     this._setupHandlers(server)
     return server
@@ -283,53 +287,125 @@ export class FastMCP {
       }
     })
 
-    server.setRequestHandler(ListResourcesRequestSchema, async (_req, extra) => {
+    server.setRequestHandler(ListResourcesRequestSchema, async (req, extra) => {
       const token = toAccessToken(extra.authInfo)
-      const visible = await Promise.all(
-        [...this._resources.values()].map(async (r) => {
-          if (!r.config.auth) return r
-          if (!token) return null
-          try {
-            await r.config.auth(token)
-            return r
-          } catch {
-            return null
-          }
-        }),
-      )
+      const allVisible = (
+        await Promise.all(
+          [...this._staticResources.values()].map(async (r) => {
+            if (r.config.disabled) return null
+            if (!r.config.auth) return r
+            if (!token) return null
+            try {
+              await r.config.auth(token)
+              return r
+            } catch {
+              return null
+            }
+          }),
+        )
+      ).filter((r): r is RegisteredResource => r !== null)
+
+      const pageSize = this._resourcesPageSize
+      const cursorUri = req.params?.cursor
+        ? Buffer.from(req.params.cursor, 'base64url').toString()
+        : null
+      let startIdx = 0
+      if (cursorUri !== null) {
+        const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
+        startIdx = idx >= 0 ? idx + 1 : 0
+      }
+      const page = allVisible.slice(startIdx, startIdx + pageSize)
+      const nextCursor =
+        startIdx + pageSize < allVisible.length
+          ? Buffer.from(page[page.length - 1].config.uri).toString('base64url')
+          : undefined
+
       return {
-        resources: visible
-          .filter((r): r is RegisteredResource => r !== null)
-          .map((r) => ({
-            uri: r.config.uri,
-            name: r.config.name,
-            description: r.config.description,
-            mimeType: r.config.mimeType,
-          })),
+        resources: page.map((r) => ({
+          uri: r.config.uri,
+          name: r.config.name ?? r.config.uri,
+          description: r.config.description,
+          mimeType: r.config.mimeType,
+        })),
+        ...(nextCursor ? { nextCursor } : {}),
+      }
+    })
+
+    server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req, extra) => {
+      const token = toAccessToken(extra.authInfo)
+      const allVisible = (
+        await Promise.all(
+          [...this._templateResources.values()].map(async (r) => {
+            if (r.config.disabled) return null
+            if (!r.config.auth) return r
+            if (!token) return null
+            try {
+              await r.config.auth(token)
+              return r
+            } catch {
+              return null
+            }
+          }),
+        )
+      ).filter((r): r is RegisteredResource => r !== null)
+
+      const pageSize = this._resourcesPageSize
+      const cursorUri = req.params?.cursor
+        ? Buffer.from(req.params.cursor, 'base64url').toString()
+        : null
+      let startIdx = 0
+      if (cursorUri !== null) {
+        const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
+        startIdx = idx >= 0 ? idx + 1 : 0
+      }
+      const page = allVisible.slice(startIdx, startIdx + pageSize)
+      const nextCursor =
+        startIdx + pageSize < allVisible.length
+          ? Buffer.from(page[page.length - 1].config.uri).toString('base64url')
+          : undefined
+
+      return {
+        resourceTemplates: page.map((r) => ({
+          uriTemplate: r.config.uri,
+          name: r.config.name ?? r.config.uri,
+          description: r.config.description,
+          mimeType: r.config.mimeType,
+        })),
+        ...(nextCursor ? { nextCursor } : {}),
       }
     })
 
     server.setRequestHandler(ReadResourceRequestSchema, async (req, extra) => {
-      const resource = this._resources.get(req.params.uri)
+      const requestedUri = req.params.uri
+      const token = toAccessToken(extra.authInfo)
+
+      // 1. Exact match against static resources
+      let resource = this._staticResources.get(requestedUri)
+      let templateParams: Record<string, string> | undefined
+
+      // 2. Template match
       if (!resource) {
-        throw new McpError(ErrorCode.MethodNotFound, `Unknown resource: "${req.params.uri}"`)
+        for (const r of this._templateResources.values()) {
+          if (r.config.disabled) continue
+          const params = matchTemplate(r.config.uri, requestedUri)
+          if (params !== null) {
+            resource = r
+            templateParams = params
+            break
+          }
+        }
       }
 
-      const token = toAccessToken(extra.authInfo)
+      if (!resource || resource.config.disabled) {
+        throw new McpError(ErrorCode.InvalidParams, `Unknown resource: "${requestedUri}"`)
+      }
+
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
       const ctx: McpContext = { auth: token }
-      const result = await contextStore.run(ctx, () => resource.handler())
+      const result = await contextStore.run(ctx, () => resource!.handler(templateParams))
 
-      return {
-        contents: [
-          {
-            uri: req.params.uri,
-            mimeType: resource.config.mimeType ?? 'text/plain',
-            text: String(result ?? ''),
-          },
-        ],
-      }
+      return convertResourceResult(result, requestedUri, resource.config.mimeType)
     })
   }
 
@@ -337,6 +413,13 @@ export class FastMCP {
     this._primaryServer.sendToolListChanged().catch(() => {})
     for (const { server } of this._sessions.values()) {
       server.sendToolListChanged().catch(() => {})
+    }
+  }
+
+  private _notifyResourceListChanged(): void {
+    this._primaryServer.sendResourceListChanged().catch(() => {})
+    for (const { server } of this._sessions.values()) {
+      server.sendResourceListChanged().catch(() => {})
     }
   }
 
@@ -354,8 +437,13 @@ export class FastMCP {
     this._notifyToolListChanged()
   }
 
-  resource(config: ResourceConfig, handler: ResourceHandler): void {
-    this._resources.set(config.uri, { config, handler })
+  resource(config: ResourceConfig, handler: (params?: Record<string, string>) => unknown): void {
+    if (isUriTemplate(config.uri)) {
+      this._templateResources.set(config.uri, { config, handler })
+    } else {
+      this._staticResources.set(config.uri, { config, handler })
+    }
+    this._notifyResourceListChanged()
   }
 
   getContext(): McpContext {
@@ -569,5 +657,3 @@ export class FastMCP {
     await this._primaryServer.close()
   }
 }
-
-type ResourceHandler = () => unknown
