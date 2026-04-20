@@ -26,6 +26,7 @@ export interface Middleware {
   onListTools?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
   onReadResource?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
   onListResources?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
+  onListResourceTemplates?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
   onGetPrompt?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
   onListPrompts?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
 }
@@ -39,6 +40,7 @@ const METHOD_HOOK_KEY: Partial<Record<string, keyof Middleware>> = {
   'tools/list': 'onListTools',
   'resources/read': 'onReadResource',
   'resources/list': 'onListResources',
+  'resources/templates/list': 'onListResourceTemplates',
   'prompts/get': 'onGetPrompt',
   'prompts/list': 'onListPrompts',
 }

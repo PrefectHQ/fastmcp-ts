@@ -377,7 +377,7 @@ export class FastMCP {
       const token = toAccessToken(extra.authInfo)
       const ctx = createContext(server, String(extra.requestId), undefined, token, sessionState)
       return contextStore.run(ctx, () =>
-        runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
+        runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
             await Promise.all(
               [...this._templateResources.values()].map(async (r) => {

@@ -368,6 +368,33 @@ describe('Server — Middleware', () => {
       }
     })
 
+    it('on_list_resource_templates hook fires only for resources/templates/list requests', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      // URI containing '{' routes to _templateResources
+      mcp.resource({ uri: 'data://{id}', name: 'dynamic' }, () => 'data')
+
+      const fired: string[] = []
+      mcp.use({
+        onListResourceTemplates: (_ctx, next) => { fired.push('list-resource-templates'); return next() },
+        onListResources: (_ctx, next) => { fired.push('list-resources'); return next() },
+        onRequest: (ctx, next) => { fired.push(`request:${ctx.method}`); return next() },
+      })
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await client.listResourceTemplates()
+        // The specific hook must have fired
+        expect(fired).toContain('list-resource-templates')
+        // onListResources must NOT fire for a templates/list call (regression guard for the bug
+        // where both handlers used the 'resources/list' method string)
+        expect(fired).not.toContain('list-resources')
+        // onRequest must NOT fire — the specific hook takes precedence
+        expect(fired.every((e) => !e.startsWith('request:resources/templates/list'))).toBe(true)
+      } finally {
+        await close()
+      }
+    })
+
     it('on_get_prompt hook fires only for prompts/get requests', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'greet', description: 'greet' }, () => 'Hello!')
