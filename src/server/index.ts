@@ -1,1 +1,1 @@
-// fastmcp-ts/server
+export { FastMCP } from './FastMCP'
