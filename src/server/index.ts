@@ -7,6 +7,7 @@ export type {
   ResourceConfig,
   OAuthConfig,
 } from './FastMCP'
+export { Image, File, ToolResult } from './tool'
 export type { McpContext } from './context'
 export type { AccessToken, TokenVerifier } from './auth/types'
 export { AuthorizationError } from './auth/types'

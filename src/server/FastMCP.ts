@@ -11,6 +11,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport'
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types'
 import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider'
 import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
 import type { Server as HttpServer, IncomingMessage } from 'node:http'
@@ -20,6 +21,12 @@ import type { TokenVerifier, AccessToken } from './auth/types'
 import type { AuthCheck } from './auth/authorization'
 import { contextStore } from './context'
 import type { McpContext } from './context'
+import { convertResult, toJsonSchema, validateInput } from './tool'
+
+/** Convert a camelCase or PascalCase identifier to a human-readable description. */
+function inferDescription(name: string): string {
+  return name.replace(/([A-Z])/g, ' $1').toLowerCase().trim()
+}
 
 export interface OAuthConfig {
   /** OAuth server provider implementing the authorization and token flow. */
@@ -60,8 +67,19 @@ export interface ServerAddress {
 }
 
 export interface ToolConfig {
-  name: string
+  /** Tool name. If omitted, inferred from the handler function's name. */
+  name?: string
   description?: string
+  /** Standard Schema validator for the tool's input arguments. */
+  input?: StandardSchemaV1
+  /** Standard Schema validator describing the tool's return value structure. */
+  output?: StandardSchemaV1
+  /** Execution timeout in milliseconds. No timeout by default. */
+  timeout?: number
+  /** When true the tool is hidden from listTools but still callable. */
+  disabled?: boolean
+  /** Arbitrary tags for server-side filtering. */
+  tags?: string[]
   auth?: AuthCheck
 }
 
@@ -73,17 +91,19 @@ export interface ResourceConfig {
   auth?: AuthCheck
 }
 
-type ToolHandler = (args: Record<string, unknown>) => unknown
-type ResourceHandler = () => unknown
-
 interface RegisteredTool {
-  config: ToolConfig
-  handler: ToolHandler
+  config: ToolConfig & { name: string }
+  handler: (args: unknown) => unknown
 }
 
 interface RegisteredResource {
   config: ResourceConfig
-  handler: ResourceHandler
+  handler: () => unknown
+}
+
+interface Session {
+  transport: StreamableHTTPServerTransport
+  server: Server
 }
 
 function toAccessToken(authInfo: AuthInfo | undefined): AccessToken | undefined {
@@ -119,8 +139,7 @@ export class FastMCP {
   private _resources = new Map<string, RegisteredResource>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
-  // Session map for HTTP: sessionId → transport (one per connected client)
-  private _sessions = new Map<string, StreamableHTTPServerTransport>()
+  private _sessions = new Map<string, Session>()
   // Primary server used by connect() and stdio
   private _primaryServer: Server
 
@@ -147,6 +166,7 @@ export class FastMCP {
       const token = toAccessToken(extra.authInfo)
       const visible = await Promise.all(
         [...this._tools.values()].map(async (t) => {
+          if (t.config.disabled) return null
           if (!t.config.auth) return t
           if (!token) return null
           try {
@@ -157,15 +177,25 @@ export class FastMCP {
           }
         }),
       )
-      return {
-        tools: visible
+
+      const tools = await Promise.all(
+        visible
           .filter((t): t is RegisteredTool => t !== null)
-          .map((t) => ({
-            name: t.config.name,
-            description: t.config.description,
-            inputSchema: { type: 'object' as const },
-          })),
-      }
+          .map(async (t) => {
+            const inputSchema = t.config.input
+              ? await toJsonSchema(t.config.input)
+              : { type: 'object' as const }
+            const outputSchema = t.config.output ? await toJsonSchema(t.config.output) : undefined
+            return {
+              name: t.config.name,
+              description: t.config.description,
+              inputSchema,
+              ...(outputSchema ? { outputSchema } : {}),
+            }
+          }),
+      )
+
+      return { tools }
     })
 
     server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
@@ -177,11 +207,39 @@ export class FastMCP {
       const token = toAccessToken(extra.authInfo)
       if (tool.config.auth) await runAuthCheck(tool.config.auth, token)
 
+      const rawArgs: unknown = req.params.arguments ?? {}
       const ctx: McpContext = { auth: token }
-      const result = await contextStore.run(ctx, () => tool.handler(req.params.arguments ?? {}))
 
-      return {
-        content: [{ type: 'text' as const, text: String(result ?? '') }],
+      try {
+        const args = tool.config.input ? await validateInput(tool.config.input, rawArgs) : rawArgs
+
+        let executePromise: Promise<unknown> = contextStore.run(ctx, async () =>
+          tool.handler(args),
+        )
+
+        if (tool.config.timeout) {
+          const ms = tool.config.timeout
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Tool "${req.params.name}" timed out after ${ms}ms`)),
+              ms,
+            ),
+          )
+          executePromise = Promise.race([executePromise, timeoutPromise])
+        }
+
+        const resultValue = await executePromise
+        return convertResult(resultValue)
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: err instanceof Error ? err.message : String(err),
+            },
+          ],
+          isError: true,
+        }
       }
     })
 
@@ -235,8 +293,33 @@ export class FastMCP {
     })
   }
 
-  tool(config: ToolConfig, handler: ToolHandler): void {
-    this._tools.set(config.name, { config, handler })
+  private _notifyToolListChanged(): void {
+    this._primaryServer.sendToolListChanged().catch(() => {})
+    for (const { server } of this._sessions.values()) {
+      server.sendToolListChanged().catch(() => {})
+    }
+  }
+
+  // Overload: typed handler inferred from input schema
+  tool<S extends StandardSchemaV1>(
+    config: Omit<ToolConfig, 'input'> & { input: S },
+    handler: (args: StandardSchemaV1.InferOutput<S>) => unknown,
+  ): void
+  // Overload: untyped handler
+  tool(config: ToolConfig, handler: (args: Record<string, unknown>) => unknown): void
+  // Implementation (handler typed as any to satisfy both overload signatures)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tool(config: ToolConfig, handler: (args: any) => any): void {
+    const name = config.name ?? (handler as { name?: string }).name
+    if (!name) {
+      throw new Error(
+        'Tool name must be provided in config or inferrable from the handler function name',
+      )
+    }
+    const description = config.description ?? inferDescription(name)
+    const resolvedConfig = { ...config, name, description }
+    this._tools.set(name, { config: resolvedConfig, handler })
+    this._notifyToolListChanged()
   }
 
   resource(config: ResourceConfig, handler: ResourceHandler): void {
@@ -324,14 +407,18 @@ export class FastMCP {
             res.status(404).json({ error: 'Session not found' })
             return
           }
-          mcpTransport = existing
+          mcpTransport = existing.transport
         } else {
+          const sessionServer = this._makeServer()
           mcpTransport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => { this._sessions.set(id, mcpTransport) },
-            onsessionclosed: (id) => { this._sessions.delete(id) },
+            onsessioninitialized: (id) => {
+              this._sessions.set(id, { transport: mcpTransport, server: sessionServer })
+            },
+            onsessionclosed: (id) => {
+              this._sessions.delete(id)
+            },
           })
-          const sessionServer = this._makeServer()
           await sessionServer.connect(mcpTransport)
         }
 
@@ -404,14 +491,18 @@ export class FastMCP {
             .end(JSON.stringify({ error: 'Session not found' }))
           return
         }
-        mcpTransport = existing
+        mcpTransport = existing.transport
       } else {
+        const sessionServer = this._makeServer()
         mcpTransport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (id) => { this._sessions.set(id, mcpTransport) },
-          onsessionclosed: (id) => { this._sessions.delete(id) },
+          onsessioninitialized: (id) => {
+            this._sessions.set(id, { transport: mcpTransport, server: sessionServer })
+          },
+          onsessionclosed: (id) => {
+            this._sessions.delete(id)
+          },
         })
-        const sessionServer = this._makeServer()
         await sessionServer.connect(mcpTransport)
       }
 
@@ -431,7 +522,9 @@ export class FastMCP {
 
   async close(): Promise<void> {
     // Close all active HTTP sessions
-    await Promise.all([...this._sessions.values()].map((t) => t.close().catch(() => {})))
+    await Promise.all(
+      [...this._sessions.values()].map(({ transport }) => transport.close().catch(() => {})),
+    )
     this._sessions.clear()
 
     if (this._httpServer) {
@@ -444,3 +537,5 @@ export class FastMCP {
     await this._primaryServer.close()
   }
 }
+
+type ResourceHandler = () => unknown
