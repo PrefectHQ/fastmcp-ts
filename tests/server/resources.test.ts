@@ -53,6 +53,52 @@ describe('Server — Resources', () => {
         await close()
       }
     })
+
+    it('title, size, and annotations are forwarded in list responses', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource(
+        {
+          uri: 'memo://rich',
+          name: 'rich',
+          title: 'Rich Resource',
+          size: 1024,
+          annotations: { audience: ['user'], priority: 0.8 },
+        },
+        () => 'content',
+      )
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const { resources } = await client.listResources()
+        const r = resources[0] as Record<string, unknown>
+        expect(r.title).toBe('Rich Resource')
+        expect(r.size).toBe(1024)
+        expect(r.annotations).toMatchObject({ audience: ['user'], priority: 0.8 })
+      } finally {
+        await close()
+      }
+    })
+
+    it('title and annotations are forwarded for URI templates', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource(
+        {
+          uri: 'user://{id}',
+          name: 'user',
+          title: 'User Resource',
+          annotations: { audience: ['assistant'] },
+        },
+        () => 'ok',
+      )
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const { resourceTemplates } = await client.listResourceTemplates()
+        const t = resourceTemplates[0] as Record<string, unknown>
+        expect(t.title).toBe('User Resource')
+        expect(t.annotations).toMatchObject({ audience: ['assistant'] })
+      } finally {
+        await close()
+      }
+    })
   })
 
   // ---------------------------------------------------------------------------
@@ -263,6 +309,42 @@ describe('Server — Resources', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         await expect(client.readResource({ uri: 'unknown://nope' })).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Timeout
+  // ---------------------------------------------------------------------------
+
+  describe('timeout', () => {
+    it('a resource that exceeds its timeout returns an error', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource({ uri: 'slow://data', timeout: 50 }, async () => {
+        await new Promise((r) => setTimeout(r, 200))
+        return 'too late'
+      })
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await expect(client.readResource({ uri: 'slow://data' })).rejects.toThrow(/timed out/)
+      } finally {
+        await close()
+      }
+    })
+
+    it('a resource that completes within its timeout succeeds normally', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource({ uri: 'fast://data', timeout: 500 }, async () => {
+        await new Promise((r) => setTimeout(r, 10))
+        return 'in time'
+      })
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.readResource({ uri: 'fast://data' })
+        const content = result.contents[0] as { text: string }
+        expect(content.text).toBe('in time')
       } finally {
         await close()
       }

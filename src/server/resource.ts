@@ -1,13 +1,33 @@
 import type { AuthCheck } from './auth/authorization'
 
+export interface ResourceAnnotations {
+  /** Intended audience(s) — 'user', 'assistant', or both. */
+  audience?: Array<'user' | 'assistant'>
+  /** Importance hint from 0 (least) to 1 (most). */
+  priority?: number
+  /** ISO 8601 timestamp of last modification. */
+  lastModified?: string
+}
+
 export interface ResourceConfig {
   /** Static URI (e.g. `file://readme`) or RFC 6570 template (e.g. `user://{id}`). */
   uri: string
-  /** Human-readable name. Defaults to the uri. */
+  /** Programmatic identifier. Defaults to the uri. */
   name?: string
+  /** Human-readable display name shown in UIs. Defaults to `name`. */
+  title?: string
   description?: string
   /** MIME type of the resource content. Defaults to 'text/plain' for strings, 'application/octet-stream' for binary. */
   mimeType?: string
+  /**
+   * Size of the resource content in bytes, if known.
+   * Only meaningful for static resources; ignored for URI templates.
+   */
+  size?: number
+  /** Behavioral hints for clients. */
+  annotations?: ResourceAnnotations
+  /** Execution timeout in milliseconds. No timeout by default. */
+  timeout?: number
   /** When true the resource is hidden from list responses and cannot be read. */
   disabled?: boolean
   /** Arbitrary tags for server-side filtering. */

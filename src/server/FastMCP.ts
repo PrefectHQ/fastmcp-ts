@@ -324,8 +324,11 @@ export class FastMCP {
         resources: page.map((r) => ({
           uri: r.config.uri,
           name: r.config.name ?? r.config.uri,
-          description: r.config.description,
-          mimeType: r.config.mimeType,
+          ...(r.config.title !== undefined ? { title: r.config.title } : {}),
+          ...(r.config.description !== undefined ? { description: r.config.description } : {}),
+          ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
+          ...(r.config.size !== undefined ? { size: r.config.size } : {}),
+          ...(r.config.annotations !== undefined ? { annotations: r.config.annotations } : {}),
         })),
         ...(nextCursor ? { nextCursor } : {}),
       }
@@ -368,8 +371,10 @@ export class FastMCP {
         resourceTemplates: page.map((r) => ({
           uriTemplate: r.config.uri,
           name: r.config.name ?? r.config.uri,
-          description: r.config.description,
-          mimeType: r.config.mimeType,
+          ...(r.config.title !== undefined ? { title: r.config.title } : {}),
+          ...(r.config.description !== undefined ? { description: r.config.description } : {}),
+          ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
+          ...(r.config.annotations !== undefined ? { annotations: r.config.annotations } : {}),
         })),
         ...(nextCursor ? { nextCursor } : {}),
       }
@@ -403,8 +408,25 @@ export class FastMCP {
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
       const ctx: McpContext = { auth: token }
-      const result = await contextStore.run(ctx, () => resource!.handler(templateParams))
+      let executePromise: Promise<unknown> = contextStore.run(ctx, async () =>
+        resource!.handler(templateParams),
+      )
 
+      if (resource.config.timeout) {
+        const ms = resource.config.timeout
+        let timer!: ReturnType<typeof setTimeout>
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`Resource "${requestedUri}" timed out after ${ms}ms`)),
+            ms,
+          )
+        })
+        executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+          clearTimeout(timer),
+        ) as Promise<unknown>
+      }
+
+      const result = await executePromise
       return convertResourceResult(result, requestedUri, resource.config.mimeType)
     })
   }
