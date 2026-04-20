@@ -76,15 +76,15 @@ export interface ToolConfig {
   input?: StandardSchemaV1
   /**
    * Explicit JSON Schema advertised to clients as `inputSchema`. Overrides auto-generation from
-   * `input`. Use this when `input` is not a Zod v4 schema and auto-generation falls back to
-   * `{ type: 'object' }`.
+   * `input`. Use when you need JSON Schema features beyond what your validator auto-generates
+   * (e.g. `examples`, `$comment`, per-property descriptions, or custom annotations).
    */
   inputSchema?: Record<string, unknown>
   /** Standard Schema validator for the tool's return value. Validated before result conversion. */
   output?: StandardSchemaV1
   /**
    * Explicit JSON Schema advertised to clients as `outputSchema`. Overrides auto-generation from
-   * `output`.
+   * `output`. Use when you need JSON Schema features beyond what your validator auto-generates.
    */
   outputSchema?: Record<string, unknown>
   /** Execution timeout in milliseconds. No timeout by default. */

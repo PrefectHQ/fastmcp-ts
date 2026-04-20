@@ -77,18 +77,34 @@ export async function toJsonSchema(
   schema: StandardSchemaV1,
   context?: string,
 ): Promise<Record<string, unknown>> {
+  // Strategy 1: schema-native .toJsonSchema() method (ArkType and any library following this convention)
+  const maybeNative = schema as { toJsonSchema?: () => unknown }
+  if (typeof maybeNative.toJsonSchema === 'function') {
+    try {
+      const result = maybeNative.toJsonSchema()
+      if (result !== null && typeof result === 'object') {
+        return result as Record<string, unknown>
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  // Strategy 2: Zod v4 z.toJSONSchema()
   try {
     const { z } = await import('zod')
     return (z as unknown as { toJSONSchema: (s: unknown) => Record<string, unknown> }).toJSONSchema(
       schema,
     )
   } catch {
-    const where = context ? ` for ${context}` : ''
-    console.warn(
-      `[fastmcp] Could not auto-generate JSON schema${where}: schema does not appear to be a Zod v4 schema. Sending { type: 'object' } to clients. Provide an explicit 'inputSchema' in ToolConfig to suppress this warning.`,
-    )
-    return { type: 'object' }
+    // fall through
   }
+
+  const where = context ? ` for ${context}` : ''
+  console.warn(
+    `[fastmcp] Could not auto-generate JSON schema${where}. Sending { type: 'object' } to clients. Provide an explicit 'inputSchema' in ToolConfig to suppress this warning.`,
+  )
+  return { type: 'object' }
 }
 
 export async function validateInput<S extends StandardSchemaV1>(
