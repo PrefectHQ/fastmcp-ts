@@ -166,14 +166,21 @@ export class SizeLimitingMiddleware implements Middleware {
 
 /**
  * Normalises errors thrown by handlers to proper MCP shapes:
- * - tools/call errors  → { isError: true, content: [...] }  (per MCP spec)
- * - all other methods  → McpError(InternalError, message)
+ * - tools/call plain errors → { isError: true, content: [...] }  (per MCP spec)
+ * - tools/call McpError     → re-thrown as a protocol-level error
+ * - all other methods       → McpError(InternalError, message)
+ *
+ * Re-throwing McpError from onCallTool ensures that middleware-level errors
+ * (e.g. from RateLimitingMiddleware or SizeLimitingMiddleware stacked before
+ * this middleware) always propagate as protocol errors and are never silently
+ * converted to isError:true tool responses.
  */
 export class ErrorNormalizationMiddleware implements Middleware {
   async onCallTool<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
     try {
       return await next()
     } catch (err) {
+      if (err instanceof McpError) throw err
       return {
         content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
         isError: true,

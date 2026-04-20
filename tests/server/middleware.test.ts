@@ -194,21 +194,18 @@ describe('Server — Middleware', () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'ping', description: 'ping' }, () => 'ok')
 
-      // limit=1 per very long window so the second call fails
+      // limit=1 per very long window so the second call is always rejected
       mcp.use(new RateLimitingMiddleware(1, 60_000))
 
       const { client, close } = await createTestClient(mcp)
       try {
+        // First call consumes the single token — must succeed
         await client.callTool({ name: 'ping', arguments: {} })
-        // Second call should be rejected — it comes back as isError:true because McpError
-        // propagates through the tool error path
-        const result = await client.callTool({ name: 'ping', arguments: {} })
-        // Rate limit McpError is re-thrown (not caught by tool handler) so the SDK returns it
-        // as a protocol-level error. The client raises an exception.
-        // If the test reaches here without throwing, the result must be an error.
-        expect(result.isError).toBe(true)
-      } catch {
-        // Expected: rate-limit McpError propagated as protocol error
+        // Second call: RateLimitingMiddleware throws McpError which the tool handler
+        // re-throws as a protocol-level error, causing the client to reject
+        await expect(
+          client.callTool({ name: 'ping', arguments: {} }),
+        ).rejects.toThrow('Rate limit exceeded')
       } finally {
         await close()
       }
@@ -244,6 +241,27 @@ describe('Server — Middleware', () => {
         await expect(client.readResource({ uri: 'data://broken' })).rejects.toThrow(
           /something went wrong/,
         )
+      } finally {
+        await close()
+      }
+    })
+
+    it('ErrorNormalizationMiddleware does not swallow McpError thrown by downstream middleware on tools/call', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'ping', description: 'ping' }, () => 'ok')
+
+      // ErrorNormalizationMiddleware registered first, RateLimitingMiddleware second.
+      // Previously onCallTool caught all errors including McpError, so the rate-limit
+      // McpError was silently converted to { isError: true } instead of a protocol error.
+      mcp.use(new ErrorNormalizationMiddleware())
+      mcp.use(new RateLimitingMiddleware(1, 60_000))
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await client.callTool({ name: 'ping', arguments: {} })
+        await expect(
+          client.callTool({ name: 'ping', arguments: {} }),
+        ).rejects.toThrow('Rate limit exceeded')
       } finally {
         await close()
       }
