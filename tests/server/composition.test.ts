@@ -138,6 +138,23 @@ describe('Server — Composition', () => {
       const { tools } = await client.listTools()
       expect(tools.filter((t) => t.name === 'tool_a')).toHaveLength(1)
     })
+
+    it('mounting a server onto itself throws', () => {
+      const server = track(new FastMCP({ name: 'server' }))
+      expect(() => server.mount(server)).toThrow('Cannot mount a server onto itself')
+    })
+
+    it('mounting two children with the same tool name and no prefix throws a collision error', () => {
+      const childA = track(new FastMCP({ name: 'a' }))
+      childA.tool({ name: 'search', description: 'search' }, () => 'a')
+
+      const childB = track(new FastMCP({ name: 'b' }))
+      childB.tool({ name: 'search', description: 'search' }, () => 'b')
+
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(childA)
+      expect(() => parent.mount(childB)).toThrow('Tool name collision on mount: "search"')
+    })
   })
 
   describe('namespacing', () => {
@@ -172,7 +189,7 @@ describe('Server — Composition', () => {
       expect(result.content).toEqual([{ type: 'text', text: 'hello world' }])
     })
 
-    it('a prefix is applied to resource names and prompt names, not resource URIs', async () => {
+    it('a prefix is applied to resource names, prompt names, and resource URIs', async () => {
       const child = track(new FastMCP({ name: 'child' }))
       child.resource({ uri: 'memo://readme', name: 'readme' }, () => 'hello')
       child.prompt({ name: 'greet', description: 'greet' }, () => 'hi')
@@ -183,7 +200,7 @@ describe('Server — Composition', () => {
       const client = await trackedClient(parent)
 
       const { resources } = await client.listResources()
-      const resource = resources.find((r) => r.uri === 'memo://readme')
+      const resource = resources.find((r) => r.uri === 'memo://v1/readme')
       expect(resource).toBeDefined()
       expect(resource?.name).toBe('v1_readme')
 
@@ -191,7 +208,7 @@ describe('Server — Composition', () => {
       expect(prompts.map((p) => p.name)).toContain('v1_greet')
     })
 
-    it('resources on a namespaced child are readable via their original URI', async () => {
+    it('resources on a namespaced child are readable via their prefixed URI', async () => {
       const child = track(new FastMCP({ name: 'child' }))
       child.resource({ uri: 'memo://readme', name: 'readme' }, () => 'hello from readme')
 
@@ -199,8 +216,170 @@ describe('Server — Composition', () => {
       parent.mount(child, 'v1')
 
       const client = await trackedClient(parent)
-      const result = await client.readResource({ uri: 'memo://readme' })
+      const result = await client.readResource({ uri: 'memo://v1/readme' })
       expect(result.contents[0]).toMatchObject({ text: 'hello from readme' })
+    })
+  })
+
+  describe('middleware chain delegation', () => {
+    it('child onCallTool middleware runs when a mounted tool is called via the parent', async () => {
+      let childCalls = 0
+      const child = track(
+        new FastMCP({
+          name: 'child',
+          middleware: [{ onCallTool: (_ctx, next) => { childCalls++; return next() } }],
+        }),
+      )
+      child.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(child)
+
+      const client = await trackedClient(parent)
+      await client.callTool({ name: 'ping', arguments: {} })
+      expect(childCalls).toBe(1)
+    })
+
+    it('parent and child onCallTool middleware both run, parent first', async () => {
+      const order: string[] = []
+      const child = track(
+        new FastMCP({
+          name: 'child',
+          middleware: [{ onCallTool: (_ctx, next) => { order.push('child'); return next() } }],
+        }),
+      )
+      child.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+
+      const parent = track(
+        new FastMCP({
+          name: 'parent',
+          middleware: [{ onCallTool: (_ctx, next) => { order.push('parent'); return next() } }],
+        }),
+      )
+      parent.mount(child)
+
+      const client = await trackedClient(parent)
+      await client.callTool({ name: 'ping', arguments: {} })
+      expect(order).toEqual(['parent', 'child'])
+    })
+
+    it('child onCallTool middleware can short-circuit a call before the handler runs', async () => {
+      let handlerRan = false
+      const child = track(
+        new FastMCP({
+          name: 'child',
+          middleware: [{
+            onCallTool: async (_ctx, _next) => ({
+              content: [{ type: 'text' as const, text: 'blocked' }],
+              isError: true,
+            }),
+          }],
+        }),
+      )
+      child.tool({ name: 'blocked', description: 'blocked' }, () => { handlerRan = true; return 'ok' })
+
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(child)
+
+      const client = await trackedClient(parent)
+      const result = await client.callTool({ name: 'blocked', arguments: {} })
+      expect(result.isError).toBe(true)
+      expect(handlerRan).toBe(false)
+    })
+
+    it('child onReadResource middleware runs when a mounted resource is read via the parent', async () => {
+      let childCalls = 0
+      const child = track(
+        new FastMCP({
+          name: 'child',
+          middleware: [{ onReadResource: (_ctx, next) => { childCalls++; return next() } }],
+        }),
+      )
+      child.resource({ uri: 'memo://data', name: 'data' }, () => 'hello')
+
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(child)
+
+      const client = await trackedClient(parent)
+      await client.readResource({ uri: 'memo://data' })
+      expect(childCalls).toBe(1)
+    })
+
+    it('child onGetPrompt middleware runs when a mounted prompt is rendered via the parent', async () => {
+      let childCalls = 0
+      const child = track(
+        new FastMCP({
+          name: 'child',
+          middleware: [{ onGetPrompt: (_ctx, next) => { childCalls++; return next() } }],
+        }),
+      )
+      child.prompt({ name: 'greet', description: 'greet' }, () => 'hello')
+
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(child)
+
+      const client = await trackedClient(parent)
+      await client.getPrompt({ name: 'greet' })
+      expect(childCalls).toBe(1)
+    })
+
+    it('middleware at every level of a three-deep nested mount all run for a single call', async () => {
+      const ran = { grandchild: false, child: false, parent: false }
+
+      const grandchild = track(
+        new FastMCP({
+          name: 'gc',
+          middleware: [{ onCallTool: (_ctx, next) => { ran.grandchild = true; return next() } }],
+        }),
+      )
+      grandchild.tool({ name: 'deep', description: 'deep' }, () => 'deep')
+
+      const child = track(
+        new FastMCP({
+          name: 'child',
+          middleware: [{ onCallTool: (_ctx, next) => { ran.child = true; return next() } }],
+        }),
+      )
+      child.mount(grandchild)
+
+      const parent = track(
+        new FastMCP({
+          name: 'parent',
+          middleware: [{ onCallTool: (_ctx, next) => { ran.parent = true; return next() } }],
+        }),
+      )
+      parent.mount(child)
+
+      const client = await trackedClient(parent)
+      await client.callTool({ name: 'deep', arguments: {} })
+      expect(ran).toEqual({ grandchild: true, child: true, parent: true })
+    })
+
+    it('ctx.log() called inside a mounted child handler reaches the parent client', async () => {
+      const { LoggingMessageNotificationSchema } = await import('@modelcontextprotocol/sdk/types')
+
+      const child = track(new FastMCP({ name: 'child' }))
+      child.tool({ name: 'logger', description: 'logs' }, async () => {
+        await child.getContext().info('hello from child')
+        return 'done'
+      })
+
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(child)
+
+      const client = new Client({ name: 'test-client', version: '1.0.0' })
+      clients.push(client)
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+      await parent.connect(serverTransport)
+      await client.connect(clientTransport)
+
+      const received: string[] = []
+      client.setNotificationHandler(LoggingMessageNotificationSchema, (notif) => {
+        received.push(notif.params.data as string)
+      })
+
+      await client.callTool({ name: 'logger', arguments: {} })
+      expect(received).toContain('hello from child')
     })
   })
 

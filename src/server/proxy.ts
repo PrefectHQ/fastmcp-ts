@@ -1,4 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index'
+import { parseTemplate } from 'url-template'
 import { FastMCP } from './FastMCP'
 import { ToolResult } from './tool'
 import { ResourceResult } from './resource'
@@ -98,6 +99,7 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
       const { resourceTemplates } = await client.listResourceTemplates()
       for (const template of resourceTemplates) {
         const uriTemplate = template.uriTemplate
+        const expander = parseTemplate(uriTemplate)
         proxy.resource(
           {
             uri: uriTemplate,
@@ -106,9 +108,7 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
             ...(template.mimeType !== undefined ? { mimeType: template.mimeType } : {}),
           },
           async (params?: Record<string, string>) => {
-            const actualUri = params
-              ? uriTemplate.replace(/\{([^}*?]+)\}/g, (_, key) => params[key] ?? '')
-              : uriTemplate
+            const actualUri = params ? expander.expand(params) : uriTemplate
             const result = await client.readResource({ uri: actualUri })
             return new ResourceResult(
               result.contents as Array<{ uri: string; mimeType?: string; text?: string; blob?: string }>,

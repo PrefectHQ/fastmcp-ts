@@ -28,15 +28,22 @@ import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
 import { applyTransformChain } from './transform'
 import type { Transform, ToolView, ResourceView, PromptView, SynthesizedTool } from './transform'
-import { convertResult, toJsonSchema, validateInput } from './tool'
+import { convertResult, toJsonSchema, validateInput, ToolResult } from './tool'
 import {
   convertResourceResult,
   isUriTemplate,
   matchTemplate,
+  ResourceResult,
 } from './resource'
 import type { ResourceConfig } from './resource'
-import { convertPromptResult } from './prompt'
+import { convertPromptResult, PromptResult } from './prompt'
 import type { PromptConfig } from './prompt'
+
+function prefixResourceUri(uri: string, prefix: string): string {
+  const idx = uri.indexOf('://')
+  if (idx === -1) return `${prefix}/${uri}`
+  return `${uri.slice(0, idx + 3)}${prefix}/${uri.slice(idx + 3)}`
+}
 
 export interface OAuthConfig {
   /** OAuth server provider implementing the authorization and token flow. */
@@ -786,40 +793,197 @@ export class FastMCP {
     return this
   }
 
-  private _mirrorTool(tool: RegisteredTool, prefix?: string): void {
-    const key = prefix ? `${prefix}_${tool.config.name}` : tool.config.name
-    this.tool(prefix ? { ...tool.config, name: key } : tool.config, tool.handler)
+  /**
+   * Dispatch a tool call through this server's middleware chain using an inherited context.
+   * Used by parent servers to honour child-level middleware when routing mounted tool calls.
+   */
+  async _dispatchTool(
+    name: string,
+    rawArgs: unknown,
+    ctx: McpContext,
+  ) {
+    const tool = this._tools.get(name)
+    if (!tool || tool.config.disabled) {
+      throw new McpError(ErrorCode.InvalidParams, `Unknown tool: "${name}"`)
+    }
+    if (tool.config.auth) await runAuthCheck(tool.config.auth, ctx.auth)
+
+    try {
+      return await contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'tools/call', { name, arguments: rawArgs }, ctx, async () => {
+          const args = tool.config.input
+            ? await validateInput(tool.config.input, rawArgs, true)
+            : rawArgs
+
+          let executePromise: Promise<unknown> = Promise.resolve(tool.handler(args))
+          if (tool.config.timeout) {
+            const ms = tool.config.timeout
+            let timer!: ReturnType<typeof setTimeout>
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error(`Tool "${name}" timed out after ${ms}ms`)),
+                ms,
+              )
+            })
+            executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+              clearTimeout(timer),
+            )
+          }
+
+          let resultValue = await executePromise
+          if (tool.config.output) resultValue = await validateInput(tool.config.output, resultValue)
+          return convertResult(resultValue)
+        }),
+      )
+    } catch (err) {
+      if (err instanceof McpError) throw err
+      return {
+        content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
+        isError: true,
+      }
+    }
   }
 
-  private _mirrorResource(resource: RegisteredResource, prefix?: string): void {
+  /**
+   * Run a resource read through this server's middleware chain using an inherited context.
+   * Returns the raw handler result so the parent can apply convertResourceResult with the
+   * actual requested URI (important for template resources).
+   */
+  async _dispatchResource(
+    uri: string,
+    params: Record<string, string> | undefined,
+    ctx: McpContext,
+  ): Promise<unknown> {
+    const resource = isUriTemplate(uri)
+      ? this._templateResources.get(uri)
+      : this._staticResources.get(uri)
+
+    if (!resource || resource.config.disabled) {
+      throw new McpError(ErrorCode.InvalidParams, `Unknown resource: "${uri}"`)
+    }
+    if (resource.config.auth) await runAuthCheck(resource.config.auth, ctx.auth)
+
+    return contextStore.run(ctx, () =>
+      runMiddlewareChain(this._middleware, 'resources/read', { uri }, ctx, async () => {
+        let executePromise: Promise<unknown> = Promise.resolve(resource.handler(params))
+        if (resource.config.timeout) {
+          const ms = resource.config.timeout
+          let timer!: ReturnType<typeof setTimeout>
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error(`Resource "${uri}" timed out after ${ms}ms`)),
+              ms,
+            )
+          })
+          executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+            clearTimeout(timer),
+          ) as Promise<unknown>
+        }
+        return await executePromise
+      }),
+    )
+  }
+
+  /**
+   * Dispatch a prompt render through this server's middleware chain using an inherited context.
+   */
+  async _dispatchPrompt(
+    name: string,
+    args: Record<string, string>,
+    ctx: McpContext,
+  ) {
+    const prompt = this._prompts.get(name)
+    if (!prompt || prompt.config.disabled) {
+      throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${name}"`)
+    }
+    if (prompt.config.auth) await runAuthCheck(prompt.config.auth, ctx.auth)
+
+    for (const arg of prompt.config.arguments ?? []) {
+      if (arg.required && !(arg.name in args)) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Missing required argument "${arg.name}" for prompt "${name}"`,
+        )
+      }
+    }
+
+    return contextStore.run(ctx, () =>
+      runMiddlewareChain(this._middleware, 'prompts/get', { name, arguments: args }, ctx, async () => {
+        let executePromise = Promise.resolve(prompt.handler(args))
+        if (prompt.config.timeout) {
+          const ms = prompt.config.timeout
+          let timer!: ReturnType<typeof setTimeout>
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error(`Prompt "${name}" timed out after ${ms}ms`)),
+              ms,
+            )
+          })
+          executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+            clearTimeout(timer),
+          )
+        }
+        return convertPromptResult(await executePromise)
+      }),
+    )
+  }
+
+  private _mirrorTool(child: FastMCP, tool: RegisteredTool, prefix?: string): void {
+    const originalName = tool.config.name
+    const key = prefix ? `${prefix}_${originalName}` : originalName
+    if (this._tools.has(key)) throw new Error(`Tool name collision on mount: "${key}" is already registered`)
+    // Strip runtime validators — child's _dispatchTool runs them.
+    // inputSchema/outputSchema are kept so clients see the correct JSON Schema.
+    const forwardedConfig: ToolConfig = { ...tool.config, name: key, input: undefined, output: undefined }
+    this.tool(forwardedConfig, (args: unknown) => {
+      const ctx = contextStore.getStore()!
+      return child._dispatchTool(originalName, args, ctx).then((result) => new ToolResult(result))
+    })
+  }
+
+  private _mirrorResource(child: FastMCP, resource: RegisteredResource, prefix?: string): void {
     const name = resource.config.name ?? resource.config.uri
-    this.resource(
-      prefix ? { ...resource.config, name: `${prefix}_${name}` } : resource.config,
-      resource.handler,
-    )
+    const originalUri = resource.config.uri
+    const forwardedConfig: ResourceConfig = {
+      ...resource.config,
+      uri: prefix ? prefixResourceUri(originalUri, prefix) : originalUri,
+      name: prefix ? `${prefix}_${name}` : name,
+    }
+    // Return the raw handler result so the parent's ReadResource handler can call
+    // convertResourceResult with the actual requested URI (correct for template expansions).
+    this.resource(forwardedConfig, (params?: Record<string, string>) => {
+      const ctx = contextStore.getStore()!
+      return child._dispatchResource(originalUri, params, ctx)
+    })
   }
 
-  private _mirrorPrompt(prompt: RegisteredPrompt, prefix?: string): void {
-    const key = prefix ? `${prefix}_${prompt.config.name}` : prompt.config.name
-    this.prompt(
-      prefix ? { ...prompt.config, name: key } : (prompt.config as PromptConfig),
-      prompt.handler,
-    )
+  private _mirrorPrompt(child: FastMCP, prompt: RegisteredPrompt, prefix?: string): void {
+    const originalName = prompt.config.name
+    const key = prefix ? `${prefix}_${originalName}` : originalName
+    if (this._prompts.has(key)) throw new Error(`Prompt name collision on mount: "${key}" is already registered`)
+    const forwardedConfig: PromptConfig = { ...(prompt.config as PromptConfig), name: key }
+    this.prompt(forwardedConfig, (args?: Record<string, string>) => {
+      const ctx = contextStore.getStore()!
+      return child
+        ._dispatchPrompt(originalName, args ?? {}, ctx)
+        .then((result) => new PromptResult(result.messages, result.description))
+    })
   }
 
   /** Mount a child server onto this server. All tools, resources, and prompts from the child become accessible via this server. Pass a prefix to namespace names and prevent collisions. */
   mount(child: FastMCP, prefix?: string): this {
+    if (child === this) throw new Error('Cannot mount a server onto itself')
     if (this._mountedChildren.has(child)) return this
     this._mountedChildren.add(child)
 
-    for (const tool of child._tools.values()) this._mirrorTool(tool, prefix)
-    for (const resource of child._staticResources.values()) this._mirrorResource(resource, prefix)
-    for (const resource of child._templateResources.values()) this._mirrorResource(resource, prefix)
-    for (const prompt of child._prompts.values()) this._mirrorPrompt(prompt, prefix)
+    for (const tool of child._tools.values()) this._mirrorTool(child, tool, prefix)
+    for (const resource of child._staticResources.values()) this._mirrorResource(child, resource, prefix)
+    for (const resource of child._templateResources.values()) this._mirrorResource(child, resource, prefix)
+    for (const prompt of child._prompts.values()) this._mirrorPrompt(child, prompt, prefix)
 
-    child._toolRegisteredCallbacks.push((tool) => this._mirrorTool(tool, prefix))
-    child._resourceRegisteredCallbacks.push((resource) => this._mirrorResource(resource, prefix))
-    child._promptRegisteredCallbacks.push((prompt) => this._mirrorPrompt(prompt, prefix))
+    child._toolRegisteredCallbacks.push((tool) => this._mirrorTool(child, tool, prefix))
+    child._resourceRegisteredCallbacks.push((resource) => this._mirrorResource(child, resource, prefix))
+    child._promptRegisteredCallbacks.push((prompt) => this._mirrorPrompt(child, prompt, prefix))
 
     // When this server closes, drain the child's owned proxy connections
     this._proxyCloseCallbacks.push(async () => {
