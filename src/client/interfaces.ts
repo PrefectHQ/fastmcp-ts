@@ -50,6 +50,7 @@ export interface IPromptsClient {
 export interface IClient extends IToolsClient, IResourcesClient, IPromptsClient {
   connect(): Promise<void>
   close(): Promise<void>
+  isConnected(): boolean
   ping(options?: RequestOptions): Promise<boolean>
   [Symbol.asyncDispose](): Promise<void>
 }

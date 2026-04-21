@@ -52,3 +52,9 @@ export type {
   ClientTransportInput,
 } from './transports.js'
 export { StdioTransport } from './transports.js'
+
+export type { ClientOptions, ClientDefaultOptions } from './client.js'
+export { Client, ToolCallError } from './client.js'
+
+export type { Result } from './utils.js'
+export { toResult } from './utils.js'

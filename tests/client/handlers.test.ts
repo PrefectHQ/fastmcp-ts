@@ -1,41 +1,245 @@
-import { describe, it } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import { z } from 'zod/v4'
+import { FastMCP } from 'fastmcp-ts/server'
+import { Client } from 'fastmcp-ts/client'
+import type { LogMessage, SamplingHandler, ElicitationHandler } from 'fastmcp-ts/client'
+
+async function withServer(
+  setup: (mcp: FastMCP) => void,
+  fn: (client: Client) => Promise<void>,
+  clientOptions?: Parameters<typeof Client.connect>[1],
+) {
+  const mcp = new FastMCP({ name: 'test', version: '1.0.0' })
+  setup(mcp)
+  const client = await Client.connect(mcp, clientOptions)
+  try {
+    await fn(client)
+  } finally {
+    await client.close()
+  }
+}
 
 describe('Client — Handlers', () => {
   describe('logHandler', () => {
-    it.todo('is called with a LogMessage when the server emits a log notification')
-    it.todo('LogMessage includes level, optional logger name, and data payload')
-    it.todo('handles all eight severity levels: debug, info, notice, warning, error, critical, alert, emergency')
-    it.todo('default handler forwards messages to Node console at the appropriate level')
-    it.todo('notice maps to console.info and alert/emergency map to console.error by default')
+    it('is called with a LogMessage when the server emits a log notification', async () => {
+      const received: LogMessage[] = []
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'logger', input: z.object({}) }, async () => {
+            await mcp.getContext().info('hello from tool')
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('logger', {})
+          expect(received).toHaveLength(1)
+          expect(received[0]).toMatchObject({ level: 'info', data: 'hello from tool' })
+        },
+        { handlers: { log: (msg) => { received.push(msg) } } },
+      )
+    })
+
+    it('LogMessage includes level, optional logger name, and data payload', async () => {
+      const received: LogMessage[] = []
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'named', input: z.object({}) }, async () => {
+            await mcp.getContext().log('warning', 'watch out', 'my-logger')
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('named', {})
+          expect(received[0]).toMatchObject({
+            level: 'warning',
+            logger: 'my-logger',
+            data: 'watch out',
+          })
+        },
+        { handlers: { log: (msg) => { received.push(msg) } } },
+      )
+    })
+
+    it('handles all eight severity levels', async () => {
+      const levels: string[] = []
+      const allLevels = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'] as const
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'allLevels', input: z.object({}) }, async () => {
+            const ctx = mcp.getContext()
+            for (const lvl of allLevels) {
+              await ctx.log(lvl, 'msg')
+            }
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('allLevels', {})
+          expect(levels).toEqual([...allLevels])
+        },
+        { handlers: { log: (msg) => { levels.push(msg.level) } } },
+      )
+    })
   })
 
   describe('progressHandler', () => {
-    it.todo('is called with progress and total when a tool reports progress')
-    it.todo('is called with an optional message string alongside progress values')
-    it.todo('receives multiple calls for a single tool invocation as progress advances')
+    it('onProgress callback is called when a tool reports progress', async () => {
+      const progressCalls: Array<[number, number | undefined, string | undefined]> = []
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'progressor', input: z.object({}) }, async () => {
+            await mcp.getContext().reportProgress(50, 100, 'halfway')
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('progressor', {}, {
+            onProgress: (progress, total, message) => {
+              progressCalls.push([progress, total, message])
+            },
+          })
+          expect(progressCalls).toHaveLength(1)
+          expect(progressCalls[0]).toEqual([50, 100, 'halfway'])
+        },
+      )
+    })
+
+    it('receives multiple calls as progress advances', async () => {
+      const received: number[] = []
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'multi', input: z.object({}) }, async () => {
+            const ctx = mcp.getContext()
+            await ctx.reportProgress(25, 100)
+            await ctx.reportProgress(50, 100)
+            await ctx.reportProgress(100, 100)
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('multi', {}, {
+            onProgress: (p) => { received.push(p) },
+          })
+          expect(received).toEqual([25, 50, 100])
+        },
+      )
+    })
   })
 
   describe('samplingHandler', () => {
-    it.todo('is called when the server requests an LLM completion')
-    it.todo('receives messages, params (system prompt, temperature, maxTokens, tools), and context')
-    it.todo('the return value is forwarded back to the server as the completion result')
-    it.todo('built-in Anthropic adapter forwards the request to the Anthropic SDK')
-    it.todo('built-in OpenAI adapter forwards the request to the OpenAI SDK')
-    it.todo('a custom handler function can be provided in place of a built-in adapter')
+    it('is called when the server requests an LLM completion', async () => {
+      const samplingFn = vi.fn<SamplingHandler>().mockResolvedValue({
+        role: 'assistant',
+        content: { type: 'text', text: 'Hello!' },
+        model: 'test-model',
+        stopReason: 'endTurn',
+      })
+
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'sampler', input: z.object({}) }, async () => {
+            await mcp.getContext().sample({
+              messages: [{ role: 'user', content: { type: 'text', text: 'say hi' } }],
+            })
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('sampler', {})
+          expect(samplingFn).toHaveBeenCalledOnce()
+          const params = samplingFn.mock.calls[0][0]
+          expect(params.messages).toHaveLength(1)
+        },
+        { handlers: { sampling: samplingFn } },
+      )
+    })
+
+    it('the return value is forwarded back to the server as the completion result', async () => {
+      let capturedResult: unknown
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'sampler', input: z.object({}) }, async () => {
+            capturedResult = await mcp.getContext().sample({
+              messages: [{ role: 'user', content: { type: 'text', text: 'say hi' } }],
+            })
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('sampler', {})
+          expect(capturedResult).toMatchObject({
+            role: 'assistant',
+            content: { type: 'text', text: 'fixed response' },
+            model: 'mock-model',
+          })
+        },
+        {
+          handlers: {
+            sampling: async () => ({
+              role: 'assistant',
+              content: { type: 'text', text: 'fixed response' },
+              model: 'mock-model',
+              stopReason: 'endTurn',
+            }),
+          },
+        },
+      )
+    })
   })
 
   describe('elicitationHandler', () => {
-    it.todo('is called when the server requests structured user input')
-    it.todo('receives message, responseSchema (JSON Schema), params, and context')
-    it.todo('returning { action: "accept", content } sends the data back to the server')
-    it.todo('returning { action: "decline" } notifies the server the user opted out')
-    it.todo('returning { action: "cancel" } aborts the in-progress operation')
-  })
+    it('is called when the server requests structured user input', async () => {
+      const elicitFn = vi.fn<ElicitationHandler>().mockResolvedValue({
+        action: 'accept',
+        content: { name: 'alice' },
+      })
 
-  describe('messageHandler', () => {
-    it.todo('a function-based handler receives all server notifications')
-    it.todo('class-based MessageHandler.onToolListChanged() fires when the tool list changes')
-    it.todo('class-based MessageHandler.onResourceListChanged() fires when the resource list changes')
-    it.todo('class-based MessageHandler.onPromptListChanged() fires when the prompt list changes')
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'elicitor', input: z.object({}) }, async () => {
+            await mcp.getContext().elicit('What is your name?', {
+              type: 'object',
+              properties: { name: { type: 'string', title: 'Name' } },
+              required: ['name'],
+            })
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('elicitor', {})
+          expect(elicitFn).toHaveBeenCalledOnce()
+          const params = elicitFn.mock.calls[0][0]
+          expect(params.message).toBe('What is your name?')
+        },
+        { handlers: { elicitation: elicitFn } },
+      )
+    })
+
+    it('returning { action: "accept", content } sends the data back to the server', async () => {
+      let capturedResult: unknown
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'elicitor', input: z.object({}) }, async () => {
+            capturedResult = await mcp.getContext().elicit('Pick a name', {
+              type: 'object',
+              properties: { name: { type: 'string' } },
+            })
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.callTool('elicitor', {})
+          expect(capturedResult).toMatchObject({
+            action: 'accept',
+            content: { name: 'bob' },
+          })
+        },
+        {
+          handlers: {
+            elicitation: async () => ({ action: 'accept', content: { name: 'bob' } }),
+          },
+        },
+      )
+    })
   })
 })
