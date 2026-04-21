@@ -199,6 +199,12 @@ export class FastMCP {
   // Primary server used by connect() and stdio
   private _primaryServer: Server
 
+  private _toolRegisteredCallbacks: Array<(tool: RegisteredTool) => void> = []
+  private _resourceRegisteredCallbacks: Array<(resource: RegisteredResource) => void> = []
+  private _promptRegisteredCallbacks: Array<(prompt: RegisteredPrompt) => void> = []
+  private _proxyCloseCallbacks: Array<() => Promise<void>> = []
+  private _mountedChildren = new Set<FastMCP>()
+
   constructor(options: FastMCPOptions) {
     this.name = options.name
     this.version = options.version ?? '0.0.1'
@@ -217,7 +223,7 @@ export class FastMCP {
     const state = sessionState ?? this._primaryState
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: {}, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {} } },
+      { capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {} } },
     )
     for (const mw of this._middleware) mw.setup?.(server)
     this._setupHandlers(server, state)
@@ -746,8 +752,10 @@ export class FastMCP {
   // Implementation (handler typed as any to satisfy both overload signatures)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tool(config: ToolConfig, handler: (args: any) => any): void {
-    this._tools.set(config.name, { config, handler })
+    const registered: RegisteredTool = { config, handler }
+    this._tools.set(config.name, registered)
     this._notifyToolListChanged()
+    for (const cb of this._toolRegisteredCallbacks) cb(registered)
   }
 
   prompt(config: PromptConfig, handler: (args?: Record<string, string>) => unknown): void {
@@ -755,23 +763,76 @@ export class FastMCP {
     if (!name) throw new Error('Prompt name must be provided in config or inferrable from the handler function name')
     const description = config.description ?? inferDescription(name)
     const resolvedConfig: ResolvedPromptConfig = { ...config, name, description }
-    this._prompts.set(name, { config: resolvedConfig, handler })
+    const registered: RegisteredPrompt = { config: resolvedConfig, handler }
+    this._prompts.set(name, registered)
     this._notifyPromptListChanged()
+    for (const cb of this._promptRegisteredCallbacks) cb(registered)
   }
 
   resource(config: ResourceConfig, handler: (params?: Record<string, string>) => unknown): void {
+    const registered: RegisteredResource = { config, handler }
     if (isUriTemplate(config.uri)) {
-      this._templateResources.set(config.uri, { config, handler })
+      this._templateResources.set(config.uri, registered)
     } else {
-      this._staticResources.set(config.uri, { config, handler })
+      this._staticResources.set(config.uri, registered)
     }
     this._notifyResourceListChanged()
+    for (const cb of this._resourceRegisteredCallbacks) cb(registered)
   }
 
   /** Add a transform to the pipeline. Applied to list responses in registration order. */
   transform(t: Transform): this {
     this._transforms.push(t)
     return this
+  }
+
+  private _mirrorTool(tool: RegisteredTool, prefix?: string): void {
+    const key = prefix ? `${prefix}_${tool.config.name}` : tool.config.name
+    this.tool(prefix ? { ...tool.config, name: key } : tool.config, tool.handler)
+  }
+
+  private _mirrorResource(resource: RegisteredResource, prefix?: string): void {
+    const name = resource.config.name ?? resource.config.uri
+    this.resource(
+      prefix ? { ...resource.config, name: `${prefix}_${name}` } : resource.config,
+      resource.handler,
+    )
+  }
+
+  private _mirrorPrompt(prompt: RegisteredPrompt, prefix?: string): void {
+    const key = prefix ? `${prefix}_${prompt.config.name}` : prompt.config.name
+    this.prompt(
+      prefix ? { ...prompt.config, name: key } : (prompt.config as PromptConfig),
+      prompt.handler,
+    )
+  }
+
+  /** Mount a child server onto this server. All tools, resources, and prompts from the child become accessible via this server. Pass a prefix to namespace names and prevent collisions. */
+  mount(child: FastMCP, prefix?: string): this {
+    if (this._mountedChildren.has(child)) return this
+    this._mountedChildren.add(child)
+
+    for (const tool of child._tools.values()) this._mirrorTool(tool, prefix)
+    for (const resource of child._staticResources.values()) this._mirrorResource(resource, prefix)
+    for (const resource of child._templateResources.values()) this._mirrorResource(resource, prefix)
+    for (const prompt of child._prompts.values()) this._mirrorPrompt(prompt, prefix)
+
+    child._toolRegisteredCallbacks.push((tool) => this._mirrorTool(tool, prefix))
+    child._resourceRegisteredCallbacks.push((resource) => this._mirrorResource(resource, prefix))
+    child._promptRegisteredCallbacks.push((prompt) => this._mirrorPrompt(prompt, prefix))
+
+    // When this server closes, drain the child's owned proxy connections
+    this._proxyCloseCallbacks.push(async () => {
+      await Promise.all(child._proxyCloseCallbacks.map((cb) => cb().catch(() => {})))
+      child._proxyCloseCallbacks.length = 0
+    })
+
+    return this
+  }
+
+  /** Register a callback invoked when this server is closed — used by proxy connections. */
+  _addCloseCallback(cb: () => Promise<void>): void {
+    this._proxyCloseCallbacks.push(cb)
   }
 
   private _applyTransformsToTools(
@@ -1117,7 +1178,9 @@ export class FastMCP {
   }
 
   async close(): Promise<void> {
-    // Close all active HTTP sessions
+    await Promise.all(this._proxyCloseCallbacks.map((cb) => cb().catch(() => {})))
+    this._proxyCloseCallbacks.length = 0
+
     await Promise.all(
       [...this._sessions.values()].map(({ transport }) => transport.close().catch(() => {})),
     )

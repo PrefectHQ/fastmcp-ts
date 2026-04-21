@@ -187,6 +187,30 @@ The `stdio` transport accepts optional `stdin`/`stdout` stream overrides in `Run
 | `PromptsAsTools()` | Synthesises a `list_prompts` tool listing visible, transformed prompt views |
 | `VersionFilter(tag)` | Shows only components whose `tags` array contains the given string; components with no tags are always excluded |
 
+---
+
+**Composition:** Servers can be combined via mounting or proxying.
+
+**`parent.mount(child, prefix?)`** — mirrors all tools, resources, and prompts from `child` into `parent`. The mirror is live: components registered on the child after `mount()` immediately appear in the parent. Mounting the same child twice is a no-op.
+
+- **Prefix**: When a prefix is supplied, tool and prompt names are renamed `${prefix}_${name}`. Resource display names are prefixed the same way, but resource URIs are never altered (prefixing a URI scheme would violate RFC 3986 §3.1). Resources remain readable by their original URI.
+- **Cascading**: Callbacks propagate through the parent's own `_toolRegisteredCallbacks`/`_resourceRegisteredCallbacks`/`_promptRegisteredCallbacks` arrays, so grandparent chains work naturally.
+- **`list_changed` forwarding**: Adding a component to the child triggers `_notifyToolListChanged()` (or equivalent) on the parent, which sends the notification to all clients connected to the parent.
+- **Close behaviour**: When the parent closes, it drains the child's `_proxyCloseCallbacks` — this closes any underlying proxy client connections.
+
+**`createProxy(config: ProxyTransport, name?): Promise<FastMCP>`** — creates a plain `FastMCP` instance that forwards all calls to a remote MCP server. Initial sync fetches all tools, resources, resource templates, and prompts from the remote. Passthrough uses `ToolResult`, `ResourceResult`, and `PromptResult` to avoid double-conversion. The proxy registers a close callback so that `parent.mount(proxy)` then `parent.close()` also closes the proxy's underlying SDK `Client`.
+
+```typescript
+// Proxy types
+type ProxyTransport =
+  | { type: 'stdio'; command: string; args?: string[]; env?: Record<string, string>; cwd?: string }
+  | { type: 'http'; url: string; requestInit?: RequestInit }
+```
+
+**Server capabilities:** FastMCP advertises `tools: { listChanged: true }`, `resources: { listChanged: true }`, `prompts: { listChanged: true }` — clients using the SDK's `listChanged` option receive notifications when component lists change. (Note: the SDK's `listChanged` constructor option has a known issue in-process; use `client.setNotificationHandler(ToolListChangedNotificationSchema, ...)` for reliable notification handling in tests.)
+
+---
+
 **Foundation:** Built on `@modelcontextprotocol/sdk` (official MCP TypeScript SDK).
 
 **Module format:** ESM throughout (`"type": "module"`).
