@@ -22,9 +22,10 @@ async function makeClient(server: FastMCP): Promise<Client> {
 
 describe('Server — Transforms', () => {
   let server: FastMCP
-  let client: Client
+  let client: Client | undefined
 
   afterEach(async () => {
+    await client?.close()
     await server.close()
   })
 
@@ -45,6 +46,15 @@ describe('Server — Transforms', () => {
       client = await makeClient(server)
 
       const result = await client.callTool({ name: 'weather', arguments: {} })
+      expect(result.content).toEqual([{ type: 'text', text: 'sunny' }])
+    })
+
+    it('a tool can still be called by its original name after being renamed', async () => {
+      server = new FastMCP({ name: 'test', transforms: [renameTool('get_weather', 'weather')] })
+      server.tool({ name: 'get_weather', description: 'Get weather' }, () => 'sunny')
+      client = await makeClient(server)
+
+      const result = await client.callTool({ name: 'get_weather', arguments: {} })
       expect(result.content).toEqual([{ type: 'text', text: 'sunny' }])
     })
   })
@@ -75,6 +85,58 @@ describe('Server — Transforms', () => {
       const result = await client.callTool({ name: 'internal_tool', arguments: {} })
       expect(result.content).toEqual([{ type: 'text', text: 'secret' }])
     })
+
+    it('a transform can hide specific resources from the list seen by clients', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [new FilterTransform({ resources: (v) => !v.uri.includes('private') })],
+      })
+      server.resource({ uri: 'public://data', name: 'Public' }, () => 'ok')
+      server.resource({ uri: 'private://secret', name: 'Secret' }, () => 'hidden')
+      client = await makeClient(server)
+
+      const { resources } = await client.listResources()
+      expect(resources.map((r) => r.uri)).toContain('public://data')
+      expect(resources.map((r) => r.uri)).not.toContain('private://secret')
+    })
+
+    it('hidden resources remain readable by their original URI', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [new FilterTransform({ resources: (v) => !v.uri.includes('private') })],
+      })
+      server.resource({ uri: 'private://secret', name: 'Secret' }, () => 'hidden content')
+      client = await makeClient(server)
+
+      const result = await client.readResource({ uri: 'private://secret' })
+      expect(result.contents[0]).toMatchObject({ text: 'hidden content' })
+    })
+
+    it('a transform can hide specific prompts from the list seen by clients', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [new FilterTransform({ prompts: (v) => v.name !== 'internal_prompt' })],
+      })
+      server.prompt({ name: 'public_prompt', description: 'Public' }, () => 'hello')
+      server.prompt({ name: 'internal_prompt', description: 'Internal' }, () => 'secret')
+      client = await makeClient(server)
+
+      const { prompts } = await client.listPrompts()
+      expect(prompts.map((p) => p.name)).toContain('public_prompt')
+      expect(prompts.map((p) => p.name)).not.toContain('internal_prompt')
+    })
+
+    it('hidden prompts remain invokable by their original name', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [new FilterTransform({ prompts: (v) => v.name !== 'internal_prompt' })],
+      })
+      server.prompt({ name: 'internal_prompt', description: 'Internal' }, () => 'secret message')
+      client = await makeClient(server)
+
+      const result = await client.getPrompt({ name: 'internal_prompt' })
+      expect(result.messages[0].content).toEqual({ type: 'text', text: 'secret message' })
+    })
   })
 
   describe('metadata modification', () => {
@@ -104,8 +166,10 @@ describe('Server — Transforms', () => {
       expect(listTool).toBeDefined()
 
       const result = await client.callTool({ name: 'list_resources', arguments: {} })
-      const listed = JSON.parse((result.content as Array<{ type: string; text: string }>)[0].text) as unknown[]
+      const listed = JSON.parse((result.content as Array<{ type: string; text: string }>)[0].text) as Array<{ uri: string; name: string }>
       expect(listed).toHaveLength(2)
+      expect(listed.find((r) => r.uri === 'docs://guide')?.name).toBe('Guide')
+      expect(listed.find((r) => r.uri === 'docs://readme')?.name).toBe('Readme')
     })
 
     it('a prompt can be exposed as a tool via a transform', async () => {
@@ -202,6 +266,15 @@ describe('Server — Transforms', () => {
       expect(promptResult.messages[0].content).toEqual({ type: 'text', text: 'hello friend' })
     })
 
+    it('a namespaced resource URI is correctly routed back to the original resource handler', async () => {
+      server = new FastMCP({ name: 'test', transforms: [new NamespaceTransform('v1_')] })
+      server.resource({ uri: 'data://items', name: 'Items' }, () => 'item content')
+      client = await makeClient(server)
+
+      const result = await client.readResource({ uri: 'v1_data://items' })
+      expect(result.contents[0]).toMatchObject({ text: 'item content' })
+    })
+
     it('getPrompt resolves a transformed name even when a direct registration with that name also exists', async () => {
       server = new FastMCP({ name: 'test', transforms: [new NamespaceTransform('v1_')] })
       server.prompt({ name: 'greet', description: 'Greeting' }, () => 'from greet')
@@ -237,6 +310,32 @@ describe('Server — Transforms', () => {
       expect(tools.map((t) => t.name)).not.toContain('untagged_tool')
     })
 
+    it('version filter exposes only resources whose tags match the configured version', async () => {
+      server = new FastMCP({ name: 'test', transforms: [new VersionFilter('v2')] })
+      server.resource({ uri: 'res://v1', name: 'V1 resource', tags: ['v1'] }, () => 'v1')
+      server.resource({ uri: 'res://v2', name: 'V2 resource', tags: ['v2'] }, () => 'v2')
+      server.resource({ uri: 'res://untagged', name: 'Untagged' }, () => 'no tag')
+      client = await makeClient(server)
+
+      const { resources } = await client.listResources()
+      const uris = resources.map((r) => r.uri)
+      expect(uris).toContain('res://v2')
+      expect(uris).not.toContain('res://v1')
+      expect(uris).not.toContain('res://untagged')
+    })
+
+    it('version filter exposes only prompts whose tags match the configured version', async () => {
+      server = new FastMCP({ name: 'test', transforms: [new VersionFilter('v2')] })
+      server.prompt({ name: 'old_prompt', description: 'Old', tags: ['v1'] }, () => 'old')
+      server.prompt({ name: 'new_prompt', description: 'New', tags: ['v2'] }, () => 'new')
+      client = await makeClient(server)
+
+      const { prompts } = await client.listPrompts()
+      const names = prompts.map((p) => p.name)
+      expect(names).toContain('new_prompt')
+      expect(names).not.toContain('old_prompt')
+    })
+
     it('multiple servers can be mounted with different version filters to serve versioned APIs from one instance', async () => {
       const v1Server = new FastMCP({ name: 'test-v1', transforms: [new VersionFilter('v1')] })
       const v2Server = new FastMCP({ name: 'test-v2', transforms: [new VersionFilter('v2')] })
@@ -257,6 +356,60 @@ describe('Server — Transforms', () => {
 
       await v1Server.close()
       await v2Server.close()
+    })
+  })
+
+  describe('transform chain interactions', () => {
+    it('FilterTransform before NamespaceTransform: filtered items do not appear under their namespaced names', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [
+          new FilterTransform({ tools: (v) => v.name !== 'hidden' }),
+          new NamespaceTransform('ns_'),
+        ],
+      })
+      server.tool({ name: 'visible', description: 'Visible' }, () => 'yes')
+      server.tool({ name: 'hidden', description: 'Hidden' }, () => 'no')
+      client = await makeClient(server)
+
+      const { tools } = await client.listTools()
+      const names = tools.map((t) => t.name)
+      expect(names).toContain('ns_visible')
+      expect(names).not.toContain('ns_hidden')
+      expect(names).not.toContain('hidden')
+    })
+
+    it('NamespaceTransform before FilterTransform: filter predicate receives already-namespaced names', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [
+          new NamespaceTransform('ns_'),
+          new FilterTransform({ tools: (v) => !v.name.startsWith('ns_internal') }),
+        ],
+      })
+      server.tool({ name: 'public', description: 'Public' }, () => 'ok')
+      server.tool({ name: 'internal', description: 'Internal' }, () => 'hidden')
+      client = await makeClient(server)
+
+      const { tools } = await client.listTools()
+      const names = tools.map((t) => t.name)
+      expect(names).toContain('ns_public')
+      expect(names).not.toContain('ns_internal')
+    })
+
+    it('renameTool + VersionFilter: renamed tool retains its original tags for version filtering', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [renameTool('tool_v2', 'renamed_v2'), new VersionFilter('v2')],
+      })
+      server.tool({ name: 'tool_v2', description: 'V2 tool', tags: ['v2'] }, () => 'v2')
+      server.tool({ name: 'tool_v1', description: 'V1 tool', tags: ['v1'] }, () => 'v1')
+      client = await makeClient(server)
+
+      const { tools } = await client.listTools()
+      const names = tools.map((t) => t.name)
+      expect(names).toContain('renamed_v2')
+      expect(names).not.toContain('tool_v1')
     })
   })
 })
