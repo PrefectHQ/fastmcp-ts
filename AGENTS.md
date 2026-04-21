@@ -98,6 +98,8 @@ Static resources are served via `resources/list` + `resources/read`. Templates a
 
 Content types for `PromptMessage.content`: `text`, `image`, `audio`, `resource` (embedded), `resource_link`.
 
+**Tool `title`:** `ToolConfig` accepts an optional `title?: string` field (MCP 2025-03-26, from `BaseMetadataSchema`). Intended for UI display; takes precedence over `name` for human-readable labels. Passed through in `tools/list` responses. Transforms can read and rewrite `title` via `ToolView.title`.
+
 **Context (`McpContext`):** The object returned by `mcp.getContext()` during a request. Fields and methods:
 
 | Member | Description |
@@ -133,6 +135,57 @@ For HTTP, the bound address (including the OS-assigned port when `port: 0` is us
 The `stdio` transport accepts optional `stdin`/`stdout` stream overrides in `RunOptions` (defaults to `process.stdin`/`process.stdout`). This allows stream injection in tests without spawning a child process.
 
 **Package entrypoints:** Pillars are exposed as subpath entrypoints — `fastmcp-ts/server` and `fastmcp-ts/client` — so consumers only pull in what they use.
+
+**Middleware:** Registered with `mcp.use(mw)` (fluent) or via `FastMCPOptions.middleware`. The `Middleware` interface has three hook levels:
+
+- `setup?(server)` — called once per `Server` instance; use to register notification handlers. `use()` calls `setup` immediately on `_primaryServer` so handlers are active before `connect()`/`run()`. HTTP sessions also call `setup` via `_makeServer()`.
+- `onRequest?<T,R>(ctx, next)` — coarse hook that fires for every request that has no more-specific hook on that middleware instance.
+- Per-method hooks: `onCallTool`, `onListTools`, `onReadResource`, `onListResources`, `onListResourceTemplates`, `onGetPrompt`, `onListPrompts` — take precedence over `onRequest` for their specific MCP method.
+
+**Tool error vs infrastructure error:** The try/catch that converts errors to `{isError:true}` lives *outside* the middleware chain and only catches non-`McpError`. `McpError` from any middleware (rate limiting, etc.) propagates as a protocol error, not a tool result. `ErrorNormalizationMiddleware.onCallTool` explicitly re-throws `McpError` for the same reason.
+
+**Built-in middleware:**
+
+| Class | Purpose |
+|---|---|
+| `LoggingMiddleware` | Logs method, outcome, and elapsed time via a configurable emit function |
+| `CachingMiddleware(ttl, keyFn?)` | TTL response cache; default key is `method:JSON(params)`; pass `CacheKeyFn` to partition by caller identity when using per-component auth |
+| `RateLimitingMiddleware(limit, windowMs)` | Fixed-window token bucket; throws `McpError(InvalidRequest)` when exceeded |
+| `SizeLimitingMiddleware(maxBytes)` | Throws `McpError(InternalError)` when serialised response exceeds limit |
+| `ErrorNormalizationMiddleware` | `onCallTool` errors → `{isError:true}`; re-throws `McpError`; `onRequest` errors → `McpError(InternalError)` |
+| `CancellationMiddleware` | Registers `CancelledNotification` handler in `setup()`; cancels in-flight requests via `AbortController` + `Promise.race` |
+
+---
+
+**Transforms:** View-only projections applied to list responses. Components hidden by a transform (method returned `null`) are removed from list results but remain callable by their original name/URI. Registered with `mcp.transform(t)` (fluent) or via `FastMCPOptions.transforms`. Applied in registration order.
+
+**View types** (read-only snapshots passed into transform methods):
+
+| Type | Fields |
+|---|---|
+| `ToolView` | `name`, `title?`, `description`, `tags` |
+| `ResourceView` | `uri`, `name`, `tags`, `mimeType?`, `title?` |
+| `PromptView` | `name`, `description`, `tags` |
+
+**`SynthesizedTool`:** Produced by `Transform.synthesizeTools(resourceViews, promptViews)`. Fields: `name`, `title?`, `description`, `inputSchema?`, `auth?`, `timeout?`, `handler`. After synthesis, each synthesized tool is run through the `transformTool` chain (so `NamespaceTransform` renames `list_resources` → `v1_list_resources`, `FilterTransform` can hide it, etc.). The `synthesizeTools` callback receives already-filtered (disabled + auth-checked) and already-transformed views — it will not see restricted or disabled content.
+
+**Routing with transforms active:**
+
+- `CallTool`: synthesized tools checked by name first → scan registered tools through `transformTool` chain for a name match → direct registry lookup fallback (enables calling hidden tools by original name)
+- `GetPrompt`: scan registered prompts through `transformPrompt` chain first → direct registry lookup fallback
+- `ReadResource`: direct URI lookup → direct template match → scan statics through `transformResource` for a URI match → scan templates through `transformResourceTemplate` for a template match
+
+**Built-in transforms:**
+
+| Export | Purpose |
+|---|---|
+| `renameTool(original, new)` | Renames a single tool in list responses; original name still routes at call time |
+| `redescribeTool(name, desc)` | Replaces a tool's description |
+| `FilterTransform({ tools?, resources?, resourceTemplates?, prompts? })` | Hides components where predicate returns `false`; `resourceTemplates` falls back to `resources` predicate when omitted |
+| `NamespaceTransform(prefix)` | Prefixes all `name` fields — tools, resources, prompts. **Does not alter URIs** (prefixing a URI scheme like `v1_data://` violates RFC 3986 §3.1); clients read resources by their original URI |
+| `ResourcesAsTools()` | Synthesises a `list_resources` tool listing visible, transformed resource views |
+| `PromptsAsTools()` | Synthesises a `list_prompts` tool listing visible, transformed prompt views |
+| `VersionFilter(tag)` | Shows only components whose `tags` array contains the given string; components with no tags are always excluded |
 
 **Foundation:** Built on `@modelcontextprotocol/sdk` (official MCP TypeScript SDK).
 

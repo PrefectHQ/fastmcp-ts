@@ -14,8 +14,8 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 - [x] Context — ambient runtime via `AsyncLocalStorage` for logging, progress reporting, LLM sampling, user elicitation, roots, and per-session state
 - [x] Transports — stdio and HTTP (Streamable HTTP); env-var-driven transport selection (`MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`, `MCP_PATH`); `address` getter for the bound HTTP port
 - [x] Authentication — JWT validation, OAuth 2.1 with Dynamic Client Registration, OAuth proxy, and composable multi-source auth
-- [ ] Middleware — cross-cutting request/response interception with built-ins for logging, caching, rate limiting, and retries
-- [ ] Transforms — rename, filter, reshape, or type-convert components as they flow to clients
+- [x] Middleware — cross-cutting request/response interception with built-ins for logging, caching (with auth-aware key functions), rate limiting, size limiting, error normalisation, and cancellation
+- [x] Transforms — rename, filter, or reshape components in list responses; synthesise new tools from resources and prompts; built-ins for filtering, namespacing, type conversion, and version gating
 - [ ] Composition — mount and proxy servers together with namespacing and live updates
 
 ---
