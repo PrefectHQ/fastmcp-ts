@@ -74,8 +74,7 @@ describe('Zod v4', () => {
     const spy = vi.fn()
     const { client, close } = await withTool(schema, spy)
     try {
-      const result = await client.callTool({ name: 'x', arguments: { age: -1 } })
-      expect(result.isError).toBe(true)
+      await expect(client.callTool({ name: 'x', arguments: { age: -1 } })).rejects.toThrow()
       expect(spy).not.toHaveBeenCalled()
     } finally {
       await close()
@@ -124,8 +123,7 @@ describe('ArkType', () => {
     const spy = vi.fn()
     const { client, close } = await withTool(schema, spy)
     try {
-      const result = await client.callTool({ name: 'x', arguments: { value: 'not-a-number' } })
-      expect(result.isError).toBe(true)
+      await expect(client.callTool({ name: 'x', arguments: { value: 'not-a-number' } })).rejects.toThrow()
       expect(spy).not.toHaveBeenCalled()
     } finally {
       await close()
@@ -165,8 +163,7 @@ describe('Valibot', () => {
       const spy = vi.fn()
       const { client, close } = await withTool(schema, spy)
       try {
-        const result = await client.callTool({ name: 'x', arguments: { age: 'oops' } })
-        expect(result.isError).toBe(true)
+        await expect(client.callTool({ name: 'x', arguments: { age: 'oops' } })).rejects.toThrow()
         expect(spy).not.toHaveBeenCalled()
       } finally {
         await close()
@@ -290,9 +287,8 @@ describe('duck-typed .toJsonSchema() (Strategy 1 generic)', () => {
       await client.callTool({ name: 'x', arguments: { label: 'hello' } })
       expect(spy).toHaveBeenCalledOnce()
 
-      // Invalid call
-      const result = await client.callTool({ name: 'x', arguments: { label: 123 } })
-      expect(result.isError).toBe(true)
+      // Invalid call — produces a protocol-level InvalidParams error, not isError:true
+      await expect(client.callTool({ name: 'x', arguments: { label: 123 } })).rejects.toThrow()
       expect(spy).toHaveBeenCalledOnce() // not called again
     } finally {
       await close()

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod'
-import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
+import { McpError, ErrorCode, ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
 import { FastMCP, Image, File, ToolResult } from 'fastmcp-ts/server'
 import { createTestClient } from '../helpers/createTestClient'
 
@@ -274,8 +274,9 @@ describe('Server — Tools', () => {
 
       const { client, close } = await setup(mcp)
       try {
-        const result = await client.callTool({ name: 'typed', arguments: { x: 'not-a-number' } })
-        expect(result.isError).toBe(true)
+        await expect(
+          client.callTool({ name: 'typed', arguments: { x: 'not-a-number' } }),
+        ).rejects.toThrow()
         expect(handlerSpy).not.toHaveBeenCalled()
       } finally {
         await close()
@@ -289,9 +290,25 @@ describe('Server — Tools', () => {
 
       const { client, close } = await setup(mcp)
       try {
-        const result = await client.callTool({ name: 'greet', arguments: {} })
-        expect(result.isError).toBe(true)
+        await expect(
+          client.callTool({ name: 'greet', arguments: {} }),
+        ).rejects.toThrow()
         expect(handlerSpy).not.toHaveBeenCalled()
+      } finally {
+        await close()
+      }
+    })
+
+    it('invalid arguments produce an InvalidParams protocol error, not an isError tool result', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'typed', description: 'test tool', input: z.object({ x: z.string() }) }, ({ x }) => x)
+
+      const { client, close } = await setup(mcp)
+      try {
+        const err = await client.callTool({ name: 'typed', arguments: { x: 42 } }).catch((e: unknown) => e)
+        expect(err).toBeInstanceOf(McpError)
+        expect((err as McpError).code).toBe(ErrorCode.InvalidParams)
+        expect((err as McpError).message).toMatch(/Validation failed/)
       } finally {
         await close()
       }

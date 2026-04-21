@@ -295,7 +295,7 @@ export class FastMCP {
       try {
         return await contextStore.run(ctx, () =>
           runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
-            const args = tool.config.input ? await validateInput(tool.config.input, rawArgs) : rawArgs
+            const args = tool.config.input ? await validateInput(tool.config.input, rawArgs, true) : rawArgs
 
             let executePromise: Promise<unknown> = Promise.resolve(tool.handler(args))
 

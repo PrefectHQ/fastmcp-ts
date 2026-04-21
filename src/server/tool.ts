@@ -1,3 +1,4 @@
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
@@ -110,10 +111,14 @@ export async function toJsonSchema(
 export async function validateInput<S extends StandardSchemaV1>(
   schema: S,
   input: unknown,
+  throwAsProtocolError = false,
 ): Promise<StandardSchemaV1.InferOutput<S>> {
   const result = await schema['~standard'].validate(input)
   if (result.issues) {
     const messages = result.issues.map((i) => i.message).join('; ')
+    if (throwAsProtocolError) {
+      throw new McpError(ErrorCode.InvalidParams, `Validation failed: ${messages}`)
+    }
     throw new Error(`Validation failed: ${messages}`)
   }
   return result.value as StandardSchemaV1.InferOutput<S>
