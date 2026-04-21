@@ -54,6 +54,7 @@ export { OAuth, BearerAuth, ClientCredentials, InMemoryStore, FileTokenStorage }
 export type {
   McpServerLike,
   McpServerEntry,
+  McpServerValue,
   McpConfig,
   ClientTransportInput,
 } from './transports.js'
@@ -61,6 +62,9 @@ export { StdioTransport } from './transports.js'
 
 export type { ClientOptions, ClientDefaultOptions, RootInput, RootsValue } from './client.js'
 export { Client, ToolCallError } from './client.js'
+
+export type { MultiServerOptions } from './multi-server.js'
+export { MultiServerClient } from './multi-server.js'
 
 export type { Result } from './utils.js'
 export { toResult } from './utils.js'

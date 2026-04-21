@@ -28,8 +28,10 @@ import type {
   Root,
   Tool,
 } from './results.js'
-import type { ClientTransportInput } from './transports.js'
+import type { ClientTransportInput, McpConfig } from './transports.js'
 import { resolveTransport } from './transports.js'
+import type { MultiServerOptions } from './multi-server.js'
+import { MultiServerClient } from './multi-server.js'
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -229,12 +231,23 @@ export class Client implements IClient {
     return this._sdkClient !== null
   }
 
-  /** Creates a connected Client. Use with `await using` for automatic cleanup. */
+  /** Creates a connected MultiServerClient when given a multi-entry McpConfig. */
+  static async connect(input: McpConfig, options?: MultiServerOptions): Promise<MultiServerClient>
+  /** Creates a connected Client for a single-server transport. Use with `await using` for automatic cleanup. */
+  static async connect(input: ClientTransportInput, options?: ClientOptions): Promise<Client>
   static async connect(
-    input: ClientTransportInput,
-    options?: ClientOptions,
-  ): Promise<Client> {
-    const client = new Client(input, options)
+    input: ClientTransportInput | McpConfig,
+    options?: ClientOptions | MultiServerOptions,
+  ): Promise<Client | MultiServerClient> {
+    if (
+      typeof input === 'object' &&
+      input !== null &&
+      'mcpServers' in input &&
+      Object.keys((input as McpConfig).mcpServers).length > 1
+    ) {
+      return MultiServerClient.connect(input as McpConfig, options as MultiServerOptions)
+    }
+    const client = new Client(input as ClientTransportInput, options as ClientOptions)
     await client.connect()
     return client
   }

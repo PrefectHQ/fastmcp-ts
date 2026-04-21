@@ -5,7 +5,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio'
-import { OAuth, type BearerAuth, type ClientCredentials } from './auth.js'
+import { OAuth, BearerAuth, type ClientCredentials } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // McpServerLike — structural interface for in-process servers.
@@ -30,11 +30,14 @@ function isMcpServerLike(value: unknown): value is McpServerLike {
 // ---------------------------------------------------------------------------
 
 export type McpServerEntry =
-  | { url: string; headers?: Record<string, string> }
-  | { command: string; args?: string[]; env?: Record<string, string> }
+  | { url: string; headers?: Record<string, string>; auth?: BearerAuth | OAuth | ClientCredentials | string }
+  | { command: string; args?: string[]; env?: Record<string, string>; auth?: BearerAuth | OAuth | ClientCredentials | string }
+
+/** Values accepted in mcpServers: either a config object or an in-process server. */
+export type McpServerValue = McpServerEntry | McpServerLike
 
 export type McpConfig = {
-  mcpServers: Record<string, McpServerEntry>
+  mcpServers: Record<string, McpServerValue>
 }
 
 function isMcpConfig(value: unknown): value is McpConfig {
@@ -196,6 +199,50 @@ function urlToTransport(
 }
 
 // ---------------------------------------------------------------------------
+// resolveEntryTransport — resolves a single McpServerEntry to a transport.
+// Used by MultiServerClient to connect to each server independently.
+// ---------------------------------------------------------------------------
+
+export function resolveEntryTransport(
+  entry: McpServerValue,
+  auth?: BearerAuth | OAuth | ClientCredentials,
+): ResolvedTransport {
+  // In-process server (McpServerLike: has connect(transport)).
+  if (isMcpServerLike(entry)) {
+    const [serverSide, clientSide] = InMemoryTransport.createLinkedPair()
+    return {
+      transport: clientSide,
+      beforeConnect: () => entry.connect(serverSide),
+    }
+  }
+
+  const entryAuth = resolveEntryAuth(entry.auth) ?? auth
+
+  if ('url' in entry) {
+    const url = new URL(entry.url)
+    const extraHeaders = entry.headers ?? {}
+    return { transport: urlToTransport(url, entryAuth, extraHeaders) }
+  }
+
+  const cmd = entry as { command: string; args?: string[]; env?: Record<string, string> }
+  return {
+    transport: new StdioClientTransport({
+      command: cmd.command,
+      args: cmd.args,
+      env: cmd.env,
+    }),
+  }
+}
+
+function resolveEntryAuth(
+  auth: BearerAuth | OAuth | ClientCredentials | string | undefined,
+): BearerAuth | OAuth | ClientCredentials | undefined {
+  if (!auth) return undefined
+  if (typeof auth === 'string') return new BearerAuth(auth)
+  return auth
+}
+
+// ---------------------------------------------------------------------------
 // resolveTransport — internal; used by Client.connect()
 // ---------------------------------------------------------------------------
 
@@ -231,25 +278,12 @@ export function resolveTransport(
     return { transport: input as Transport }
   }
 
-  // 4. MCP config object { mcpServers: { ... } }.
+  // 4. MCP config object { mcpServers: { ... } } — use the first entry.
   if (isMcpConfig(input)) {
     const entries = Object.entries(input.mcpServers)
     if (entries.length === 0) throw new Error('mcpServers config is empty')
     const [, entry] = entries[0]!
-
-    if ('url' in entry) {
-      const url = new URL(entry.url)
-      const extraHeaders = entry.headers ?? {}
-      return { transport: urlToTransport(url, auth, extraHeaders) }
-    }
-
-    return {
-      transport: new StdioClientTransport({
-        command: entry.command,
-        args: entry.args,
-        env: entry.env,
-      }),
-    }
+    return resolveEntryTransport(entry, auth)
   }
 
   // 5. In-process server (McpServerLike: has connect(transport)).
