@@ -44,3 +44,11 @@ export type {
   TokenRefresher,
 } from './auth.js'
 export { OAuth, BearerAuth } from './auth.js'
+
+export type {
+  McpServerLike,
+  McpServerEntry,
+  McpConfig,
+  ClientTransportInput,
+} from './transports.js'
+export { StdioTransport } from './transports.js'
