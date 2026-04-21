@@ -29,6 +29,7 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 - [x] Prompts — `listPrompts()`, `getPrompt()` with argument passthrough
 - [x] Authentication — `BearerAuth` (static token), `OAuth` (async lifecycle with pluggable token storage and auto-refresh)
 - [x] Handlers — `log`, `progress` (per-request `onProgress` callback), `sampling`, and `elicitation` callbacks
+- [x] Sampling adapters — built-in `AnthropicSamplingAdapter`, `OpenAISamplingAdapter`, and `GoogleSamplingAdapter`; optional provider SDKs as peer dependencies; streaming with `onToken` callback; protocol-level tool-call forwarding (`stopReason: 'toolUse'`); `GenericSamplingAdapter` template for custom providers
 - [ ] Roots — static and dynamic filesystem context for servers
 - [ ] Multi-server — connect to N servers from a single client with automatic namespacing
 

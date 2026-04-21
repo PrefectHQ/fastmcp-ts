@@ -270,11 +270,59 @@ await client.close()     // refCount → 0, SDK closed
 | `handlers.sampling` | `SamplingHandler` | Called when the server sends `sampling/createMessage`; client must also advertise `sampling` capability |
 | `handlers.elicitation` | `ElicitationHandler` | Called when the server sends `elicitation/create`; client must advertise `elicitation` capability |
 
-The SDK client capabilities (`sampling: {}`, `elicitation: {}`, `roots: { listChanged: false }`) are included only when the corresponding handler or option is provided.
+The SDK client capabilities are included only when the corresponding handler or option is provided:
+
+| Handler / option | Advertised capability |
+|---|---|
+| `handlers.sampling` | `{ sampling: { tools: {} } }` — `tools: {}` is required so the server knows the client supports tool-call round-trips in sampling |
+| `handlers.elicitation` | `{ elicitation: {} }` |
+| `roots` | `{ roots: { listChanged: false } }` |
 
 **Roots:** A `roots?: string[]` option on `ClientOptions` registers a `roots/list` request handler that returns the provided URIs. Dynamic roots (callback-based) are not yet implemented.
 
 **`autoInitialize` option:** Stored in `ClientOptions` but currently has no effect — the underlying SDK's `connect()` always performs the MCP initialize handshake. Kept in the API for a future SDK path that supports deferred initialization.
+
+---
+
+**Sampling adapters:** Built-in `SamplingHandler` implementations for the three major providers. All adapters live in `src/client/sampling/` and are exported from `fastmcp-ts/client`.
+
+**Core types:**
+
+| Type | Description |
+|---|---|
+| `AnySamplingResult` | `CreateMessageResult \| CreateMessageResultWithTools` — a text-only or tool-use response |
+| `SamplingAdapter` | Interface with one method: `asHandler(): SamplingHandler` |
+| `ModelSelector` | `string \| ((prefs: ModelPreferences \| undefined) => string)` — static model name or a function |
+| `OnTokenCallback` | `(token: string) => void` — fires for each text delta during streaming |
+| `SamplingAdapterOptions` | `{ modelSelector?, onToken? }` — shared base options for all adapters |
+
+**`GenericSamplingAdapter`** — wraps any async `GenericCompletionFn`. Handles model resolution and `maxTokens` defaulting (1024) but does no message format conversion — for provider-agnostic or custom integrations.
+
+**`AnthropicSamplingAdapter`** — uses `client.messages.stream()` + `stream.on('text', cb)` + `stream.finalMessage()`. Key translations:
+- `inputSchema` → `input_schema` (field rename required by Anthropic SDK)
+- `toolChoice: 'required'` → `{ type: 'any' }`
+- `end_turn` / `tool_use` / `max_tokens` / `stop_sequence` → `endTurn` / `toolUse` / `maxTokens` / `stopSequence`
+- Default model: `claude-opus-4-5`
+
+**`OpenAISamplingAdapter`** — uses `client.chat.completions.stream()` + `stream.on('content', cb)` + `stream.finalChatCompletion()`. Key translations:
+- **Critical:** `maxTokens` → `max_completion_tokens` (NOT `max_tokens`) — the older field is silently ignored by recent OpenAI models
+- `systemPrompt` injected as first message `{ role: 'system', content: ... }`
+- Image content → `{ type: 'image_url', image_url: { url: 'data:<mimeType>;base64,<data>' } }`
+- `tool_use` in messages → `tool_calls` array on the assistant message
+- `finish_reason: 'tool_calls'` → `stopReason: 'toolUse'` with `ToolUseContent[]`
+- Default model: `gpt-4o`
+
+**`GoogleSamplingAdapter`** — uses `client.models.generateContentStream({ model, contents, config })`. Key translations:
+- All Gemini-specific options go inside `config`: `maxOutputTokens`, `temperature`, `stopSequences`, `systemInstruction`, `tools`, `toolConfig`
+- **`pruneTitle()`** strips all `title` fields from tool `inputSchema` recursively — Gemini rejects schemas with `title` fields with a `MALFORMED_FUNCTION_CALL` error
+- MCP role `'assistant'` → Gemini role `'model'`
+- `tool_result` messages require a name lookup via `buildToolNameMap()` (maps `toolUseId` → tool name from prior `tool_use` messages)
+- `toolChoice: 'required'` → `{ functionCallingConfig: { mode: 'ANY' } }`; `'none'` → omits `tools` entirely
+- `functionCalls` in response → `stopReason: 'toolUse'` with `ToolUseContent[]`
+- `finishReason: 'MAX_TOKENS'` → `stopReason: 'maxTokens'`
+- Default model: `gemini-2.0-flash`
+
+Provider SDKs are optional peer dependencies (`@anthropic-ai/sdk >=0.39`, `openai >=4`, `@google/genai >=0.7`). Adapters import their SDK types with `import type` so no runtime error occurs if a peer is absent.
 
 ---
 
