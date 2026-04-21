@@ -240,7 +240,8 @@ export class FastMCP {
           ).filter((t): t is RegisteredTool => t !== null)
 
           const transformedTools = this._applyTransformsToTools(allVisible)
-          const synthesized = this._buildSynthesizedTools()
+          const { resourceViews, promptViews } = await this._getVisibleViews(token)
+          const synthesized = this._buildSynthesizedTools(resourceViews, promptViews)
 
           type ListEntry =
             | { kind: 'registered'; name: string; description: string; config: ToolConfig }
@@ -310,7 +311,8 @@ export class FastMCP {
       const token = toAccessToken(extra.authInfo)
 
       // Check synthesized tools first
-      const synthesizedList = this._buildSynthesizedTools()
+      const { resourceViews, promptViews } = await this._getVisibleViews(token)
+      const synthesizedList = this._buildSynthesizedTools(resourceViews, promptViews)
       const synthTool = synthesizedList.find((s) => s.name === requestedName)
       if (synthTool) {
         const ctx = createContext(
@@ -631,10 +633,8 @@ export class FastMCP {
 
     server.setRequestHandler(GetPromptRequestSchema, async (req, extra) => {
       const requestedName = req.params.name
-      let prompt: RegisteredPrompt | undefined = this._prompts.get(requestedName)
-
-      // Try transformed name lookup if direct lookup failed
-      if (!prompt && this._transforms.length > 0) {
+      let prompt: RegisteredPrompt | undefined
+      if (this._transforms.length > 0) {
         for (const p of this._prompts.values()) {
           const view = applyTransformChain<PromptView>(
             { name: p.config.name, description: p.config.description, tags: p.config.tags ?? [] },
@@ -644,6 +644,7 @@ export class FastMCP {
           if (view && view.name === requestedName) { prompt = p; break }
         }
       }
+      if (!prompt) prompt = this._prompts.get(requestedName)
 
       if (!prompt || prompt.config.disabled) {
         throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${requestedName}"`)
@@ -814,24 +815,73 @@ export class FastMCP {
     })
   }
 
-  private _buildSynthesizedTools(): SynthesizedTool[] {
+  private _buildSynthesizedTools(resourceViews: ResourceView[], promptViews: PromptView[]): SynthesizedTool[] {
     if (this._transforms.length === 0) return []
+    const raw = this._transforms.flatMap((t) => t.synthesizeTools?.(resourceViews, promptViews) ?? [])
+    return raw.flatMap((s) => {
+      const view = applyTransformChain<ToolView>(
+        { name: s.name, description: s.description, tags: [] },
+        this._transforms,
+        (t, v) => t.transformTool?.(v),
+      )
+      return view ? [{ ...s, name: view.name, description: view.description }] : []
+    })
+  }
+
+  private async _getVisibleViews(
+    token: AccessToken | undefined,
+  ): Promise<{ resourceViews: ResourceView[]; promptViews: PromptView[] }> {
+    const visibleStatic = (
+      await Promise.all(
+        [...this._staticResources.values()].map(async (r) => {
+          if (r.config.disabled) return null
+          if (!r.config.auth) return r
+          if (!token) return null
+          try { await r.config.auth(token); return r } catch { return null }
+        }),
+      )
+    ).filter((r): r is RegisteredResource => r !== null)
+
+    const visibleTemplates = (
+      await Promise.all(
+        [...this._templateResources.values()].map(async (r) => {
+          if (r.config.disabled) return null
+          if (!r.config.auth) return r
+          if (!token) return null
+          try { await r.config.auth(token); return r } catch { return null }
+        }),
+      )
+    ).filter((r): r is RegisteredResource => r !== null)
+
+    const visiblePrompts = (
+      await Promise.all(
+        [...this._prompts.values()].map(async (p) => {
+          if (p.config.disabled) return null
+          if (!p.config.auth) return p
+          if (!token) return null
+          try { await p.config.auth(token); return p } catch { return null }
+        }),
+      )
+    ).filter((p): p is RegisteredPrompt => p !== null)
+
     const resourceViews: ResourceView[] = [
-      ...[...this._staticResources.values()],
-      ...[...this._templateResources.values()],
+      ...this._applyTransformsToResources(visibleStatic),
+      ...this._applyTransformsToResourceTemplates(visibleTemplates),
     ].map((r) => ({
-      uri: r.config.uri,
-      name: r.config.name ?? r.config.uri,
+      uri: r.uri,
+      name: r.name,
       tags: r.config.tags ?? [],
       mimeType: r.config.mimeType,
       title: r.config.title,
     }))
-    const promptViews: PromptView[] = [...this._prompts.values()].map((p) => ({
-      name: p.config.name,
-      description: p.config.description,
+
+    const promptViews: PromptView[] = this._applyTransformsToPrompts(visiblePrompts).map((p) => ({
+      name: p.name,
+      description: p.description,
       tags: p.config.tags ?? [],
     }))
-    return this._transforms.flatMap((t) => t.synthesizeTools?.(resourceViews, promptViews) ?? [])
+
+    return { resourceViews, promptViews }
   }
 
   /**

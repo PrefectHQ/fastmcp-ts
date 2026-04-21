@@ -121,6 +121,53 @@ describe('Server — Transforms', () => {
       const listed = JSON.parse((result.content as Array<{ type: string; text: string }>)[0].text) as unknown[]
       expect(listed).toHaveLength(1)
     })
+
+    it('ResourcesAsTools combined with NamespaceTransform reports transformed URIs', async () => {
+      server = new FastMCP({ name: 'test', transforms: [new NamespaceTransform('v1_'), new ResourcesAsTools()] })
+      server.resource({ uri: 'data://items', name: 'Items' }, () => 'items')
+      client = await makeClient(server)
+
+      const result = await client.callTool({ name: 'v1_list_resources', arguments: {} })
+      const listed = JSON.parse((result.content as Array<{ type: string; text: string }>)[0].text) as Array<{ uri: string }>
+      expect(listed[0].uri).toBe('v1_data://items')
+    })
+
+    it('ResourcesAsTools does not expose disabled resources', async () => {
+      server = new FastMCP({ name: 'test', transforms: [new ResourcesAsTools()] })
+      server.resource({ uri: 'public://items', name: 'Public' }, () => 'public')
+      server.resource({ uri: 'private://items', name: 'Private', disabled: true }, () => 'private')
+      client = await makeClient(server)
+
+      const result = await client.callTool({ name: 'list_resources', arguments: {} })
+      const listed = JSON.parse((result.content as Array<{ type: string; text: string }>)[0].text) as Array<{ uri: string }>
+      expect(listed).toHaveLength(1)
+      expect(listed[0].uri).toBe('public://items')
+    })
+
+    it('PromptsAsTools combined with NamespaceTransform creates a namespaced list_prompts tool', async () => {
+      server = new FastMCP({ name: 'test', transforms: [new NamespaceTransform('v1_'), new PromptsAsTools()] })
+      server.prompt({ name: 'greet', description: 'Greet' }, () => 'hello')
+      client = await makeClient(server)
+
+      const { tools } = await client.listTools()
+      expect(tools.map((t) => t.name)).toContain('v1_list_prompts')
+      expect(tools.map((t) => t.name)).not.toContain('list_prompts')
+    })
+
+    it('FilterTransform can hide a synthesized tool', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [
+          new ResourcesAsTools(),
+          new FilterTransform({ tools: (v) => v.name !== 'list_resources' }),
+        ],
+      })
+      server.resource({ uri: 'data://items', name: 'Items' }, () => 'items')
+      client = await makeClient(server)
+
+      const { tools } = await client.listTools()
+      expect(tools.map((t) => t.name)).not.toContain('list_resources')
+    })
   })
 
   describe('namespacing', () => {
@@ -153,6 +200,16 @@ describe('Server — Transforms', () => {
 
       const promptResult = await client.getPrompt({ name: 'v1_greet' })
       expect(promptResult.messages[0].content).toEqual({ type: 'text', text: 'hello friend' })
+    })
+
+    it('getPrompt resolves a transformed name even when a direct registration with that name also exists', async () => {
+      server = new FastMCP({ name: 'test', transforms: [new NamespaceTransform('v1_')] })
+      server.prompt({ name: 'greet', description: 'Greeting' }, () => 'from greet')
+      server.prompt({ name: 'v1_greet', description: 'Direct' }, () => 'from v1_greet directly')
+      client = await makeClient(server)
+
+      const result = await client.getPrompt({ name: 'v1_greet' })
+      expect(result.messages[0].content).toEqual({ type: 'text', text: 'from greet' })
     })
   })
 
