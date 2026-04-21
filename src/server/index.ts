@@ -21,7 +21,7 @@ export type {
   ElicitationResult,
   Root,
 } from './context'
-export type { Middleware, MiddlewareContext, Next } from './middleware'
+export type { Middleware, MiddlewareContext, Next, CacheKeyFn } from './middleware'
 export {
   LoggingMiddleware,
   CachingMiddleware,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { FastMCP } from 'fastmcp-ts/server'
+import { FastMCP, staticTokenVerifier, requireScopes } from 'fastmcp-ts/server'
 import {
   LoggingMiddleware,
   CachingMiddleware,
@@ -10,6 +10,7 @@ import {
 } from 'fastmcp-ts/server'
 import type { Middleware, MiddlewareContext, Next } from 'fastmcp-ts/server'
 import { createTestClient } from '../helpers/createTestClient'
+import { connectHttpClient } from '../helpers/http'
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
@@ -187,6 +188,53 @@ describe('Server — Middleware', () => {
         expect(r1.content).toEqual(r2.content)
       } finally {
         await close()
+      }
+    })
+
+    it('caching middleware with a keyFn isolates cached results per caller identity', async () => {
+      // The default cache key contains no auth info, so two sessions with different permissions
+      // would share cached list results. A keyFn scoped to clientId fixes this.
+      // This test requires the HTTP transport because extra.authInfo (and therefore
+      // ctx.mcpContext.auth) is only populated on the bearer-auth path.
+      const adminToken = 'admin-token'
+      const userToken = 'user-token'
+
+      const mcp = new FastMCP({
+        name: 'test',
+        auth: staticTokenVerifier({
+          [adminToken]: { token: adminToken, clientId: 'admin', scopes: ['admin', 'read'], claims: {} },
+          [userToken]: { token: userToken, clientId: 'user', scopes: ['read'], claims: {} },
+        }),
+      })
+
+      // Public tool — visible to everyone
+      mcp.tool({ name: 'public', description: 'public tool' }, () => 'ok')
+      // Admin-only tool — filtered out for the user token
+      mcp.tool({ name: 'admin-only', description: 'admin tool', auth: requireScopes('admin') }, () => 'ok')
+
+      // keyFn partitions by clientId so each identity gets its own cache bucket
+      mcp.use(new CachingMiddleware(60_000, (ctx) =>
+        `${ctx.method}:${ctx.mcpContext.auth?.clientId ?? ''}:${JSON.stringify(ctx.request)}`
+      ))
+
+      await mcp.run({ transport: 'http', port: 0 })
+      const url = new URL(`http://127.0.0.1:${mcp.address!.port}${mcp.address!.path}`)
+
+      const { client: adminClient, close: closeAdmin } = await connectHttpClient(url, adminToken)
+      const { client: userClient, close: closeUser } = await connectHttpClient(url, userToken)
+      try {
+        // Admin sees both tools; result is cached under the admin key
+        const adminList = await adminClient.listTools()
+        expect(adminList.tools.map((t) => t.name)).toContain('admin-only')
+
+        // User must get their own filtered list, NOT the admin's cached result
+        const userList = await userClient.listTools()
+        expect(userList.tools.map((t) => t.name)).not.toContain('admin-only')
+        expect(userList.tools.map((t) => t.name)).toContain('public')
+      } finally {
+        await closeAdmin()
+        await closeUser()
+        await mcp.close()
       }
     })
 

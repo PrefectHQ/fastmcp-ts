@@ -104,14 +104,39 @@ export class LoggingMiddleware implements Middleware {
   }
 }
 
-/** TTL-based response cache keyed on method + serialised request params. */
+/**
+ * Custom cache key function. Receives the full middleware context so callers can
+ * incorporate auth identity or any other dimension into the key.
+ *
+ * **Required when using per-component auth checks.** The default key is
+ * `"method:JSON(params)"`, which contains no auth information. If auth-filtered
+ * list results (tools, resources, prompts) are cached with the default key, one
+ * session's filtered results can be served to a session with different permissions.
+ * Pass a `keyFn` that includes the caller identity, e.g.:
+ *
+ * ```ts
+ * new CachingMiddleware(60_000, (ctx) =>
+ *   `${ctx.method}:${ctx.mcpContext.auth?.clientId ?? ''}:${JSON.stringify(ctx.request)}`
+ * )
+ * ```
+ */
+export type CacheKeyFn = (ctx: MiddlewareContext) => string
+
+/** TTL-based response cache keyed on method + serialised request params by default.
+ *  Pass a custom `keyFn` when using per-component auth so cached results are
+ *  partitioned by caller identity. */
 export class CachingMiddleware implements Middleware {
   private readonly _cache = new Map<string, { value: unknown; expiresAt: number }>()
 
-  constructor(readonly ttl: number = 60_000) {}
+  constructor(
+    readonly ttl: number = 60_000,
+    private readonly _keyFn?: CacheKeyFn,
+  ) {}
 
   async onRequest<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
-    const key = `${ctx.method}:${JSON.stringify(ctx.request)}`
+    const key = this._keyFn
+      ? this._keyFn(ctx as MiddlewareContext)
+      : `${ctx.method}:${JSON.stringify(ctx.request)}`
     const entry = this._cache.get(key)
     if (entry && entry.expiresAt > Date.now()) return entry.value as R
     const result = await next()
