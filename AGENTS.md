@@ -248,10 +248,12 @@ await client.close()     // refCount → 0, SDK closed
 | `StdioTransport` instance | `StdioClientTransport` wrapping the subprocess |
 | String URL | `StreamableHTTPClientTransport`; falls back to `SSEClientTransport` on 4xx |
 | SDK `Transport` duck-type (has `.start`) | Passed through as-is |
-| `McpConfig` (has `.mcpServers`) | First server entry resolved recursively |
+| `McpConfig` (has `.mcpServers`) | First entry resolved via `resolveEntryTransport()`; single-entry configs go through the same helper as multi-server |
 | `McpServerLike` (has `.connect`) | `InMemoryTransport` pair; `beforeConnect` connects the server side |
 
 `McpServerLike` is a structural interface — it matches `FastMCP` without importing from the server module, avoiding a circular dependency.
+
+`McpServerValue = McpServerEntry | McpServerLike` — the values in `mcpServers` accept either a config object (`{ url }` or `{ command }`) or a live in-process server instance. `resolveEntryTransport(entry, auth?)` is the shared helper used by both `resolveTransport` (single-server McpConfig path) and `MultiServerClient` (per-server connections).
 
 **Auth injection:** `BearerAuth` injects a static `Authorization: Bearer <token>` header into `requestInit.headers` (and `eventSourceInit.headers` for SSE). `OAuth` wraps the transport's `fetch` with an async function that resolves the current token and refreshes it when it is within `refreshBufferSeconds` of expiry. Concurrent refresh calls are coalesced to a single HTTP request.
 
@@ -278,7 +280,7 @@ The SDK client capabilities are included only when the corresponding handler or 
 | `handlers.elicitation` | `{ elicitation: {} }` |
 | `roots` | `{ roots: { listChanged: false } }` |
 
-**Roots:** A `roots?: string[]` option on `ClientOptions` registers a `roots/list` request handler that returns the provided URIs. Dynamic roots (callback-based) are not yet implemented.
+**Roots:** `ClientOptions.roots` accepts `string[]` (plain URIs), `Root[]` (objects with `uri` and optional `name`), or an async callback `() => string[] | Root[] | Promise<...>` for dynamic roots. URIs without a `file://` scheme are normalised automatically. `client.notifyRootsChanged()` sends `notifications/roots/list_changed` to the server. The advertised capability includes `listChanged: true` only when a callback is provided (static roots never change).
 
 **`autoInitialize` option:** Stored in `ClientOptions` but currently has no effect — the underlying SDK's `connect()` always performs the MCP initialize handshake. Kept in the API for a future SDK path that supports deferred initialization.
 
@@ -323,6 +325,43 @@ The SDK client capabilities are included only when the corresponding handler or 
 - Default model: `gemini-2.0-flash`
 
 Provider SDKs are optional peer dependencies (`@anthropic-ai/sdk >=0.39`, `openai >=4`, `@google/genai >=0.7`). Adapters import their SDK types with `import type` so no runtime error occurs if a peer is absent.
+
+---
+
+## MultiServerClient
+
+**Design:** Implements `IClient` by holding a `Map<serverName, SdkClient>` — one underlying SDK client per named server in the `McpConfig`. Parallel connect and parallel close. All list operations aggregate across every server; all routed operations dispatch to exactly one server.
+
+**DX entry point:** `Client.connect(config)` is overloaded — when given a `McpConfig` with more than one entry it returns a `MultiServerClient` directly. Single-entry configs continue to return a `Client`. Users import only `Client` for either case:
+
+```typescript
+const multi = await Client.connect({
+  mcpServers: {
+    github: { url: 'https://github-mcp.example.com' },
+    jira:   { command: 'npx', args: ['jira-mcp'] },
+  },
+})
+// TypeScript infers: MultiServerClient
+const tools = await multi.listTools()  // ['github_list_repos', 'jira_create_issue', ...]
+await multi.callTool('github_list_repos', { org: 'PrefectHQ' })
+```
+
+**Namespacing rules:**
+- Tools: `${serverName}_${toolName}` — e.g. `github_search`
+- Prompts: `${serverName}_${promptName}`
+- Resources: display `name` prefixed the same way; **URIs are never altered** (same reasoning as `NamespaceTransform` — prefixing a scheme violates RFC 3986 §3.1)
+
+**Resource routing:** `listResources()` and `listResourceTemplates()` populate an internal `Map<uri, serverName>`. `readResource(uri)` looks up that map for an O(1) dispatch. If the map is empty (i.e. `listResources()` was never called), it falls back to trying each server in order and returning the first success. Throws with a clear message if the URI is not found on any server.
+
+**Tool/prompt routing:** `callTool(namespacedName, ...)` and `getPrompt(namespacedName, ...)` split on the first `_` to extract `serverName` and `localName`, then dispatch to the matching `SdkClient`. Throws with the list of known servers if the prefix is unrecognised.
+
+**Per-server auth:** `McpServerEntry` accepts an `auth?` field (`BearerAuth | OAuth | ClientCredentials | string`). `resolveEntryTransport` resolves per-entry auth first, falling back to any auth passed at the `MultiServerClient` level.
+
+**Shared handlers:** `handlers.log`, `handlers.sampling`, and `handlers.elicitation` are registered on every sub-client so messages from any server reach the same handler. The sampling capability is advertised to all servers when the handler is provided.
+
+**Connect failure semantics:** If any server fails `connect()`, all connections that succeeded are closed and the error is re-thrown. No partial-connected state is observable.
+
+**`resolveEntryTransport(entry, auth?)`:** Exported from `transports.ts`. Handles all three entry types — `McpServerLike` (in-process via `InMemoryTransport` pair), `{ url }` (HTTP/SSE), and `{ command }` (stdio subprocess). Both `resolveTransport` (single-server McpConfig path) and `MultiServerClient._doConnect()` call it.
 
 ---
 
