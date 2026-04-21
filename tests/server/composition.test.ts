@@ -155,6 +155,36 @@ describe('Server — Composition', () => {
       parent.mount(childA)
       expect(() => parent.mount(childB)).toThrow('Tool name collision on mount: "search"')
     })
+
+    it('mounting two children with the same resource URI and no prefix throws a collision error', () => {
+      const childA = track(new FastMCP({ name: 'a' }))
+      childA.resource({ uri: 'memo://data', name: 'data' }, () => 'a')
+
+      const childB = track(new FastMCP({ name: 'b' }))
+      childB.resource({ uri: 'memo://data', name: 'data' }, () => 'b')
+
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(childA)
+      expect(() => parent.mount(childB)).toThrow('Resource URI collision on mount: "memo://data"')
+    })
+
+    it('a tool added to a grandchild after all mounts are in place propagates to the grandparent', async () => {
+      const grandchild = track(new FastMCP({ name: 'grandchild' }))
+      const child = track(new FastMCP({ name: 'child' }))
+      const parent = track(new FastMCP({ name: 'parent' }))
+
+      child.mount(grandchild)
+      parent.mount(child)
+
+      grandchild.tool({ name: 'late_deep', description: 'added late to grandchild' }, () => 'deep')
+
+      const client = await trackedClient(parent)
+      const { tools } = await client.listTools()
+      expect(tools.map((t) => t.name)).toContain('late_deep')
+
+      const result = await client.callTool({ name: 'late_deep', arguments: {} })
+      expect(result.content).toEqual([{ type: 'text', text: 'deep' }])
+    })
   })
 
   describe('namespacing', () => {
@@ -400,7 +430,22 @@ describe('Server — Composition', () => {
       expect(tools.map((t) => t.name)).toContain('ping')
     })
 
-    it.todo('a subprocess server can be wrapped as a proxy and mounted')
+    it('a subprocess stdio server can be wrapped as a proxy and mounted', async () => {
+      const { fileURLToPath } = await import('url')
+      const { join, dirname } = await import('path')
+      const fixturePath = join(dirname(fileURLToPath(import.meta.url)), '../helpers/stdio-server.mjs')
+
+      const proxy = track(await createProxy({ type: 'stdio', command: 'node', args: [fixturePath] }))
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(proxy)
+
+      const client = await trackedClient(parent)
+      const { tools } = await client.listTools()
+      expect(tools.map((t) => t.name)).toContain('greet')
+
+      const result = await client.callTool({ name: 'greet', arguments: {} })
+      expect(result.content).toEqual([{ type: 'text', text: 'hello from stdio' }])
+    })
 
     it('tools on the proxied server are callable via the parent', async () => {
       const remote = track(new FastMCP({ name: 'remote' }))
@@ -448,6 +493,50 @@ describe('Server — Composition', () => {
       const client = await trackedClient(parent)
       const result = await client.getPrompt({ name: 'hello' })
       expect(result.messages[0]).toMatchObject({ role: 'user', content: { type: 'text', text: 'hello from remote' } })
+    })
+
+    it('template resources on a proxied server are listed and readable via the parent', async () => {
+      const remote = track(new FastMCP({ name: 'remote' }))
+      remote.resource(
+        { uri: 'memo://notes/{id}', name: 'note' },
+        ({ id }: { id: string }) => `note ${id}`,
+      )
+      await remote.run({ transport: 'http', port: 0 })
+
+      const port = remote.address!.port
+      const proxy = track(await createProxy({ type: 'http', url: `http://127.0.0.1:${port}/mcp` }))
+
+      const parent = track(new FastMCP({ name: 'parent' }))
+      parent.mount(proxy)
+
+      const client = await trackedClient(parent)
+      const { resourceTemplates } = await client.listResourceTemplates()
+      expect(resourceTemplates.map((r) => r.uriTemplate)).toContain('memo://notes/{id}')
+
+      const result = await client.readResource({ uri: 'memo://notes/42' })
+      expect(result.contents[0]).toMatchObject({ text: 'note 42' })
+    })
+
+    it('tools added to the remote after proxy creation are not immediately visible (snapshot is point-in-time)', async () => {
+      const remote = track(new FastMCP({ name: 'remote' }))
+      remote.tool({ name: 'original', description: 'original' }, () => 'ok')
+      await remote.run({ transport: 'http', port: 0 })
+
+      const port = remote.address!.port
+      // cacheTtl: 0 disables TTL-based lazy resync so we can observe the snapshot before any resync
+      const proxy = track(await createProxy({ type: 'http', url: `http://127.0.0.1:${port}/mcp`, cacheTtl: 0 }))
+
+      // Verify initial snapshot contains what was there at creation time
+      const proxyClient = await trackedClient(proxy)
+      const { tools: initial } = await proxyClient.listTools()
+      expect(initial.map((t) => t.name)).toContain('original')
+
+      // Add a tool to remote AFTER proxy was created and synced
+      remote.tool({ name: 'added_later', description: 'added after sync' }, () => 'late')
+
+      // Without waiting for any async notification round-trip, proxy still shows the old snapshot
+      const { tools: snapshot } = await proxyClient.listTools()
+      expect(snapshot.map((t) => t.name)).not.toContain('added_later')
     })
 
     it('closing the parent closes owned proxy connections', async () => {

@@ -46,9 +46,21 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 
 ## CLI
 
-- [ ] `list` — inspect a server's tools, resources, and prompts
-- [ ] `call` — invoke tools from the command line with automatic type coercion
-- [ ] `discover` — find locally configured MCP servers (Claude Desktop, Claude Code, Cursor, etc.)
+- [ ] `version` — display fastmcp-ts version, MCP SDK version, Node version, and platform
+- [ ] `run` — start a FastMCP server from a file path (`server.ts`, `server.ts:app`) or URL; `--transport`, `--host`, `--port`, `--path` flags; `--reload` for file-watching auto-restart in development
+- [ ] `inspect` — start a server from a file spec and report its tools, resources, and prompts; `--format` (text or JSON); `--output` to write a JSON report to disk
+- [ ] `list` — connect to a running server and list its components; `--resources` and `--prompts` to include those types; `--input-schema`/`--output-schema` to print full schemas; `--json` for machine-readable output; `--auth` for bearer token or OAuth; `--command` to spawn a stdio server inline
+- [ ] `call` — invoke a tool, read a resource, or get a prompt via `target key=value …` syntax; `--input-json` to supply arguments as a JSON string; `--json` for raw output; `--auth`; fuzzy name matching with suggestions on mismatch; `--command` for stdio servers
+- [ ] `discover` — find locally configured MCP servers; sources: `claude-desktop`, `claude-code`, `cursor`, `gemini`, `goose`, `project` (`mcp.json` in cwd); `--source` to filter; `--json` for machine-readable output
+- [ ] `install` — install a server into editor/client configs
+  - [ ] `install claude-code` — write server entry to `~/.claude.json`
+  - [ ] `install claude-desktop` — write server entry to `claude_desktop_config.json`
+  - [ ] `install cursor` — write server entry to `.cursor/mcp.json`
+  - [ ] `install gemini` — write server entry to `~/.gemini/settings.json`
+  - [ ] `install goose` — write server entry to `~/.config/goose/config.yaml`
+  - [ ] `install mcp-json` — write server entry to a local `mcp.json` file
+- [ ] `dev` — development utilities
+  - [ ] `dev inspector` — run a server and open the MCP Inspector UI; `--ui-port`, `--server-port`; file-watching auto-reload enabled by default
 
 ---
 

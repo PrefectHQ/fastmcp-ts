@@ -972,9 +972,13 @@ export class FastMCP {
   private _mirrorResource(child: FastMCP, resource: RegisteredResource, prefix?: string): void {
     const name = resource.config.name ?? resource.config.uri
     const originalUri = resource.config.uri
+    const targetUri = prefix ? prefixResourceUri(originalUri, prefix) : originalUri
+    if (this._staticResources.has(targetUri) || this._templateResources.has(targetUri)) {
+      throw new Error(`Resource URI collision on mount: "${targetUri}" is already registered`)
+    }
     const forwardedConfig: ResourceConfig = {
       ...resource.config,
-      uri: prefix ? prefixResourceUri(originalUri, prefix) : originalUri,
+      uri: targetUri,
       name: prefix ? `${prefix}_${name}` : name,
     }
     // Return the raw handler result so the parent's ReadResource handler can call
