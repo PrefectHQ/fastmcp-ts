@@ -129,7 +129,7 @@ describe('resolveTransport', () => {
     })
 
     it('OAuth is accepted without throwing', () => {
-      const auth = new OAuth({ serverUrl: 'http://localhost/mcp' })
+      const auth = new OAuth({ onRedirect: () => {} })
       expect(() => resolveTransport('http://localhost/mcp', auth)).not.toThrow()
     })
   })

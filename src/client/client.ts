@@ -1,4 +1,5 @@
 import { Client as SdkClient } from '@modelcontextprotocol/sdk/client'
+import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import {
   CompatibilityCallToolResultSchema,
   CreateMessageRequestSchema,
@@ -8,8 +9,8 @@ import {
 } from '@modelcontextprotocol/sdk/types'
 import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol'
 
-import { BearerAuth } from './auth.js'
-import type { ClientCredentials, OAuth } from './auth.js'
+import { BearerAuth, OAuth } from './auth.js'
+import type { ClientCredentials } from './auth.js'
 import type { ClientHandlers, ProgressHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
 import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
@@ -138,11 +139,59 @@ export class Client implements IClient {
 
     const { transport, beforeConnect } = resolveTransport(this._input, this._auth)
 
+    // Bind the server URL into the OAuth provider before the SDK transport
+    // reads clientMetadata or tokens() so storage keys are properly namespaced.
+    if (this._auth instanceof OAuth) {
+      const serverUrl = this._extractServerUrl()
+      if (serverUrl) this._auth._bind(serverUrl)
+    }
+
     if (beforeConnect) await beforeConnect()
 
-    await sdkClient.connect(transport)
+    try {
+      await sdkClient.connect(transport)
+    } catch (err) {
+      if (err instanceof UnauthorizedError && this._auth instanceof OAuth) {
+        // The SDK opened the browser and is waiting for the user to authorize.
+        // Wait for the callback server to receive the code, then finish auth
+        // and retry the connection.
+        const code = await this._auth.waitForCallback()
+        if (
+          'finishAuth' in transport &&
+          typeof (transport as Record<string, unknown>).finishAuth === 'function'
+        ) {
+          await (transport as { finishAuth(code: string): Promise<void> }).finishAuth(
+            code,
+          )
+        }
+        await sdkClient.connect(transport)
+      } else {
+        throw err
+      }
+    }
 
     this._sdkClient = sdkClient
+  }
+
+  private _extractServerUrl(): string | undefined {
+    const input = this._input
+    if (typeof input === 'string') return input
+    if (
+      typeof input === 'object' &&
+      input !== null &&
+      'mcpServers' in input
+    ) {
+      const entries = Object.entries(
+        (input as { mcpServers: Record<string, { url?: string }> }).mcpServers,
+      )
+      if (entries.length > 0) {
+        const [, entry] = entries[0]!
+        if (entry && 'url' in entry && typeof entry.url === 'string') {
+          return entry.url
+        }
+      }
+    }
+    return undefined
   }
 
   async close(): Promise<void> {

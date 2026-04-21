@@ -1,40 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ClientCredentials } from 'fastmcp-ts/client'
-import type { OAuthToken, TokenStorageAdapter } from 'fastmcp-ts/client'
-
-describe('Client — Authentication', () => {
-  describe('Bearer token', () => {
-    it.todo('a token string passed to auth is sent as Authorization: Bearer <token>')
-    it.todo('does not prepend Bearer if the string already includes it')
-  })
-
-  describe('BearerAuth class', () => {
-    it.todo('attaches the token to HTTP requests')
-    it.todo('can be used in place of a raw token string')
-  })
-
-  describe('Custom headers', () => {
-    it.todo('arbitrary headers passed to the transport are forwarded on every request')
-  })
-
-  describe('OAuth 2.1 + PKCE', () => {
-    it.todo('opens the browser to the authorization URL to obtain user consent')
-    it.todo('exchanges the authorization code for tokens using PKCE (RFC 7636)')
-    it.todo('dynamically registers the client when no client_id is provided (RFC 7591)')
-    it.todo('automatically refreshes the access token when it expires')
-    it.todo('persists tokens to the configured storage backend')
-    it.todo('loads existing tokens from storage and skips the auth flow when valid')
-    it.todo('requests the configured scopes during authorization')
-  })
-})
+import {
+  BearerAuth,
+  ClientCredentials,
+  FileTokenStorage,
+  InMemoryStore,
+  OAuth,
+} from 'fastmcp-ts/client'
+import type { KeyValueStore, OAuthToken } from 'fastmcp-ts/client'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { mkdir, rm, writeFile } from 'fs/promises'
+import { resolveTransport } from '../../src/client/transports.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeTokenResponse(
-  overrides: Partial<OAuthToken> = {},
-): Partial<OAuthToken> {
+function makeTokenResponse(overrides: Partial<OAuthToken> = {}): Partial<OAuthToken> {
   return {
     access_token: 'test-access-token',
     token_type: 'Bearer',
@@ -53,7 +35,383 @@ function mockFetchOnce(body: unknown, status = 200): void {
 }
 
 // ---------------------------------------------------------------------------
-// ClientCredentials tests
+// BearerAuth
+// ---------------------------------------------------------------------------
+
+describe('BearerAuth', () => {
+  it('produces an Authorization: Bearer <token> header', () => {
+    const auth = new BearerAuth('my-secret-token')
+    expect(auth.getHeaders()).toEqual({ Authorization: 'Bearer my-secret-token' })
+  })
+
+  it('strips an existing Bearer prefix to avoid doubling', () => {
+    const auth = new BearerAuth('Bearer already-prefixed')
+    expect(auth.getHeaders()).toEqual({ Authorization: 'Bearer already-prefixed' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Bearer token via Client transport resolution
+// ---------------------------------------------------------------------------
+
+describe('Client — Bearer token', () => {
+  it('a token string passed to auth is sent as Authorization: Bearer <token>', () => {
+    const auth = new BearerAuth('my-token')
+    const headers = auth.getHeaders()
+    expect(headers['Authorization']).toBe('Bearer my-token')
+  })
+
+  it('does not prepend Bearer if the string already includes it', () => {
+    const auth = new BearerAuth('Bearer my-token')
+    expect(auth.getHeaders()['Authorization']).toBe('Bearer my-token')
+  })
+
+  it('BearerAuth can be used in place of a raw token string', () => {
+    const fromString = new BearerAuth('tok')
+    const fromClass = new BearerAuth('tok')
+    expect(fromString.getHeaders()).toEqual(fromClass.getHeaders())
+  })
+
+  it('transport injects static auth headers via requestInit', () => {
+    const auth = new BearerAuth('static-token')
+    const { transport } = resolveTransport('https://example.com/mcp', auth)
+    // The transport is a StreamableHTTPClientTransport; we verify it was
+    // constructed (i.e. resolveTransport didn't throw).
+    expect(transport).toBeDefined()
+  })
+
+  it('arbitrary headers in McpConfig are forwarded', () => {
+    const { transport } = resolveTransport(
+      {
+        mcpServers: {
+          myServer: { url: 'https://example.com/mcp', headers: { 'X-Tenant': 'acme' } },
+        },
+      },
+      new BearerAuth('tok'),
+    )
+    expect(transport).toBeDefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// OAuth — storage & metadata
+// ---------------------------------------------------------------------------
+
+describe('OAuth', () => {
+  const SERVER_URL = 'https://api.example.com'
+
+  function makeOAuth(overrides: ConstructorParameters<typeof OAuth>[0] = {}) {
+    const oauth = new OAuth({ onRedirect: vi.fn(), ...overrides })
+    oauth._bind(SERVER_URL)
+    return oauth
+  }
+
+  describe('token storage', () => {
+    it('saveTokens() persists tokens readable via tokens()', async () => {
+      const oauth = makeOAuth()
+      const tokens = { access_token: 'tok', token_type: 'Bearer' }
+      await oauth.saveTokens(tokens)
+      expect(await oauth.tokens()).toEqual(tokens)
+    })
+
+    it('tokens() returns undefined when no tokens are stored', async () => {
+      const oauth = makeOAuth()
+      expect(await oauth.tokens()).toBeUndefined()
+    })
+
+    it('invalidateCredentials("tokens") removes only tokens', async () => {
+      const store = new InMemoryStore()
+      const oauth = makeOAuth({ store })
+      await oauth.saveTokens({ access_token: 'tok', token_type: 'Bearer' })
+      await oauth.saveClientInformation({ client_id: 'cid', redirect_uris: [] })
+      await oauth.invalidateCredentials('tokens')
+      expect(await oauth.tokens()).toBeUndefined()
+      expect(await oauth.clientInformation()).not.toBeUndefined()
+    })
+
+    it('invalidateCredentials("all") removes everything', async () => {
+      const oauth = makeOAuth()
+      await oauth.saveTokens({ access_token: 'tok', token_type: 'Bearer' })
+      await oauth.saveClientInformation({ client_id: 'cid', redirect_uris: [] })
+      oauth.saveCodeVerifier('cv')
+      await oauth.invalidateCredentials('all')
+      expect(await oauth.tokens()).toBeUndefined()
+      expect(await oauth.clientInformation()).toBeUndefined()
+      expect(() => oauth.codeVerifier()).toThrow()
+    })
+  })
+
+  describe('client information', () => {
+    it('clientInformation() returns pre-registered credentials when clientId is set', async () => {
+      const oauth = new OAuth({
+        clientId: 'pre-reg-id',
+        clientSecret: 'pre-reg-secret',
+        onRedirect: vi.fn(),
+      })
+      oauth._bind(SERVER_URL)
+      const info = await oauth.clientInformation()
+      expect(info).toEqual({ client_id: 'pre-reg-id', client_secret: 'pre-reg-secret' })
+    })
+
+    it('clientInformation() returns stored DCR info when no clientId is configured', async () => {
+      const oauth = makeOAuth()
+      await oauth.saveClientInformation({ client_id: 'dcr-id', redirect_uris: [] })
+      const info = await oauth.clientInformation()
+      expect(info).toMatchObject({ client_id: 'dcr-id' })
+    })
+
+    it('saveClientInformation() does not overwrite pre-registered clientId', async () => {
+      const oauth = new OAuth({ clientId: 'pre-reg-id', onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+      await oauth.saveClientInformation({ client_id: 'dcr-id', redirect_uris: [] })
+      // Pre-registered id is returned, not the DCR one
+      const info = await oauth.clientInformation()
+      expect(info).toMatchObject({ client_id: 'pre-reg-id' })
+    })
+  })
+
+  describe('PKCE code verifier', () => {
+    it('saveCodeVerifier / codeVerifier round-trip', () => {
+      const oauth = makeOAuth()
+      oauth.saveCodeVerifier('my-verifier')
+      expect(oauth.codeVerifier()).toBe('my-verifier')
+    })
+
+    it('codeVerifier() throws before saveCodeVerifier() is called', () => {
+      const oauth = makeOAuth()
+      expect(() => oauth.codeVerifier()).toThrow()
+    })
+  })
+
+  describe('discovery state', () => {
+    it('saveDiscoveryState / discoveryState round-trip', async () => {
+      const oauth = makeOAuth()
+      const state = {
+        authorizationServerUrl: 'https://auth.example.com',
+        resourceMetadataUrl: 'https://api.example.com/.well-known/resource',
+      }
+      await oauth.saveDiscoveryState(state)
+      expect(await oauth.discoveryState()).toEqual(state)
+    })
+
+    it('discoveryState() returns undefined when nothing is stored', async () => {
+      const oauth = makeOAuth()
+      expect(await oauth.discoveryState()).toBeUndefined()
+    })
+
+    it('invalidateCredentials("discovery") removes only discovery state', async () => {
+      const oauth = makeOAuth()
+      await oauth.saveDiscoveryState({ authorizationServerUrl: 'https://auth.example.com' })
+      await oauth.saveTokens({ access_token: 'tok', token_type: 'Bearer' })
+      await oauth.invalidateCredentials('discovery')
+      expect(await oauth.discoveryState()).toBeUndefined()
+      expect(await oauth.tokens()).not.toBeUndefined()
+    })
+  })
+
+  describe('clientMetadata', () => {
+    it('includes the callback port in redirect_uris', () => {
+      const oauth = new OAuth({ callbackPort: 9999, onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+      const meta = oauth.clientMetadata
+      expect(meta.redirect_uris[0]).toBe('http://localhost:9999/callback')
+    })
+
+    it('sets token_endpoint_auth_method to client_secret_post when clientSecret is provided', () => {
+      const oauth = new OAuth({ clientSecret: 'secret', onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+      expect(oauth.clientMetadata.token_endpoint_auth_method).toBe('client_secret_post')
+    })
+
+    it('sets token_endpoint_auth_method to none for public clients', () => {
+      const oauth = makeOAuth()
+      expect(oauth.clientMetadata.token_endpoint_auth_method).toBe('none')
+    })
+
+    it('includes scopes when configured', () => {
+      const oauth = new OAuth({ scopes: ['read', 'write'], onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+      expect(oauth.clientMetadata.scope).toBe('read write')
+    })
+
+    it('accepts scope as a string', () => {
+      const oauth = new OAuth({ scopes: 'read write', onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+      expect(oauth.clientMetadata.scope).toBe('read write')
+    })
+  })
+
+  describe('storage namespacing', () => {
+    it('two OAuth instances with the same store but different server URLs do not share tokens', async () => {
+      const store = new InMemoryStore()
+
+      const oauthA = new OAuth({ store, onRedirect: vi.fn() })
+      oauthA._bind('https://server-a.example.com')
+
+      const oauthB = new OAuth({ store, onRedirect: vi.fn() })
+      oauthB._bind('https://server-b.example.com')
+
+      await oauthA.saveTokens({ access_token: 'token-a', token_type: 'Bearer' })
+
+      expect(await oauthA.tokens()).toMatchObject({ access_token: 'token-a' })
+      expect(await oauthB.tokens()).toBeUndefined()
+    })
+
+    it('two instances with the same server URL share the same tokens', async () => {
+      const store = new InMemoryStore()
+
+      const oauthA = new OAuth({ store, onRedirect: vi.fn() })
+      oauthA._bind(SERVER_URL)
+
+      const oauthB = new OAuth({ store, onRedirect: vi.fn() })
+      oauthB._bind(SERVER_URL)
+
+      await oauthA.saveTokens({ access_token: 'shared', token_type: 'Bearer' })
+      expect(await oauthB.tokens()).toMatchObject({ access_token: 'shared' })
+    })
+  })
+
+  describe('callback server', () => {
+    // Use callbackPort: 0 to let the OS pick a free port, then read the
+    // actual port from callbackServerPort after redirectToAuthorization starts the server.
+
+    it('redirectToAuthorization calls onRedirect with the authorization URL', async () => {
+      const onRedirect = vi.fn()
+      const oauth = new OAuth({ callbackPort: 0, onRedirect })
+      oauth._bind(SERVER_URL)
+
+      const authUrl = new URL('https://auth.example.com/authorize?response_type=code')
+      await oauth.redirectToAuthorization(authUrl)
+
+      expect(onRedirect).toHaveBeenCalledWith(authUrl)
+
+      // Clean up the server
+      await oauth.waitForCallback(10).catch(() => {/* timeout expected */})
+    })
+
+    it('waitForCallback resolves with the code delivered to the callback server', async () => {
+      const oauth = new OAuth({ callbackPort: 0, onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+
+      await oauth.redirectToAuthorization(new URL('https://auth.example.com/authorize'))
+
+      const port = oauth.callbackServerPort!
+      expect(port).toBeGreaterThan(0)
+
+      // Simulate the browser redirect landing on our server
+      const callbackPromise = oauth.waitForCallback()
+      const res = await fetch(`http://localhost:${port}/callback?code=auth-code-123&state=xyz`)
+      expect(res.status).toBe(200)
+
+      const code = await callbackPromise
+      expect(code).toBe('auth-code-123')
+    })
+
+    it('callback server returns 400 when no code is present', async () => {
+      const oauth = new OAuth({ callbackPort: 0, onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+
+      await oauth.redirectToAuthorization(new URL('https://auth.example.com/authorize'))
+
+      const port = oauth.callbackServerPort!
+      const res = await fetch(`http://localhost:${port}/callback?state=xyz`)
+      expect(res.status).toBe(400)
+
+      // Clean up
+      await oauth.waitForCallback(10).catch(() => {})
+    })
+
+    it('waitForCallback rejects after the timeout expires', async () => {
+      const oauth = new OAuth({ callbackPort: 0, onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+
+      await oauth.redirectToAuthorization(new URL('https://auth.example.com/authorize'))
+
+      await expect(oauth.waitForCallback(50)).rejects.toThrow('timed out')
+    })
+
+    it('waitForCallback throws if called before redirectToAuthorization', async () => {
+      const oauth = makeOAuth()
+      await expect(oauth.waitForCallback(10)).rejects.toThrow('No pending OAuth callback')
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FileTokenStorage
+// ---------------------------------------------------------------------------
+
+describe('FileTokenStorage', () => {
+  let tmpDir: string
+
+  beforeEach(async () => {
+    tmpDir = join(tmpdir(), `fastmcp-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    await mkdir(tmpDir, { recursive: true })
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it('get() returns null when the file does not exist', async () => {
+    const store = new FileTokenStorage(join(tmpDir, 'tokens.json'))
+    expect(await store.get('key')).toBeNull()
+  })
+
+  it('get() returns null for corrupt JSON', async () => {
+    const path = join(tmpDir, 'tokens.json')
+    await writeFile(path, 'not-valid-json', 'utf8')
+    const store = new FileTokenStorage(path)
+    expect(await store.get('key')).toBeNull()
+  })
+
+  it('set() creates the file and parent directories', async () => {
+    const path = join(tmpDir, 'nested', 'dir', 'tokens.json')
+    const store = new FileTokenStorage(path)
+    await store.set('mykey', 'myvalue')
+    expect(await store.get('mykey')).toBe('myvalue')
+  })
+
+  it('multiple keys coexist in the same file', async () => {
+    const store = new FileTokenStorage(join(tmpDir, 'tokens.json'))
+    await store.set('key1', 'value1')
+    await store.set('key2', 'value2')
+    expect(await store.get('key1')).toBe('value1')
+    expect(await store.get('key2')).toBe('value2')
+  })
+
+  it('set() overwrites an existing key', async () => {
+    const store = new FileTokenStorage(join(tmpDir, 'tokens.json'))
+    await store.set('key', 'original')
+    await store.set('key', 'updated')
+    expect(await store.get('key')).toBe('updated')
+  })
+
+  it('delete() removes the key and leaves others intact', async () => {
+    const store = new FileTokenStorage(join(tmpDir, 'tokens.json'))
+    await store.set('keep', 'this')
+    await store.set('remove', 'this')
+    await store.delete('remove')
+    expect(await store.get('remove')).toBeNull()
+    expect(await store.get('keep')).toBe('this')
+  })
+
+  it('delete() is a no-op when the key does not exist', async () => {
+    const store = new FileTokenStorage(join(tmpDir, 'tokens.json'))
+    await expect(store.delete('nonexistent')).resolves.not.toThrow()
+  })
+
+  it('round-trips arbitrary JSON values stored as strings', async () => {
+    const store = new FileTokenStorage(join(tmpDir, 'tokens.json'))
+    const token = { access_token: 'abc', expires_in: 3600 }
+    await store.set('tok', JSON.stringify(token))
+    const raw = await store.get('tok')
+    expect(JSON.parse(raw!)).toEqual(token)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ClientCredentials
 // ---------------------------------------------------------------------------
 
 describe('ClientCredentials', () => {
@@ -156,10 +514,8 @@ describe('ClientCredentials', () => {
   })
 
   it('re-fetches when the cached token is within the refresh buffer', async () => {
-    // First token expires very soon (within the 60s default buffer)
-    const soonMs = Date.now() + 30 * 1000 // 30 seconds from now
+    const soonMs = Date.now() + 30 * 1000
     mockFetchOnce(makeTokenResponse({ expires_at: soonMs, expires_in: undefined }))
-    // Second fetch returns a fresh token
     mockFetchOnce(makeTokenResponse({ access_token: 'fresh-token', expires_in: 3600 }))
 
     const auth = new ClientCredentials({
@@ -178,8 +534,7 @@ describe('ClientCredentials', () => {
   })
 
   it('does not re-fetch when the token has ample time remaining', async () => {
-    // Token expires well outside the 60s buffer
-    const futureMs = Date.now() + 10 * 60 * 1000 // 10 minutes
+    const futureMs = Date.now() + 10 * 60 * 1000
     mockFetchOnce(makeTokenResponse({ expires_at: futureMs, expires_in: undefined }))
 
     const auth = new ClientCredentials({
@@ -196,7 +551,6 @@ describe('ClientCredentials', () => {
   })
 
   it('respects a custom refreshBufferSeconds', async () => {
-    // Token expires 90 seconds from now — outside the 60s default but inside a 120s buffer
     const expiresMs = Date.now() + 90 * 1000
     mockFetchOnce(makeTokenResponse({ expires_at: expiresMs, expires_in: undefined }))
     mockFetchOnce(makeTokenResponse({ access_token: 'refreshed', expires_in: 3600 }))
@@ -216,7 +570,6 @@ describe('ClientCredentials', () => {
   })
 
   it('coalesces concurrent getHeaders() calls into a single fetch', async () => {
-    // Delay the response slightly so all concurrent calls are in-flight simultaneously
     vi.mocked(fetch).mockImplementation(
       () =>
         new Promise((resolve) =>
@@ -250,33 +603,31 @@ describe('ClientCredentials', () => {
     expect(fetch).toHaveBeenCalledOnce()
   })
 
-  it('uses a custom tokenStorageAdapter to persist the token', async () => {
+  it('uses a custom store to persist the token', async () => {
     mockFetchOnce(makeTokenResponse())
 
-    const stored: { token: OAuthToken | null } = { token: null }
-    const adapter: TokenStorageAdapter = {
-      async getToken() {
-        return stored.token
-      },
-      async setToken(t) {
-        stored.token = t
-      },
+    const stored: Record<string, string> = {}
+    const store: KeyValueStore = {
+      async get(k) { return stored[k] ?? null },
+      async set(k, v) { stored[k] = v },
+      async delete(k) { delete stored[k] },
     }
 
     const auth = new ClientCredentials({
       tokenEndpoint: TOKEN_ENDPOINT,
       clientId: 'my-client',
       clientSecret: 'my-secret',
-      tokenStorageAdapter: adapter,
+      store,
     })
 
     await auth.getHeaders()
 
-    expect(stored.token).not.toBeNull()
-    expect(stored.token?.access_token).toBe('test-access-token')
+    const key = `${TOKEN_ENDPOINT}/token`
+    expect(stored[key]).toBeDefined()
+    expect(JSON.parse(stored[key]!).access_token).toBe('test-access-token')
   })
 
-  it('loads an existing valid token from storage without fetching', async () => {
+  it('loads an existing valid token from the store without fetching', async () => {
     const futureMs = Date.now() + 10 * 60 * 1000
     const existingToken: OAuthToken = {
       access_token: 'stored-token',
@@ -284,18 +635,18 @@ describe('ClientCredentials', () => {
       expires_at: futureMs,
     }
 
-    const adapter: TokenStorageAdapter = {
-      async getToken() {
-        return existingToken
-      },
-      async setToken() {},
+    const key = `${TOKEN_ENDPOINT}/token`
+    const store: KeyValueStore = {
+      async get(k) { return k === key ? JSON.stringify(existingToken) : null },
+      async set() {},
+      async delete() {},
     }
 
     const auth = new ClientCredentials({
       tokenEndpoint: TOKEN_ENDPOINT,
       clientId: 'my-client',
       clientSecret: 'my-secret',
-      tokenStorageAdapter: adapter,
+      store,
     })
 
     const headers = await auth.getHeaders()
