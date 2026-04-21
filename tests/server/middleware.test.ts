@@ -268,6 +268,11 @@ describe('Server — Middleware', () => {
     })
 
     it('cancellation middleware intercepts notifications/cancelled and aborts the in-flight handler', async () => {
+      // This test exercises the SERVER-SIDE cancellation path. When the client AbortController
+      // fires, the SDK sends a notifications/cancelled message to the server. Because use() now
+      // calls setup() on the primary server immediately (see the use() fix), CancellationMiddleware
+      // registers the notifications/cancelled handler before connect(), so the server races the
+      // in-flight handler against an abort promise and rejects early.
       const mcp = new FastMCP({ name: 'test' })
       let handlerStarted = false
 
@@ -285,10 +290,15 @@ describe('Server — Middleware', () => {
         const callPromise = client.callTool({ name: 'slow', arguments: {} }, undefined, {
           signal: controller.signal,
         })
-        // Wait for the handler to start, then cancel
+
+        // (a) Wait long enough for the handler to start executing on the server
         await new Promise((r) => setTimeout(r, 30))
         expect(handlerStarted).toBe(true)
+
+        // (b) Abort — SDK sends notifications/cancelled; CancellationMiddleware aborts the race
         controller.abort()
+
+        // (c) The call must reject — server rejected via the abort race, not just client dropout
         await expect(callPromise).rejects.toThrow()
       } finally {
         await close()
