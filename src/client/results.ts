@@ -9,12 +9,22 @@ export type {
   GetPromptResult,
   SamplingMessage,
   CreateMessageResult,
+  CreateMessageResultWithTools,
   CreateMessageRequestParams,
+  ModelPreferences,
+  ToolUseContent,
+  ToolResultContent,
+  ToolChoice,
   LoggingLevel,
   ContentBlock,
   ElicitRequestParams,
   ElicitResult,
 } from '@modelcontextprotocol/sdk/types'
+
+import type { CreateMessageResult, CreateMessageResultWithTools } from '@modelcontextprotocol/sdk/types'
+
+/** Union of the two sampling result shapes the MCP protocol defines. */
+export type AnySamplingResult = CreateMessageResult | CreateMessageResultWithTools
 
 import type { ContentBlock } from '@modelcontextprotocol/sdk/types'
 

@@ -10,7 +10,13 @@ export type {
   GetPromptResult,
   SamplingMessage,
   CreateMessageResult,
+  CreateMessageResultWithTools,
+  AnySamplingResult,
   CreateMessageRequestParams,
+  ModelPreferences,
+  ToolUseContent,
+  ToolResultContent,
+  ToolChoice,
   LoggingLevel,
   ContentBlock,
   ElicitRequestParams,
@@ -57,3 +63,18 @@ export { Client, ToolCallError } from './client.js'
 
 export type { Result } from './utils.js'
 export { toResult } from './utils.js'
+
+export type {
+  SamplingAdapter,
+  SamplingAdapterOptions,
+  ModelSelector,
+  OnTokenCallback,
+  GenericCompletionFn,
+  GenericCompletionParams,
+} from './sampling/index.js'
+export {
+  GenericSamplingAdapter,
+  AnthropicSamplingAdapter,
+  OpenAISamplingAdapter,
+  GoogleSamplingAdapter,
+} from './sampling/index.js'

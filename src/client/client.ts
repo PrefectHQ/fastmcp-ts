@@ -375,7 +375,7 @@ export class Client implements IClient {
 
   private _buildCapabilities() {
     return {
-      ...(this._handlers.sampling ? { sampling: {} } : {}),
+      ...(this._handlers.sampling ? { sampling: { tools: {} } } : {}),
       ...(this._handlers.elicitation ? { elicitation: {} } : {}),
       ...(this._roots ? { roots: { listChanged: false } } : {}),
     }

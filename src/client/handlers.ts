@@ -1,10 +1,10 @@
 import type {
   LoggingLevel,
   CreateMessageRequestParams,
-  CreateMessageResult,
   ElicitRequestParams,
   ElicitResult,
 } from '@modelcontextprotocol/sdk/types'
+import type { AnySamplingResult } from './results.js'
 
 export type LogMessage = {
   level: LoggingLevel
@@ -22,7 +22,7 @@ export type ProgressHandler = (
 
 export type SamplingHandler = (
   params: CreateMessageRequestParams,
-) => CreateMessageResult | Promise<CreateMessageResult>
+) => AnySamplingResult | Promise<AnySamplingResult>
 
 export type ElicitationHandler = (
   params: ElicitRequestParams,
