@@ -9,18 +9,21 @@ import {
   ElicitRequestSchema,
   ListRootsRequestSchema,
   LoggingMessageNotificationSchema,
+  ResourceUpdatedNotificationSchema,
 } from '@modelcontextprotocol/sdk/types'
 import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol'
 
 import { BearerAuth, OAuth } from './auth.js'
 import type { ClientCredentials } from './auth.js'
-import type { ClientHandlers, ProgressHandler } from './handlers.js'
+import type { ClientHandlers, ListChangedHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
 import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
 import type {
   CallToolResult,
+  CompletionResult,
   ContentBlock,
   GetPromptResult,
+  LoggingLevel,
   Prompt,
   Resource,
   ResourceContents,
@@ -94,15 +97,23 @@ export interface ClientOptions {
 // Client
 // ---------------------------------------------------------------------------
 
+type OptionalHandlerKeys =
+  | 'sampling'
+  | 'elicitation'
+  | 'onToolsListChanged'
+  | 'onResourcesListChanged'
+  | 'onPromptsListChanged'
+
 export class Client implements IClient {
   private _sdkClient: SdkClient | null = null
   private _refCount = 0
   private _connectPromise: Promise<void> | null = null
+  private readonly _resourceSubscriptions = new Map<string, ResourceUpdateHandler>()
 
   private readonly _input: ClientTransportInput
   private readonly _auth: BearerAuth | OAuth | ClientCredentials | undefined
-  private readonly _handlers: Required<Omit<ClientHandlers, 'sampling' | 'elicitation'>> &
-    Pick<ClientHandlers, 'sampling' | 'elicitation'>
+  private readonly _handlers: Required<Omit<ClientHandlers, OptionalHandlerKeys>> &
+    Pick<ClientHandlers, OptionalHandlerKeys>
   private readonly _roots: (() => Promise<Root[]>) | undefined
   private readonly _autoInitialize: boolean
   private readonly _defaultOptions: ClientDefaultOptions
@@ -115,6 +126,9 @@ export class Client implements IClient {
       progress: options?.handlers?.progress ?? defaultProgressHandler,
       sampling: options?.handlers?.sampling,
       elicitation: options?.handlers?.elicitation,
+      onToolsListChanged: options?.handlers?.onToolsListChanged,
+      onResourcesListChanged: options?.handlers?.onResourcesListChanged,
+      onPromptsListChanged: options?.handlers?.onPromptsListChanged,
     }
     this._roots = options?.roots ? normalizeRootsOption(options.roots) : undefined
     this._autoInitialize = options?.autoInitialize ?? true
@@ -152,7 +166,10 @@ export class Client implements IClient {
   private async _doConnect(): Promise<void> {
     const sdkClient = new SdkClient(
       { name: 'fastmcp-ts', version: '1.0.0' },
-      { capabilities: this._buildCapabilities() },
+      {
+        capabilities: this._buildCapabilities(),
+        listChanged: this._buildListChangedConfig(),
+      },
     )
 
     this._registerHandlers(sdkClient)
@@ -349,6 +366,26 @@ export class Client implements IClient {
     )
   }
 
+  async subscribeResource(
+    uri: string,
+    handler: ResourceUpdateHandler,
+    options?: RequestOptions,
+  ): Promise<void> {
+    this._resourceSubscriptions.set(uri, handler)
+    await this._sdk().subscribeResource(
+      { uri },
+      this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+    )
+  }
+
+  async unsubscribeResource(uri: string, options?: RequestOptions): Promise<void> {
+    this._resourceSubscriptions.delete(uri)
+    await this._sdk().unsubscribeResource(
+      { uri },
+      this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+    )
+  }
+
   // -------------------------------------------------------------------------
   // Prompts (IPromptsClient)
   // -------------------------------------------------------------------------
@@ -371,6 +408,31 @@ export class Client implements IClient {
       this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
     )
     return result as GetPromptResult
+  }
+
+  // -------------------------------------------------------------------------
+  // Completion
+  // -------------------------------------------------------------------------
+
+  async complete(
+    ref: { type: 'ref/prompt'; name: string } | { type: 'ref/resource'; uri: string },
+    argument: { name: string; value: string },
+    context?: { arguments?: Record<string, string> },
+    options?: RequestOptions,
+  ): Promise<CompletionResult> {
+    const result = await this._sdk().complete(
+      { ref, argument, ...(context ? { context } : {}) },
+      this._toSdkOptions(options),
+    )
+    return result.completion as CompletionResult
+  }
+
+  // -------------------------------------------------------------------------
+  // Logging
+  // -------------------------------------------------------------------------
+
+  async setLogLevel(level: LoggingLevel, options?: RequestOptions): Promise<void> {
+    await this._sdk().setLoggingLevel(level, this._toSdkOptions(options))
   }
 
   // -------------------------------------------------------------------------
@@ -412,6 +474,23 @@ export class Client implements IClient {
     }
   }
 
+  private _buildListChangedConfig() {
+    const { onToolsListChanged, onResourcesListChanged, onPromptsListChanged } = this._handlers
+    if (!onToolsListChanged && !onResourcesListChanged && !onPromptsListChanged) return undefined
+
+    const adapt = <T>(h: ListChangedHandler<T>) => ({
+      onChanged: (err: Error | null, items: T[] | null) => { void h.onChanged(err, items) },
+      ...(h.autoRefresh !== undefined ? { autoRefresh: h.autoRefresh } : {}),
+      ...(h.debounceMs !== undefined ? { debounceMs: h.debounceMs } : {}),
+    })
+
+    return {
+      ...(onToolsListChanged ? { tools: adapt(onToolsListChanged) } : {}),
+      ...(onResourcesListChanged ? { resources: adapt(onResourcesListChanged) } : {}),
+      ...(onPromptsListChanged ? { prompts: adapt(onPromptsListChanged) } : {}),
+    }
+  }
+
   private _registerHandlers(sdk: SdkClient): void {
     // Log notifications from the server
     sdk.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
@@ -420,6 +499,12 @@ export class Client implements IClient {
         logger: notification.params.logger ?? undefined,
         data: notification.params.data,
       })
+    })
+
+    // Resource update notifications (for active subscriptions)
+    sdk.setNotificationHandler(ResourceUpdatedNotificationSchema, (notification) => {
+      const handler = this._resourceSubscriptions.get(notification.params.uri)
+      if (handler) void handler(notification.params.uri)
     })
 
     // Sampling: server requests an LLM completion from the client

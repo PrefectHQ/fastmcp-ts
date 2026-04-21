@@ -1,5 +1,6 @@
 export type {
   CallToolResult,
+  CompletionResult,
   Tool,
   Resource,
   ResourceTemplate,
@@ -30,6 +31,8 @@ export type {
   ProgressHandler,
   SamplingHandler,
   ElicitationHandler,
+  ResourceUpdateHandler,
+  ListChangedHandler,
   ClientHandlers,
 } from './handlers.js'
 export { defaultLogHandler, defaultProgressHandler } from './handlers.js'

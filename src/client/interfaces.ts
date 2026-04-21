@@ -1,5 +1,6 @@
 import type {
   CallToolResult,
+  CompletionResult,
   Tool,
   Resource,
   ResourceTemplate,
@@ -7,7 +8,8 @@ import type {
   Prompt,
   GetPromptResult,
 } from './results.js'
-import type { ProgressHandler } from './handlers.js'
+import type { ProgressHandler, ResourceUpdateHandler } from './handlers.js'
+import type { LoggingLevel } from '@modelcontextprotocol/sdk/types'
 
 export interface RequestOptions {
   /** Per-request timeout in seconds. Overrides client-level defaultOptions. */
@@ -36,6 +38,8 @@ export interface IResourcesClient {
   listResources(options?: RequestOptions): Promise<Resource[]>
   listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]>
   readResource(uri: string, options?: RequestOptions): Promise<ResourceContents[]>
+  subscribeResource(uri: string, handler: ResourceUpdateHandler, options?: RequestOptions): Promise<void>
+  unsubscribeResource(uri: string, options?: RequestOptions): Promise<void>
 }
 
 export interface IPromptsClient {
@@ -52,5 +56,12 @@ export interface IClient extends IToolsClient, IResourcesClient, IPromptsClient 
   close(): Promise<void>
   isConnected(): boolean
   ping(options?: RequestOptions): Promise<boolean>
+  complete(
+    ref: { type: 'ref/prompt'; name: string } | { type: 'ref/resource'; uri: string },
+    argument: { name: string; value: string },
+    context?: { arguments?: Record<string, string> },
+    options?: RequestOptions,
+  ): Promise<CompletionResult>
+  setLogLevel(level: LoggingLevel, options?: RequestOptions): Promise<void>
   [Symbol.asyncDispose](): Promise<void>
 }

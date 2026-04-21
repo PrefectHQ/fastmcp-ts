@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod/v4'
 import { FastMCP } from 'fastmcp-ts/server'
 import { Client } from 'fastmcp-ts/client'
-import type { LogMessage, SamplingHandler, ElicitationHandler } from 'fastmcp-ts/client'
+import type { LogMessage, LoggingLevel, SamplingHandler, ElicitationHandler } from 'fastmcp-ts/client'
 
 async function withServer(
   setup: (mcp: FastMCP) => void,
@@ -239,6 +239,45 @@ describe('Client — Handlers', () => {
             elicitation: async () => ({ action: 'accept', content: { name: 'bob' } }),
           },
         },
+      )
+    })
+  })
+
+  describe('setLogLevel()', () => {
+    it('resolves without error for any valid level', async () => {
+      const levels: LoggingLevel[] = [
+        'debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency',
+      ]
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'noop', input: z.object({}) }, () => 'ok')
+        },
+        async (client) => {
+          for (const level of levels) {
+            await expect(client.setLogLevel(level)).resolves.toBeUndefined()
+          }
+        },
+      )
+    })
+
+    it('suppresses logs below the configured level', async () => {
+      const received: LogMessage[] = []
+      await withServer(
+        (mcp) => {
+          mcp.tool({ name: 'logger', input: z.object({}) }, async () => {
+            const ctx = mcp.getContext()
+            await ctx.info('this should be suppressed')
+            await ctx.error('this should arrive')
+            return 'done'
+          })
+        },
+        async (client) => {
+          await client.setLogLevel('error')
+          await client.callTool('logger', {})
+          expect(received.some((m) => m.level === 'info')).toBe(false)
+          expect(received.some((m) => m.level === 'error')).toBe(true)
+        },
+        { handlers: { log: (msg) => { received.push(msg) } } },
       )
     })
   })

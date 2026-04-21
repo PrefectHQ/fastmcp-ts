@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod/v4'
 import { FastMCP, Image } from 'fastmcp-ts/server'
 import { Client, ToolCallError } from 'fastmcp-ts/client'
+import type { Tool } from 'fastmcp-ts/client'
 
 async function withServer(
   setup: (mcp: FastMCP) => void,
@@ -12,6 +13,21 @@ async function withServer(
   const client = await Client.connect(mcp)
   try {
     await fn(client)
+  } finally {
+    await client.close()
+  }
+}
+
+async function withServerExposed(
+  setup: (mcp: FastMCP) => void,
+  fn: (client: Client, mcp: FastMCP) => Promise<void>,
+  clientOptions?: Parameters<typeof Client.connect>[1],
+) {
+  const mcp = new FastMCP({ name: 'test', version: '1.0.0' })
+  setup(mcp)
+  const client = await Client.connect(mcp, clientOptions)
+  try {
+    await fn(client, mcp)
   } finally {
     await client.close()
   }
@@ -125,5 +141,59 @@ describe('Client — Tools', () => {
         },
       )
     })
+  })
+})
+
+describe('Client — onToolsListChanged', () => {
+  it('is called with the updated tool list when a tool is added after connect', async () => {
+    const received: Array<{ error: Error | null; tools: Tool[] | null }> = []
+
+    await withServerExposed(
+      (mcp) => {
+        mcp.tool({ name: 'initial', input: z.object({}) }, () => 'ok')
+      },
+      async (client, mcp) => {
+        mcp.tool({ name: 'dynamic', input: z.object({}) }, () => 'added')
+        await vi.waitFor(() => {
+          expect(received.length).toBeGreaterThan(0)
+        }, { timeout: 2000 })
+        const last = received[received.length - 1]!
+        expect(last.error).toBeNull()
+        const names = last.tools?.map((t) => t.name) ?? []
+        expect(names).toContain('dynamic')
+      },
+      {
+        handlers: {
+          onToolsListChanged: {
+            onChanged: (error, tools) => { received.push({ error, tools }) },
+            debounceMs: 0,
+          },
+        },
+      },
+    )
+  })
+
+  it('passes null items when autoRefresh is false', async () => {
+    const received: Array<{ error: Error | null; tools: Tool[] | null }> = []
+
+    await withServerExposed(
+      () => {},
+      async (client, mcp) => {
+        mcp.tool({ name: 'new-tool', input: z.object({}) }, () => 'ok')
+        await vi.waitFor(() => {
+          expect(received.length).toBeGreaterThan(0)
+        }, { timeout: 2000 })
+        expect(received[0]!.tools).toBeNull()
+      },
+      {
+        handlers: {
+          onToolsListChanged: {
+            onChanged: (error, tools) => { received.push({ error, tools }) },
+            autoRefresh: false,
+            debounceMs: 0,
+          },
+        },
+      },
+    )
   })
 })

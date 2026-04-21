@@ -3,6 +3,9 @@ import type {
   CreateMessageRequestParams,
   ElicitRequestParams,
   ElicitResult,
+  Tool,
+  Resource,
+  Prompt,
 } from '@modelcontextprotocol/sdk/types'
 import type { AnySamplingResult } from './results.js'
 
@@ -28,11 +31,28 @@ export type ElicitationHandler = (
   params: ElicitRequestParams,
 ) => ElicitResult | Promise<ElicitResult>
 
+export type ResourceUpdateHandler = (uri: string) => void | Promise<void>
+
+/**
+ * Config for receiving server-initiated list-change notifications.
+ * Set debounceMs: 0 in tests for instant delivery.
+ */
+export type ListChangedHandler<T> = {
+  onChanged: (error: Error | null, items: T[] | null) => void | Promise<void>
+  /** Whether to auto-fetch the updated list before calling onChanged. Default: true. */
+  autoRefresh?: boolean
+  /** Debounce window in ms. Default: 300. Set to 0 to disable. */
+  debounceMs?: number
+}
+
 export interface ClientHandlers {
   log?: LogHandler
   progress?: ProgressHandler
   sampling?: SamplingHandler
   elicitation?: ElicitationHandler
+  onToolsListChanged?: ListChangedHandler<Tool>
+  onResourcesListChanged?: ListChangedHandler<Resource>
+  onPromptsListChanged?: ListChangedHandler<Prompt>
 }
 
 export function defaultLogHandler(message: LogMessage): void {

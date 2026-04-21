@@ -38,3 +38,9 @@ export type CallToolResult<TData = unknown> = {
   structuredContent: TData | null
   isError: boolean
 }
+
+export type CompletionResult = {
+  values: string[]
+  total?: number
+  hasMore?: boolean
+}
