@@ -19,6 +19,7 @@ export type {
   ContentBlock,
   ElicitRequestParams,
   ElicitResult,
+  Root,
 } from '@modelcontextprotocol/sdk/types'
 
 import type { CreateMessageResult, CreateMessageResultWithTools } from '@modelcontextprotocol/sdk/types'

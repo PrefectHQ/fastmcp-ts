@@ -21,6 +21,7 @@ export type {
   ContentBlock,
   ElicitRequestParams,
   ElicitResult,
+  Root,
 } from './results.js'
 
 export type {
@@ -58,7 +59,7 @@ export type {
 } from './transports.js'
 export { StdioTransport } from './transports.js'
 
-export type { ClientOptions, ClientDefaultOptions } from './client.js'
+export type { ClientOptions, ClientDefaultOptions, RootInput, RootsValue } from './client.js'
 export { Client, ToolCallError } from './client.js'
 
 export type { Result } from './utils.js'

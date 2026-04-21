@@ -1,3 +1,6 @@
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
 import { Client as SdkClient } from '@modelcontextprotocol/sdk/client'
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import {
@@ -22,6 +25,7 @@ import type {
   Resource,
   ResourceContents,
   ResourceTemplate,
+  Root,
   Tool,
 } from './results.js'
 import type { ClientTransportInput } from './transports.js'
@@ -53,6 +57,16 @@ export interface ClientDefaultOptions {
   prompt?: { timeout?: number }
 }
 
+/** A single element of the roots option: a URI string or a full Root object. */
+export type RootInput = string | Root
+
+/**
+ * Static list of roots, or an async callback invoked on each roots/list request.
+ * URI strings are normalised to file:// URIs automatically; relative paths are
+ * resolved against process.cwd().
+ */
+export type RootsValue = RootInput[] | (() => RootInput[] | Promise<RootInput[]>)
+
 export interface ClientOptions {
   /**
    * Authentication to attach to HTTP requests.
@@ -60,8 +74,12 @@ export interface ClientOptions {
    */
   auth?: BearerAuth | OAuth | ClientCredentials | string
   handlers?: ClientHandlers
-  /** file:// URIs to advertise to the server as accessible roots. */
-  roots?: string[]
+  /**
+   * Filesystem roots to advertise to the server.
+   * Accepts a static array of strings / Root objects, or an async callback
+   * invoked on each roots/list request (useful for dynamic root sets).
+   */
+  roots?: RootsValue
   /**
    * When true (default), the MCP initialize handshake is performed
    * automatically inside connect().
@@ -83,7 +101,7 @@ export class Client implements IClient {
   private readonly _auth: BearerAuth | OAuth | ClientCredentials | undefined
   private readonly _handlers: Required<Omit<ClientHandlers, 'sampling' | 'elicitation'>> &
     Pick<ClientHandlers, 'sampling' | 'elicitation'>
-  private readonly _roots: string[] | undefined
+  private readonly _roots: (() => Promise<Root[]>) | undefined
   private readonly _autoInitialize: boolean
   private readonly _defaultOptions: ClientDefaultOptions
 
@@ -96,7 +114,7 @@ export class Client implements IClient {
       sampling: options?.handlers?.sampling,
       elicitation: options?.handlers?.elicitation,
     }
-    this._roots = options?.roots
+    this._roots = options?.roots ? normalizeRootsOption(options.roots) : undefined
     this._autoInitialize = options?.autoInitialize ?? true
     this._defaultOptions = options?.defaultOptions ?? {}
   }
@@ -377,7 +395,7 @@ export class Client implements IClient {
     return {
       ...(this._handlers.sampling ? { sampling: { tools: {} } } : {}),
       ...(this._handlers.elicitation ? { elicitation: {} } : {}),
-      ...(this._roots ? { roots: { listChanged: false } } : {}),
+      ...(this._roots ? { roots: { listChanged: true } } : {}),
     }
   }
 
@@ -409,11 +427,23 @@ export class Client implements IClient {
 
     // Roots: server requests the client's accessible filesystem roots
     if (this._roots) {
-      const roots = this._roots
+      const getRoots = this._roots
       sdk.setRequestHandler(ListRootsRequestSchema, async () => ({
-        roots: roots.map((uri) => ({ uri })),
+        roots: await getRoots(),
       }))
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Roots
+  // -------------------------------------------------------------------------
+
+  /**
+   * Notify the connected server that the client's roots list has changed.
+   * The server should re-issue a roots/list request to get the updated list.
+   */
+  async notifyRootsChanged(): Promise<void> {
+    await this._sdk().sendRootsListChanged()
   }
 }
 
@@ -427,4 +457,22 @@ function resolveAuth(
   if (!auth) return undefined
   if (typeof auth === 'string') return new BearerAuth(auth)
   return auth
+}
+
+function normalizeRootsOption(roots: RootsValue): () => Promise<Root[]> {
+  if (typeof roots === 'function') {
+    return async () => (await roots()).map(normalizeRootInput)
+  }
+  const normalized = roots.map(normalizeRootInput)
+  return () => Promise.resolve(normalized)
+}
+
+function normalizeRootInput(input: RootInput): Root {
+  if (typeof input === 'string') return { uri: normalizeRootUri(input) }
+  return { ...input, uri: normalizeRootUri(input.uri) }
+}
+
+function normalizeRootUri(input: string): string {
+  if (input.startsWith('file://')) return input
+  return pathToFileURL(resolve(input)).href
 }

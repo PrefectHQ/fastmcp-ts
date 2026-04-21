@@ -85,7 +85,7 @@ Static resources are served via `resources/list` + `resources/read`. Templates a
 
 **Resource timeout:** Same `Promise.race` + `clearTimeout` pattern as tools. A timed-out handler throws an error that propagates as a JSON-RPC error to the client.
 
-**Resource subscriptions:** Not implemented. Python FastMCP also omits subscription support. The `subscribe` capability flag is not advertised. The four subscription todos in the test file are deferred.
+**Resource subscriptions:** Not yet implemented. Python FastMCP also omits subscription support. The `subscribe` capability flag is not advertised.
 
 **Prompts:** Registered with `mcp.prompt(config, handler)`. Config fields: `name` (inferred from `handler.name` when omitted), `title`, `description` (inferred via camelCase→words when omitted), `arguments` (array of `{ name, description?, required? }`), `disabled`, `timeout`, `auth`. Required arguments are validated before the handler runs — missing a required arg returns `InvalidParams` without invoking the handler. Handler receives a `Record<string, string>` of the supplied arguments and can return:
 
