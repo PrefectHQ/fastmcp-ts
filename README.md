@@ -22,13 +22,13 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 
 ## Clients
 
-- [ ] Connection and lifecycle — transport auto-detection, connect/close, `AsyncDisposable`, and ping
-- [ ] Transports — stdio (subprocess), HTTP, SSE, and in-process
-- [ ] Tools — call and list tools with typed responses via Zod
-- [ ] Resources — read static and templated resources with binary content support
-- [ ] Prompts — list and render prompt templates
-- [ ] Authentication — bearer tokens, OAuth 2.1 with PKCE and pluggable token persistence
-- [ ] Handlers — log, progress, sampling, elicitation, and message notification callbacks
+- [x] Connection and lifecycle — transport auto-detection, ref-counted `connect()`/`close()`, `AsyncDisposable` (`await using`), `isConnected()`, `ping()`, and static `Client.connect()` factory
+- [x] Transports — stdio (subprocess), Streamable HTTP, SSE, and in-process (direct `FastMCP` instance)
+- [x] Tools — `listTools()`, `callTool()` (throws `ToolCallError` on server error), `callToolRaw()` (never throws); typed structured content via generics
+- [x] Resources — `listResources()`, `listResourceTemplates()`, `readResource()`, `readResourceRaw()`; static and parameterised URI template resources
+- [x] Prompts — `listPrompts()`, `getPrompt()` with argument passthrough
+- [x] Authentication — `BearerAuth` (static token), `OAuth` (async lifecycle with pluggable token storage and auto-refresh)
+- [x] Handlers — `log`, `progress` (per-request `onProgress` callback), `sampling`, and `elicitation` callbacks
 - [ ] Roots — static and dynamic filesystem context for servers
 - [ ] Multi-server — connect to N servers from a single client with automatic namespacing
 

@@ -216,6 +216,68 @@ type ProxyTransport =
 
 ---
 
+## Client
+
+**Design:** A flat `Client` class that implements three segregated interfaces — `IToolsClient`, `IResourcesClient`, `IPromptsClient` — plus the lifecycle members defined in `IClient`. Consumers can type parameters as a specific interface when they only need a subset of the API:
+
+```typescript
+async function callSomeTool(client: IToolsClient) { ... }
+```
+
+**Package entrypoint:** `fastmcp-ts/client`. All public types and the `Client` class are exported from `src/client/index.ts`.
+
+**Lifecycle:** Ref-counted `connect()`/`close()` — multiple callers can share one connection. The ref count increments on each `connect()` call and decrements on each `close()`; the underlying SDK connection is only established on the first connect and only torn down when the count reaches zero. `isConnected()` returns whether the underlying SDK client is live. `[Symbol.asyncDispose]()` delegates to `close()` so `await using` works automatically.
+
+```typescript
+// Static factory — most common path
+const client = await Client.connect(mcp)
+await using _ = client  // closes on scope exit
+
+// Manual ref-counted use
+const client = new Client(mcp)
+await client.connect()   // refCount → 1
+await client.connect()   // refCount → 2
+await client.close()     // refCount → 1, still open
+await client.close()     // refCount → 0, SDK closed
+```
+
+**Transport resolution** (`resolveTransport`, internal — not re-exported): Accepts a `ClientTransportInput` union and returns `{ transport, beforeConnect? }`. The `beforeConnect` hook is required for in-process transports: the server must call `connect(serverSide)` before the SDK client connects to the client side.
+
+| Input type | Resolved transport |
+|---|---|
+| `StdioTransport` instance | `StdioClientTransport` wrapping the subprocess |
+| String URL | `StreamableHTTPClientTransport`; falls back to `SSEClientTransport` on 4xx |
+| SDK `Transport` duck-type (has `.start`) | Passed through as-is |
+| `McpConfig` (has `.mcpServers`) | First server entry resolved recursively |
+| `McpServerLike` (has `.connect`) | `InMemoryTransport` pair; `beforeConnect` connects the server side |
+
+`McpServerLike` is a structural interface — it matches `FastMCP` without importing from the server module, avoiding a circular dependency.
+
+**Auth injection:** `BearerAuth` injects a static `Authorization: Bearer <token>` header into `requestInit.headers` (and `eventSourceInit.headers` for SSE). `OAuth` wraps the transport's `fetch` with an async function that resolves the current token and refreshes it when it is within `refreshBufferSeconds` of expiry. Concurrent refresh calls are coalesced to a single HTTP request.
+
+**`ToolCallError`:** Thrown by `callTool()` when the server returns `isError: true`. Has a `content: ContentBlock[]` field containing the error blocks. `callToolRaw()` never throws — it returns the full result including `isError`.
+
+**`toResult<T, E>()`:** Standalone utility (not on the `Client` object) that wraps a promise or async function into a `Result<T, E>` discriminated union `{ ok: true; value: T } | { ok: false; error: E }`, providing an error-as-value alternative to try/catch.
+
+**Default options:** `ClientOptions.defaultOptions` accepts per-scope timeout defaults (`tool.timeout`, `resource.timeout`, `prompt.timeout`, and a global `timeout` fallback). All timeout values are in **seconds** in the public API; they are converted to milliseconds before being passed to the SDK. Per-request `RequestOptions.timeout` takes precedence over the scoped default.
+
+**Handlers:**
+
+| Option | Type | Behaviour |
+|---|---|---|
+| `handlers.log` | `LogHandler` | Called for every `notifications/message` from the server; receives `{ level, logger?, data }` |
+| `handlers.progress` | `ProgressHandler` | Global default; overridden per-call via `CallToolOptions.onProgress` |
+| `handlers.sampling` | `SamplingHandler` | Called when the server sends `sampling/createMessage`; client must also advertise `sampling` capability |
+| `handlers.elicitation` | `ElicitationHandler` | Called when the server sends `elicitation/create`; client must advertise `elicitation` capability |
+
+The SDK client capabilities (`sampling: {}`, `elicitation: {}`, `roots: { listChanged: false }`) are included only when the corresponding handler or option is provided.
+
+**Roots:** A `roots?: string[]` option on `ClientOptions` registers a `roots/list` request handler that returns the provided URIs. Dynamic roots (callback-based) are not yet implemented.
+
+**`autoInitialize` option:** Stored in `ClientOptions` but currently has no effect — the underlying SDK's `connect()` always performs the MCP initialize handshake. Kept in the API for a future SDK path that supports deferred initialization.
+
+---
+
 **Foundation:** Built on `@modelcontextprotocol/sdk` (official MCP TypeScript SDK).
 
 **Module format:** ESM throughout (`"type": "module"`).
