@@ -787,6 +787,34 @@ export class FastMCP {
     for (const cb of this._resourceRegisteredCallbacks) cb(registered)
   }
 
+  _removeTool(name: string): boolean {
+    if (!this._tools.has(name)) return false
+    this._tools.delete(name)
+    this._notifyToolListChanged()
+    return true
+  }
+
+  _removeResource(uri: string): boolean {
+    if (this._staticResources.has(uri)) {
+      this._staticResources.delete(uri)
+      this._notifyResourceListChanged()
+      return true
+    }
+    if (this._templateResources.has(uri)) {
+      this._templateResources.delete(uri)
+      this._notifyResourceListChanged()
+      return true
+    }
+    return false
+  }
+
+  _removePrompt(name: string): boolean {
+    if (!this._prompts.has(name)) return false
+    this._prompts.delete(name)
+    this._notifyPromptListChanged()
+    return true
+  }
+
   /** Add a transform to the pipeline. Applied to list responses in registration order. */
   transform(t: Transform): this {
     this._transforms.push(t)

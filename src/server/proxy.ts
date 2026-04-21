@@ -1,4 +1,9 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index'
+import {
+  ToolListChangedNotificationSchema,
+  ResourceListChangedNotificationSchema,
+  PromptListChangedNotificationSchema,
+} from '@modelcontextprotocol/sdk/types'
 import { parseTemplate } from 'url-template'
 import { FastMCP } from './FastMCP'
 import { ToolResult } from './tool'
@@ -6,13 +11,250 @@ import { ResourceResult } from './resource'
 import { PromptResult } from './prompt'
 import type { PromptMessage } from './prompt'
 
-export type ProxyTransport =
-  | { type: 'stdio'; command: string; args?: string[]; env?: Record<string, string>; cwd?: string }
-  | { type: 'http'; url: string; requestInit?: RequestInit }
+type StdioTransport = {
+  type: 'stdio'
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+  cwd?: string
+  /** How long (ms) before the proxy re-fetches component lists. Default 30 000. Set 0 for notifications-only. */
+  cacheTtl?: number
+}
+
+type HttpTransport = {
+  type: 'http'
+  url: string
+  requestInit?: RequestInit
+  /** How long (ms) before the proxy re-fetches component lists. Default 30 000. Set 0 for notifications-only. */
+  cacheTtl?: number
+}
+
+export type ProxyTransport = StdioTransport | HttpTransport
+
+/**
+ * Build a FastMCP proxy around an already-connected MCP Client.
+ * Exported to enable testing with in-memory transports.
+ */
+export async function buildProxyFromClient(
+  client: Client,
+  options?: { cacheTtl?: number; name?: string },
+): Promise<FastMCP> {
+  const cacheTtl = options?.cacheTtl ?? 30_000
+
+  const serverInfo = client.getServerVersion()
+  const proxyName = options?.name ?? serverInfo?.name ?? 'proxy'
+  const proxyVersion = serverInfo?.version ?? '0.0.1'
+
+  const proxy = new FastMCP({ name: proxyName, version: proxyVersion })
+
+  // Track which component identifiers were registered by this proxy so we can diff on resync.
+  const proxiedTools = new Set<string>()
+  const proxiedResources = new Set<string>()
+  const proxiedPrompts = new Set<string>()
+
+  // Per-type timestamp of last successful sync (0 forces an immediate resync on first list request).
+  const lastSync = { tools: 0, resources: 0, prompts: 0 }
+
+  async function resyncTools(): Promise<void> {
+    const { tools } = await client.listTools()
+    const incoming = new Set(tools.map((t) => t.name))
+
+    for (const name of proxiedTools) {
+      if (!incoming.has(name)) {
+        proxy._removeTool(name)
+        proxiedTools.delete(name)
+      }
+    }
+
+    for (const tool of tools) {
+      if (!proxiedTools.has(tool.name)) {
+        proxy.tool(
+          {
+            name: tool.name,
+            ...(tool.title !== undefined ? { title: tool.title } : {}),
+            description: tool.description ?? tool.name,
+            inputSchema: (tool.inputSchema as Record<string, unknown>) ?? {},
+          },
+          async (args: unknown) => {
+            const result = await client.callTool({
+              name: tool.name,
+              arguments: args as Record<string, unknown>,
+            })
+            return new ToolResult(result)
+          },
+        )
+        proxiedTools.add(tool.name)
+      }
+    }
+
+    lastSync.tools = Date.now()
+  }
+
+  async function resyncResources(): Promise<void> {
+    const incoming = new Set<string>()
+
+    try {
+      const { resources } = await client.listResources()
+      for (const resource of resources) {
+        incoming.add(resource.uri)
+        if (!proxiedResources.has(resource.uri)) {
+          proxy.resource(
+            {
+              uri: resource.uri,
+              name: resource.name,
+              ...(resource.description !== undefined ? { description: resource.description } : {}),
+              ...(resource.mimeType !== undefined ? { mimeType: resource.mimeType } : {}),
+            },
+            async () => {
+              const result = await client.readResource({ uri: resource.uri })
+              return new ResourceResult(
+                result.contents as Array<{
+                  uri: string
+                  mimeType?: string
+                  text?: string
+                  blob?: string
+                }>,
+              )
+            },
+          )
+          proxiedResources.add(resource.uri)
+        }
+      }
+    } catch {
+      // server may not support resources
+    }
+
+    try {
+      const { resourceTemplates } = await client.listResourceTemplates()
+      for (const template of resourceTemplates) {
+        const uriTemplate = template.uriTemplate
+        incoming.add(uriTemplate)
+        if (!proxiedResources.has(uriTemplate)) {
+          const expander = parseTemplate(uriTemplate)
+          proxy.resource(
+            {
+              uri: uriTemplate,
+              name: template.name,
+              ...(template.description !== undefined
+                ? { description: template.description }
+                : {}),
+              ...(template.mimeType !== undefined ? { mimeType: template.mimeType } : {}),
+            },
+            async (params?: Record<string, string>) => {
+              const actualUri = params ? expander.expand(params) : uriTemplate
+              const result = await client.readResource({ uri: actualUri })
+              return new ResourceResult(
+                result.contents as Array<{
+                  uri: string
+                  mimeType?: string
+                  text?: string
+                  blob?: string
+                }>,
+              )
+            },
+          )
+          proxiedResources.add(uriTemplate)
+        }
+      }
+    } catch {
+      // server may not support resource templates
+    }
+
+    for (const uri of proxiedResources) {
+      if (!incoming.has(uri)) {
+        proxy._removeResource(uri)
+        proxiedResources.delete(uri)
+      }
+    }
+
+    lastSync.resources = Date.now()
+  }
+
+  async function resyncPrompts(): Promise<void> {
+    const { prompts } = await client.listPrompts()
+    const incoming = new Set(prompts.map((p) => p.name))
+
+    for (const name of proxiedPrompts) {
+      if (!incoming.has(name)) {
+        proxy._removePrompt(name)
+        proxiedPrompts.delete(name)
+      }
+    }
+
+    for (const prompt of prompts) {
+      if (!proxiedPrompts.has(prompt.name)) {
+        proxy.prompt(
+          {
+            name: prompt.name,
+            description: prompt.description,
+            ...(prompt.arguments?.length ? { arguments: prompt.arguments } : {}),
+          },
+          async (args?: Record<string, string>) => {
+            const result = await client.getPrompt({ name: prompt.name, arguments: args })
+            return new PromptResult(result.messages as PromptMessage[], result.description)
+          },
+        )
+        proxiedPrompts.add(prompt.name)
+      }
+    }
+
+    lastSync.prompts = Date.now()
+  }
+
+  // Initial sync.
+  await Promise.all([
+    resyncTools().catch(() => {}),
+    resyncResources().catch(() => {}),
+    resyncPrompts().catch(() => {}),
+  ])
+
+  // Subscribe to backend change notifications for immediate resync.
+  client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+    resyncTools().catch(() => {})
+  })
+  client.setNotificationHandler(ResourceListChangedNotificationSchema, () => {
+    resyncResources().catch(() => {})
+  })
+  client.setNotificationHandler(PromptListChangedNotificationSchema, () => {
+    resyncPrompts().catch(() => {})
+  })
+
+  // TTL-based lazy resync: re-fetch on list requests when the cache is stale.
+  if (cacheTtl > 0) {
+    proxy.use({
+      async onListTools(ctx, next) {
+        if (Date.now() - lastSync.tools > cacheTtl) await resyncTools().catch(() => {})
+        return next()
+      },
+      async onListResources(ctx, next) {
+        if (Date.now() - lastSync.resources > cacheTtl) await resyncResources().catch(() => {})
+        return next()
+      },
+      async onListResourceTemplates(ctx, next) {
+        if (Date.now() - lastSync.resources > cacheTtl) await resyncResources().catch(() => {})
+        return next()
+      },
+      async onListPrompts(ctx, next) {
+        if (Date.now() - lastSync.prompts > cacheTtl) await resyncPrompts().catch(() => {})
+        return next()
+      },
+    })
+  }
+
+  proxy._addCloseCallback(async () => {
+    await client.close()
+  })
+
+  return proxy
+}
 
 /**
  * Create a FastMCP instance that proxies all requests to a remote MCP server.
  * The returned instance can be mounted onto a parent server via `parent.mount(proxy)`.
+ *
+ * Component lists (tools, resources, prompts) are kept in sync via:
+ *  - Change notifications from the backend (immediate resync)
+ *  - TTL-based lazy resync on each list request (configurable via `cacheTtl`, default 30 s)
  */
 export async function createProxy(config: ProxyTransport, name?: string): Promise<FastMCP> {
   let transport: import('@modelcontextprotocol/sdk/shared/transport').Transport
@@ -41,112 +283,5 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
 
   await client.connect(transport)
 
-  const serverInfo = client.getServerVersion()
-  const proxyName = name ?? serverInfo?.name ?? 'proxy'
-  const proxyVersion = serverInfo?.version ?? '0.0.1'
-
-  const proxy = new FastMCP({ name: proxyName, version: proxyVersion })
-
-  async function syncTools(): Promise<void> {
-    try {
-      const { tools } = await client.listTools()
-      for (const tool of tools) {
-        proxy.tool(
-          {
-            name: tool.name,
-            ...(tool.title !== undefined ? { title: tool.title } : {}),
-            description: tool.description ?? tool.name,
-            inputSchema: (tool.inputSchema as Record<string, unknown>) ?? {},
-          },
-          async (args: unknown) => {
-            const result = await client.callTool({
-              name: tool.name,
-              arguments: args as Record<string, unknown>,
-            })
-            return new ToolResult(result)
-          },
-        )
-      }
-    } catch {
-      // server may not support tools
-    }
-  }
-
-  async function syncResources(): Promise<void> {
-    try {
-      const { resources } = await client.listResources()
-      for (const resource of resources) {
-        proxy.resource(
-          {
-            uri: resource.uri,
-            name: resource.name,
-            ...(resource.description !== undefined ? { description: resource.description } : {}),
-            ...(resource.mimeType !== undefined ? { mimeType: resource.mimeType } : {}),
-          },
-          async () => {
-            const result = await client.readResource({ uri: resource.uri })
-            return new ResourceResult(
-              result.contents as Array<{ uri: string; mimeType?: string; text?: string; blob?: string }>,
-            )
-          },
-        )
-      }
-    } catch {
-      // server may not support resources
-    }
-
-    try {
-      const { resourceTemplates } = await client.listResourceTemplates()
-      for (const template of resourceTemplates) {
-        const uriTemplate = template.uriTemplate
-        const expander = parseTemplate(uriTemplate)
-        proxy.resource(
-          {
-            uri: uriTemplate,
-            name: template.name,
-            ...(template.description !== undefined ? { description: template.description } : {}),
-            ...(template.mimeType !== undefined ? { mimeType: template.mimeType } : {}),
-          },
-          async (params?: Record<string, string>) => {
-            const actualUri = params ? expander.expand(params) : uriTemplate
-            const result = await client.readResource({ uri: actualUri })
-            return new ResourceResult(
-              result.contents as Array<{ uri: string; mimeType?: string; text?: string; blob?: string }>,
-            )
-          },
-        )
-      }
-    } catch {
-      // server may not support resource templates
-    }
-  }
-
-  async function syncPrompts(): Promise<void> {
-    try {
-      const { prompts } = await client.listPrompts()
-      for (const prompt of prompts) {
-        proxy.prompt(
-          {
-            name: prompt.name,
-            description: prompt.description,
-            ...(prompt.arguments?.length ? { arguments: prompt.arguments } : {}),
-          },
-          async (args?: Record<string, string>) => {
-            const result = await client.getPrompt({ name: prompt.name, arguments: args })
-            return new PromptResult(result.messages as PromptMessage[], result.description)
-          },
-        )
-      }
-    } catch {
-      // server may not support prompts
-    }
-  }
-
-  await Promise.all([syncTools(), syncResources(), syncPrompts()])
-
-  proxy._addCloseCallback(async () => {
-    await client.close()
-  })
-
-  return proxy
+  return buildProxyFromClient(client, { cacheTtl: config.cacheTtl, name })
 }
