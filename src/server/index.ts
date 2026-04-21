@@ -30,6 +30,16 @@ export {
   ErrorNormalizationMiddleware,
   CancellationMiddleware,
 } from './middleware'
+export type { Transform, ToolView, ResourceView, PromptView, SynthesizedTool } from './transform'
+export {
+  renameTool,
+  redescribeTool,
+  FilterTransform,
+  NamespaceTransform,
+  ResourcesAsTools,
+  PromptsAsTools,
+  VersionFilter,
+} from './transform'
 export type { AccessToken, TokenVerifier } from './auth/types'
 export { AuthorizationError } from './auth/types'
 export type { AuthCheck } from './auth/authorization'

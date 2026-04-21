@@ -20,6 +20,8 @@ export interface PromptConfig {
   disabled?: boolean
   /** Execution timeout in milliseconds. No timeout by default. */
   timeout?: number
+  /** Arbitrary tags for server-side filtering and transforms. */
+  tags?: string[]
   auth?: AuthCheck
 }
 

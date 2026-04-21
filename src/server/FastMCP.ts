@@ -26,6 +26,8 @@ import { contextStore, createContext } from './context'
 import type { McpContext } from './context'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
+import { applyTransformChain } from './transform'
+import type { Transform, ToolView, ResourceView, PromptView, SynthesizedTool } from './transform'
 import { convertResult, toJsonSchema, validateInput } from './tool'
 import {
   convertResourceResult,
@@ -63,6 +65,8 @@ export interface FastMCPOptions {
   promptsPageSize?: number
   /** Middleware applied to every request in registration order. */
   middleware?: Middleware[]
+  /** Transforms applied to component list responses in registration order. */
+  transforms?: Transform[]
 }
 
 export interface RunOptions {
@@ -124,6 +128,7 @@ interface ResolvedPromptConfig extends Required<Pick<PromptConfig, 'name' | 'des
   arguments?: PromptConfig['arguments']
   disabled?: boolean
   timeout?: number
+  tags?: string[]
   auth?: PromptConfig['auth']
 }
 
@@ -184,6 +189,7 @@ export class FastMCP {
   private _prompts = new Map<string, RegisteredPrompt>()
   private _promptsPageSize: number
   private _middleware: Middleware[]
+  private _transforms: Transform[]
   private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
@@ -200,6 +206,7 @@ export class FastMCP {
     this._resourcesPageSize = options.resourcesPageSize ?? 50
     this._promptsPageSize = options.promptsPageSize ?? 50
     this._middleware = options.middleware ? [...options.middleware] : []
+    this._transforms = options.transforms ? [...options.transforms] : []
     this._primaryServer = this._makeServer()
   }
 
@@ -232,37 +239,61 @@ export class FastMCP {
             )
           ).filter((t): t is RegisteredTool => t !== null)
 
+          const transformedTools = this._applyTransformsToTools(allVisible)
+          const synthesized = this._buildSynthesizedTools()
+
+          type ListEntry =
+            | { kind: 'registered'; name: string; description: string; config: ToolConfig }
+            | { kind: 'synthesized'; name: string; description: string; inputSchema: Record<string, unknown> | undefined }
+
+          const allEntries: ListEntry[] = [
+            ...transformedTools.map(
+              (t): ListEntry => ({ kind: 'registered', name: t.name, description: t.description, config: t.config }),
+            ),
+            ...synthesized.map(
+              (s): ListEntry => ({ kind: 'synthesized', name: s.name, description: s.description, inputSchema: s.inputSchema }),
+            ),
+          ]
+
           const pageSize = this._toolsPageSize
           const cursorName = req.params?.cursor
             ? Buffer.from(req.params.cursor, 'base64url').toString()
             : null
           let startIdx = 0
           if (cursorName !== null) {
-            const idx = allVisible.findIndex((t) => t.config.name === cursorName)
+            const idx = allEntries.findIndex((e) => e.name === cursorName)
             if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
-          const page = allVisible.slice(startIdx, startIdx + pageSize)
+          const page = allEntries.slice(startIdx, startIdx + pageSize)
           const nextCursor =
-            startIdx + pageSize < allVisible.length
-              ? Buffer.from(page[page.length - 1].config.name).toString('base64url')
+            startIdx + pageSize < allEntries.length
+              ? Buffer.from(page[page.length - 1].name).toString('base64url')
               : undefined
 
           const tools = await Promise.all(
-            page.map(async (t) => {
+            page.map(async (entry) => {
+              if (entry.kind === 'synthesized') {
+                return {
+                  name: entry.name,
+                  description: entry.description,
+                  inputSchema: entry.inputSchema ?? { type: 'object' as const },
+                }
+              }
+              const t = entry.config
               const inputSchema =
-                t.config.inputSchema ??
-                (t.config.input
-                  ? await toJsonSchema(t.config.input, `tool "${t.config.name}" input`)
+                t.inputSchema ??
+                (t.input
+                  ? await toJsonSchema(t.input, `tool "${t.name}" input`)
                   : { type: 'object' as const })
               const outputSchema =
-                t.config.outputSchema ??
-                (t.config.output
-                  ? await toJsonSchema(t.config.output, `tool "${t.config.name}" output`)
+                t.outputSchema ??
+                (t.output
+                  ? await toJsonSchema(t.output, `tool "${t.name}" output`)
                   : undefined)
               return {
-                name: t.config.name,
-                description: t.config.description,
+                name: entry.name,
+                description: entry.description,
                 inputSchema,
                 ...(outputSchema ? { outputSchema } : {}),
               }
@@ -275,14 +306,56 @@ export class FastMCP {
     })
 
     server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
-      const tool = this._tools.get(req.params.name)
-      if (!tool || tool.config.disabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Unknown tool: "${req.params.name}"`)
+      const requestedName = req.params.name
+      const token = toAccessToken(extra.authInfo)
+
+      // Check synthesized tools first
+      const synthesizedList = this._buildSynthesizedTools()
+      const synthTool = synthesizedList.find((s) => s.name === requestedName)
+      if (synthTool) {
+        const ctx = createContext(
+          server,
+          extra.requestId !== undefined ? String(extra.requestId) : undefined,
+          extra._meta?.progressToken,
+          token,
+          sessionState,
+        )
+        try {
+          return await contextStore.run(ctx, () =>
+            runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () =>
+              convertResult(await synthTool.handler(req.params.arguments ?? {})),
+            ),
+          )
+        } catch (err) {
+          if (err instanceof McpError) throw err
+          return {
+            content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
+            isError: true,
+          }
+        }
       }
 
-      const token = toAccessToken(extra.authInfo)
+      // Find by transformed name, then fall back to direct registry (for hidden/unaffected tools)
+      let tool: RegisteredTool | undefined
+      if (this._transforms.length > 0) {
+        for (const t of this._tools.values()) {
+          const view = applyTransformChain<ToolView>(
+            { name: t.config.name, description: t.config.description, tags: t.config.tags ?? [] },
+            this._transforms,
+            (tr, v) => tr.transformTool?.(v),
+          )
+          if (view && view.name === requestedName) { tool = t; break }
+        }
+      }
+      if (!tool) tool = this._tools.get(requestedName)
+
+      if (!tool || tool.config.disabled) {
+        throw new McpError(ErrorCode.InvalidParams, `Unknown tool: "${requestedName}"`)
+      }
+
       if (tool.config.auth) await runAuthCheck(tool.config.auth, token)
 
+      const resolvedTool = tool
       const rawArgs: unknown = req.params.arguments ?? {}
       const ctx = createContext(
         server,
@@ -295,16 +368,16 @@ export class FastMCP {
       try {
         return await contextStore.run(ctx, () =>
           runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
-            const args = tool.config.input ? await validateInput(tool.config.input, rawArgs, true) : rawArgs
+            const args = resolvedTool.config.input ? await validateInput(resolvedTool.config.input, rawArgs, true) : rawArgs
 
-            let executePromise: Promise<unknown> = Promise.resolve(tool.handler(args))
+            let executePromise: Promise<unknown> = Promise.resolve(resolvedTool.handler(args))
 
-            if (tool.config.timeout) {
-              const ms = tool.config.timeout
+            if (resolvedTool.config.timeout) {
+              const ms = resolvedTool.config.timeout
               let timer!: ReturnType<typeof setTimeout>
               const timeoutPromise = new Promise<never>((_, reject) => {
                 timer = setTimeout(
-                  () => reject(new Error(`Tool "${req.params.name}" timed out after ${ms}ms`)),
+                  () => reject(new Error(`Tool "${requestedName}" timed out after ${ms}ms`)),
                   ms,
                 )
               })
@@ -314,7 +387,7 @@ export class FastMCP {
             }
 
             let resultValue = await executePromise
-            if (tool.config.output) resultValue = await validateInput(tool.config.output, resultValue)
+            if (resolvedTool.config.output) resultValue = await validateInput(resolvedTool.config.output, resultValue)
             return convertResult(resultValue)
           }),
         )
@@ -343,26 +416,28 @@ export class FastMCP {
             )
           ).filter((r): r is RegisteredResource => r !== null)
 
+          const transformedResources = this._applyTransformsToResources(allVisible)
+
           const pageSize = this._resourcesPageSize
           const cursorUri = req.params?.cursor
             ? Buffer.from(req.params.cursor, 'base64url').toString()
             : null
           let startIdx = 0
           if (cursorUri !== null) {
-            const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
+            const idx = transformedResources.findIndex((r) => r.uri === cursorUri)
             if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
-          const page = allVisible.slice(startIdx, startIdx + pageSize)
+          const page = transformedResources.slice(startIdx, startIdx + pageSize)
           const nextCursor =
-            startIdx + pageSize < allVisible.length
-              ? Buffer.from(page[page.length - 1].config.uri).toString('base64url')
+            startIdx + pageSize < transformedResources.length
+              ? Buffer.from(page[page.length - 1].uri).toString('base64url')
               : undefined
 
           return {
             resources: page.map((r) => ({
-              uri: r.config.uri,
-              name: r.config.name ?? r.config.uri,
+              uri: r.uri,
+              name: r.name,
               ...(r.config.title !== undefined ? { title: r.config.title } : {}),
               ...(r.config.description !== undefined ? { description: r.config.description } : {}),
               ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
@@ -391,26 +466,28 @@ export class FastMCP {
             )
           ).filter((r): r is RegisteredResource => r !== null)
 
+          const transformedTemplates = this._applyTransformsToResourceTemplates(allVisible)
+
           const pageSize = this._resourcesPageSize
           const cursorUri = req.params?.cursor
             ? Buffer.from(req.params.cursor, 'base64url').toString()
             : null
           let startIdx = 0
           if (cursorUri !== null) {
-            const idx = allVisible.findIndex((r) => r.config.uri === cursorUri)
+            const idx = transformedTemplates.findIndex((r) => r.uri === cursorUri)
             if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
-          const page = allVisible.slice(startIdx, startIdx + pageSize)
+          const page = transformedTemplates.slice(startIdx, startIdx + pageSize)
           const nextCursor =
-            startIdx + pageSize < allVisible.length
-              ? Buffer.from(page[page.length - 1].config.uri).toString('base64url')
+            startIdx + pageSize < transformedTemplates.length
+              ? Buffer.from(page[page.length - 1].uri).toString('base64url')
               : undefined
 
           return {
             resourceTemplates: page.map((r) => ({
-              uriTemplate: r.config.uri,
-              name: r.config.name ?? r.config.uri,
+              uriTemplate: r.uri,
+              name: r.name,
               ...(r.config.title !== undefined ? { title: r.config.title } : {}),
               ...(r.config.description !== undefined ? { description: r.config.description } : {}),
               ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
@@ -426,14 +503,44 @@ export class FastMCP {
       const requestedUri = req.params.uri
       const token = toAccessToken(extra.authInfo)
 
-      let resource = this._staticResources.get(requestedUri)
+      let resource: RegisteredResource | undefined = this._staticResources.get(requestedUri)
       let templateParams: Record<string, string> | undefined
 
+      // Direct template matching (original URIs — also handles hidden-but-callable resources)
       if (!resource) {
         for (const r of this._templateResources.values()) {
           if (r.config.disabled) continue
           const params = matchTemplate(r.config.uri, requestedUri)
           if (params !== null) { resource = r; templateParams = params; break }
+        }
+      }
+
+      // Transformed static lookup
+      if (!resource && this._transforms.length > 0) {
+        for (const r of this._staticResources.values()) {
+          if (r.config.disabled) continue
+          const view = applyTransformChain<ResourceView>(
+            { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+            this._transforms,
+            (t, v) => t.transformResource?.(v),
+          )
+          if (view && view.uri === requestedUri) { resource = r; break }
+        }
+      }
+
+      // Transformed template matching
+      if (!resource && this._transforms.length > 0) {
+        for (const r of this._templateResources.values()) {
+          if (r.config.disabled) continue
+          const view = applyTransformChain<ResourceView>(
+            { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+            this._transforms,
+            (t, v) => t.transformResourceTemplate?.(v),
+          )
+          if (view) {
+            const params = matchTemplate(view.uri, requestedUri)
+            if (params !== null) { resource = r; templateParams = params; break }
+          }
         }
       }
 
@@ -491,27 +598,29 @@ export class FastMCP {
             )
           ).filter((p): p is RegisteredPrompt => p !== null)
 
+          const transformedPrompts = this._applyTransformsToPrompts(allVisible)
+
           const pageSize = this._promptsPageSize
           const cursorName = req.params?.cursor
             ? Buffer.from(req.params.cursor, 'base64url').toString()
             : null
           let startIdx = 0
           if (cursorName !== null) {
-            const idx = allVisible.findIndex((p) => p.config.name === cursorName)
+            const idx = transformedPrompts.findIndex((p) => p.name === cursorName)
             if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
-          const page = allVisible.slice(startIdx, startIdx + pageSize)
+          const page = transformedPrompts.slice(startIdx, startIdx + pageSize)
           const nextCursor =
-            startIdx + pageSize < allVisible.length
-              ? Buffer.from(page[page.length - 1].config.name).toString('base64url')
+            startIdx + pageSize < transformedPrompts.length
+              ? Buffer.from(page[page.length - 1].name).toString('base64url')
               : undefined
 
           return {
             prompts: page.map((p) => ({
-              name: p.config.name,
+              name: p.name,
               ...(p.config.title !== undefined ? { title: p.config.title } : {}),
-              ...(p.config.description !== undefined ? { description: p.config.description } : {}),
+              description: p.description,
               ...(p.config.arguments?.length ? { arguments: p.config.arguments } : {}),
             })),
             ...(nextCursor ? { nextCursor } : {}),
@@ -521,20 +630,35 @@ export class FastMCP {
     })
 
     server.setRequestHandler(GetPromptRequestSchema, async (req, extra) => {
-      const prompt = this._prompts.get(req.params.name)
-      if (!prompt || prompt.config.disabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${req.params.name}"`)
+      const requestedName = req.params.name
+      let prompt: RegisteredPrompt | undefined = this._prompts.get(requestedName)
+
+      // Try transformed name lookup if direct lookup failed
+      if (!prompt && this._transforms.length > 0) {
+        for (const p of this._prompts.values()) {
+          const view = applyTransformChain<PromptView>(
+            { name: p.config.name, description: p.config.description, tags: p.config.tags ?? [] },
+            this._transforms,
+            (t, v) => t.transformPrompt?.(v),
+          )
+          if (view && view.name === requestedName) { prompt = p; break }
+        }
       }
 
+      if (!prompt || prompt.config.disabled) {
+        throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${requestedName}"`)
+      }
+
+      const resolvedPrompt = prompt
       const token = toAccessToken(extra.authInfo)
-      if (prompt.config.auth) await runAuthCheck(prompt.config.auth, token)
+      if (resolvedPrompt.config.auth) await runAuthCheck(resolvedPrompt.config.auth, token)
 
       const suppliedArgs = req.params.arguments ?? {}
-      for (const arg of prompt.config.arguments ?? []) {
+      for (const arg of resolvedPrompt.config.arguments ?? []) {
         if (arg.required && !(arg.name in suppliedArgs)) {
           throw new McpError(
             ErrorCode.InvalidParams,
-            `Missing required argument "${arg.name}" for prompt "${req.params.name}"`,
+            `Missing required argument "${arg.name}" for prompt "${requestedName}"`,
           )
         }
       }
@@ -549,13 +673,13 @@ export class FastMCP {
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/get', req.params, ctx, async () => {
-          let executePromise = Promise.resolve(prompt.handler(suppliedArgs))
-          if (prompt.config.timeout) {
-            const ms = prompt.config.timeout
+          let executePromise = Promise.resolve(resolvedPrompt.handler(suppliedArgs))
+          if (resolvedPrompt.config.timeout) {
+            const ms = resolvedPrompt.config.timeout
             let timer!: ReturnType<typeof setTimeout>
             const timeoutPromise = new Promise<never>((_, reject) => {
               timer = setTimeout(
-                () => reject(new Error(`Prompt "${req.params.name}" timed out after ${ms}ms`)),
+                () => reject(new Error(`Prompt "${requestedName}" timed out after ${ms}ms`)),
                 ms,
               )
             })
@@ -620,6 +744,94 @@ export class FastMCP {
       this._staticResources.set(config.uri, { config, handler })
     }
     this._notifyResourceListChanged()
+  }
+
+  /** Add a transform to the pipeline. Applied to list responses in registration order. */
+  transform(t: Transform): this {
+    this._transforms.push(t)
+    return this
+  }
+
+  private _applyTransformsToTools(
+    tools: RegisteredTool[],
+  ): Array<{ name: string; description: string; originalName: string; config: ToolConfig; handler: (args: unknown) => unknown }> {
+    return tools.flatMap((tool) => {
+      const view = applyTransformChain<ToolView>(
+        { name: tool.config.name, description: tool.config.description, tags: tool.config.tags ?? [] },
+        this._transforms,
+        (t, v) => t.transformTool?.(v),
+      )
+      return view
+        ? [{ name: view.name, description: view.description, originalName: tool.config.name, config: tool.config, handler: tool.handler }]
+        : []
+    })
+  }
+
+  private _applyTransformsToResources(
+    resources: RegisteredResource[],
+  ): Array<{ uri: string; name: string; originalUri: string; config: ResourceConfig; handler: (params?: Record<string, string>) => unknown }> {
+    return resources.flatMap((r) => {
+      const resolvedName = r.config.name ?? r.config.uri
+      const view = applyTransformChain<ResourceView>(
+        { uri: r.config.uri, name: resolvedName, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+        this._transforms,
+        (t, v) => t.transformResource?.(v),
+      )
+      return view
+        ? [{ uri: view.uri, name: view.name, originalUri: r.config.uri, config: r.config, handler: r.handler }]
+        : []
+    })
+  }
+
+  private _applyTransformsToResourceTemplates(
+    templates: RegisteredResource[],
+  ): Array<{ uri: string; name: string; originalUri: string; config: ResourceConfig; handler: (params?: Record<string, string>) => unknown }> {
+    return templates.flatMap((r) => {
+      const resolvedName = r.config.name ?? r.config.uri
+      const view = applyTransformChain<ResourceView>(
+        { uri: r.config.uri, name: resolvedName, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+        this._transforms,
+        (t, v) => t.transformResourceTemplate?.(v),
+      )
+      return view
+        ? [{ uri: view.uri, name: view.name, originalUri: r.config.uri, config: r.config, handler: r.handler }]
+        : []
+    })
+  }
+
+  private _applyTransformsToPrompts(
+    prompts: RegisteredPrompt[],
+  ): Array<{ name: string; description: string; originalName: string; config: ResolvedPromptConfig; handler: (args?: Record<string, string>) => unknown }> {
+    return prompts.flatMap((p) => {
+      const view = applyTransformChain<PromptView>(
+        { name: p.config.name, description: p.config.description, tags: p.config.tags ?? [] },
+        this._transforms,
+        (t, v) => t.transformPrompt?.(v),
+      )
+      return view
+        ? [{ name: view.name, description: view.description, originalName: p.config.name, config: p.config, handler: p.handler }]
+        : []
+    })
+  }
+
+  private _buildSynthesizedTools(): SynthesizedTool[] {
+    if (this._transforms.length === 0) return []
+    const resourceViews: ResourceView[] = [
+      ...[...this._staticResources.values()],
+      ...[...this._templateResources.values()],
+    ].map((r) => ({
+      uri: r.config.uri,
+      name: r.config.name ?? r.config.uri,
+      tags: r.config.tags ?? [],
+      mimeType: r.config.mimeType,
+      title: r.config.title,
+    }))
+    const promptViews: PromptView[] = [...this._prompts.values()].map((p) => ({
+      name: p.config.name,
+      description: p.config.description,
+      tags: p.config.tags ?? [],
+    }))
+    return this._transforms.flatMap((t) => t.synthesizeTools?.(resourceViews, promptViews) ?? [])
   }
 
   /**
