@@ -42,8 +42,9 @@ export type {
   OAuthOptions,
   TokenStorageAdapter,
   TokenRefresher,
+  ClientCredentialsOptions,
 } from './auth.js'
-export { OAuth, BearerAuth } from './auth.js'
+export { OAuth, BearerAuth, ClientCredentials } from './auth.js'
 
 export type {
   McpServerLike,

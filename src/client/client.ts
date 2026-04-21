@@ -9,7 +9,7 @@ import {
 import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol'
 
 import { BearerAuth } from './auth.js'
-import type { OAuth } from './auth.js'
+import type { ClientCredentials, OAuth } from './auth.js'
 import type { ClientHandlers, ProgressHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
 import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
@@ -57,7 +57,7 @@ export interface ClientOptions {
    * Authentication to attach to HTTP requests.
    * A plain string is treated as a Bearer token.
    */
-  auth?: BearerAuth | OAuth | string
+  auth?: BearerAuth | OAuth | ClientCredentials | string
   handlers?: ClientHandlers
   /** file:// URIs to advertise to the server as accessible roots. */
   roots?: string[]
@@ -79,7 +79,7 @@ export class Client implements IClient {
   private _connectPromise: Promise<void> | null = null
 
   private readonly _input: ClientTransportInput
-  private readonly _auth: BearerAuth | OAuth | undefined
+  private readonly _auth: BearerAuth | OAuth | ClientCredentials | undefined
   private readonly _handlers: Required<Omit<ClientHandlers, 'sampling' | 'elicitation'>> &
     Pick<ClientHandlers, 'sampling' | 'elicitation'>
   private readonly _roots: string[] | undefined
@@ -373,8 +373,8 @@ export class Client implements IClient {
 // ---------------------------------------------------------------------------
 
 function resolveAuth(
-  auth: BearerAuth | OAuth | string | undefined,
-): BearerAuth | OAuth | undefined {
+  auth: BearerAuth | OAuth | ClientCredentials | string | undefined,
+): BearerAuth | OAuth | ClientCredentials | undefined {
   if (!auth) return undefined
   if (typeof auth === 'string') return new BearerAuth(auth)
   return auth

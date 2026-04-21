@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio'
-import type { BearerAuth, OAuth } from './auth.js'
+import type { BearerAuth, ClientCredentials, OAuth } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // McpServerLike — structural interface for in-process servers.
@@ -98,10 +98,12 @@ export type ResolvedTransport = {
 // Auth header injection helpers
 // ---------------------------------------------------------------------------
 
-function isOAuth(auth: BearerAuth | OAuth): auth is OAuth {
-  // OAuth has async getHeaders; BearerAuth has sync getHeaders.
-  // Both have getHeaders, so we distinguish by checking for setToken.
-  return 'setToken' in auth
+type AsyncAuth = OAuth | ClientCredentials
+
+function isAsyncAuth(auth: BearerAuth | AsyncAuth): auth is AsyncAuth {
+  // OAuth and ClientCredentials have async getHeaders(); BearerAuth is sync.
+  // Discriminate by the presence of `kind` (ClientCredentials) or `setToken` (OAuth).
+  return 'setToken' in auth || 'kind' in auth
 }
 
 type HttpTransportOptions = {
@@ -111,14 +113,14 @@ type HttpTransportOptions = {
 }
 
 function buildHttpOptions(
-  auth: BearerAuth | OAuth | undefined,
+  auth: BearerAuth | AsyncAuth | undefined,
   extraHeaders: Record<string, string> = {},
 ): HttpTransportOptions {
   const hasExtra = Object.keys(extraHeaders).length > 0
 
   if (!auth && !hasExtra) return {}
 
-  if (auth && isOAuth(auth)) {
+  if (auth && isAsyncAuth(auth)) {
     // Dynamic auth: inject per-request via custom fetch wrapper.
     const customFetch = async (
       url: string | URL,
@@ -156,7 +158,7 @@ function buildHttpOptions(
 
 function urlToTransport(
   url: URL,
-  auth: BearerAuth | OAuth | undefined,
+  auth: BearerAuth | AsyncAuth | undefined,
   extraHeaders: Record<string, string> = {},
 ): Transport {
   const { requestInit, fetch: customFetch, eventSourceInit } = buildHttpOptions(
@@ -187,7 +189,7 @@ function urlToTransport(
 
 export function resolveTransport(
   input: ClientTransportInput,
-  auth?: BearerAuth | OAuth,
+  auth?: BearerAuth | AsyncAuth,
 ): ResolvedTransport {
   // 1. Our StdioTransport config class (check before the duck-type checks below).
   if (input instanceof StdioTransport) {
