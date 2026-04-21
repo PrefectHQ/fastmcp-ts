@@ -189,25 +189,30 @@ The `stdio` transport accepts optional `stdin`/`stdout` stream overrides in `Run
 
 ---
 
-**Composition:** Servers can be combined via mounting or proxying.
+**Composition:** Two mechanisms — mounting and proxying.
 
-**`parent.mount(child, prefix?)`** — mirrors all tools, resources, and prompts from `child` into `parent`. The mirror is live: components registered on the child after `mount()` immediately appear in the parent. Mounting the same child twice is a no-op.
+**Architecture choice:** Thin wrapper over the existing registration system. Mounting copies registrations directly into the parent's internal maps (`_tools`, `_staticResources`, `_templateResources`, `_prompts`) via mirroring helpers, rather than a separate routing layer. This means transforms, middleware, and auth all work identically on mounted components — no special-case code in the request handlers.
 
-- **Prefix**: When a prefix is supplied, tool and prompt names are renamed `${prefix}_${name}`. Resource display names are prefixed the same way, but resource URIs are never altered (prefixing a URI scheme would violate RFC 3986 §3.1). Resources remain readable by their original URI.
-- **Cascading**: Callbacks propagate through the parent's own `_toolRegisteredCallbacks`/`_resourceRegisteredCallbacks`/`_promptRegisteredCallbacks` arrays, so grandparent chains work naturally.
-- **`list_changed` forwarding**: Adding a component to the child triggers `_notifyToolListChanged()` (or equivalent) on the parent, which sends the notification to all clients connected to the parent.
-- **Close behaviour**: When the parent closes, it drains the child's `_proxyCloseCallbacks` — this closes any underlying proxy client connections.
+**`parent.mount(child, prefix?): this`** — mirrors all tools, resources, and prompts from `child` into `parent`. The mirror is live: components registered on the child after `mount()` appear in the parent immediately. Mounting the same child twice is a no-op (guarded by `_mountedChildren: Set<FastMCP>`).
 
-**`createProxy(config: ProxyTransport, name?): Promise<FastMCP>`** — creates a plain `FastMCP` instance that forwards all calls to a remote MCP server. Initial sync fetches all tools, resources, resource templates, and prompts from the remote. Passthrough uses `ToolResult`, `ResourceResult`, and `PromptResult` to avoid double-conversion. The proxy registers a close callback so that `parent.mount(proxy)` then `parent.close()` also closes the proxy's underlying SDK `Client`.
+- **Prefix**: tool and prompt names become `${prefix}_${originalName}`; resource display names are prefixed the same way; **resource URIs are never altered** — prefixing a scheme (`v1_data://`) violates RFC 3986 §3.1, and routing already works by original URI.
+- **Live updates**: `tool()`, `resource()`, and `prompt()` each fire `_toolRegisteredCallbacks` / `_resourceRegisteredCallbacks` / `_promptRegisteredCallbacks` after the map write. `mount()` pushes callbacks onto the child's arrays. Adding to the child triggers the parent's mirror, which in turn writes into the parent's maps and fires `_notify*ListChanged()` — so connected clients see the change immediately.
+- **Cascading**: the parent's mirror calls `this.tool(...)` / `this.resource(...)` / `this.prompt(...)`, which fire the parent's own callbacks. Grandparent chains propagate naturally.
+- **Close**: `mount()` pushes a callback onto `parent._proxyCloseCallbacks` that drains `child._proxyCloseCallbacks`. When the parent closes, it drains its own proxy callbacks, which drain the child's — closing any underlying proxy SDK `Client` connections.
+
+**`createProxy(config: ProxyTransport, name?): Promise<FastMCP>`** — returns a plain `FastMCP` instance whose handlers forward all calls to a remote MCP server. The returned value is just a `FastMCP` — `mount()` works on it identically to any in-process child.
+
+Initial sync fetches tools, resources, resource templates, and prompts via `client.listTools()` etc. and registers forwarding handlers on the proxy instance. Passthrough uses `ToolResult(result)`, `ResourceResult(contents)`, and `PromptResult(messages, description)` so responses from the remote are returned verbatim without re-conversion.
+
+The proxy registers `proxy._addCloseCallback(async () => client.close())` so that closing the parent (or calling `proxy.close()` directly) also closes the underlying SDK `Client` transport.
 
 ```typescript
-// Proxy types
 type ProxyTransport =
   | { type: 'stdio'; command: string; args?: string[]; env?: Record<string, string>; cwd?: string }
   | { type: 'http'; url: string; requestInit?: RequestInit }
 ```
 
-**Server capabilities:** FastMCP advertises `tools: { listChanged: true }`, `resources: { listChanged: true }`, `prompts: { listChanged: true }` — clients using the SDK's `listChanged` option receive notifications when component lists change. (Note: the SDK's `listChanged` constructor option has a known issue in-process; use `client.setNotificationHandler(ToolListChangedNotificationSchema, ...)` for reliable notification handling in tests.)
+**`list_changed` capability:** FastMCP advertises `tools: { listChanged: true }`, `resources: { listChanged: true }`, `prompts: { listChanged: true }`. In tests, use `client.setNotificationHandler(ToolListChangedNotificationSchema, callback)` — the SDK `Client` constructor's `listChanged` option has a known in-process delivery issue and is unreliable in the same-process test environment.
 
 ---
 

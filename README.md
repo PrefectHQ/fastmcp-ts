@@ -16,7 +16,7 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 - [x] Authentication — JWT validation, OAuth 2.1 with Dynamic Client Registration, OAuth proxy, and composable multi-source auth
 - [x] Middleware — cross-cutting request/response interception with built-ins for logging, caching (with auth-aware key functions), rate limiting, size limiting, error normalisation, and cancellation
 - [x] Transforms — rename, filter, or reshape components in list responses; synthesise new tools from resources and prompts; built-ins for filtering, namespacing, type conversion, and version gating
-- [x] Composition — mount child servers onto a parent with optional prefix namespacing; live updates (tools/resources/prompts added after mount appear immediately); proxy remote HTTP and subprocess MCP servers via `createProxy()`; parent close drains proxy connections
+- [x] Composition — `mount(child, prefix?)` mirrors a child server's tools, resources, and prompts onto the parent with optional name-prefix namespacing; live: components added to a child after mounting appear in the parent immediately; `createProxy(config)` wraps a remote HTTP or subprocess MCP server as a mountable FastMCP instance; closing the parent tears down owned proxy connections
 
 ---
 
