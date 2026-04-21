@@ -4,6 +4,8 @@
 
 export interface ToolView {
   readonly name: string
+  /** Human-readable display name shown in UIs. Takes precedence over `name` for display purposes. */
+  readonly title?: string
   readonly description: string
   readonly tags: readonly string[]
 }
@@ -28,8 +30,12 @@ export interface PromptView {
 
 export interface SynthesizedTool {
   readonly name: string
+  /** Human-readable display name shown in UIs. Takes precedence over `name` for display purposes. */
+  readonly title?: string
   readonly description: string
   readonly inputSchema?: Record<string, unknown>
+  readonly auth?: import('./auth/authorization').AuthCheck
+  readonly timeout?: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly handler: (args: any) => unknown
 }
@@ -107,6 +113,8 @@ export class FilterTransform implements Transform {
     private readonly predicates: {
       tools?: (v: ToolView) => boolean
       resources?: (v: ResourceView) => boolean
+      /** When omitted, falls back to the `resources` predicate. */
+      resourceTemplates?: (v: ResourceView) => boolean
       prompts?: (v: PromptView) => boolean
     },
   ) {}
@@ -118,14 +126,15 @@ export class FilterTransform implements Transform {
     return (this.predicates.resources?.(v) ?? true) ? v : null
   }
   transformResourceTemplate(v: ResourceView): ResourceView | null {
-    return (this.predicates.resources?.(v) ?? true) ? v : null
+    const pred = this.predicates.resourceTemplates ?? this.predicates.resources
+    return (pred?.(v) ?? true) ? v : null
   }
   transformPrompt(v: PromptView): PromptView | null {
     return (this.predicates.prompts?.(v) ?? true) ? v : null
   }
 }
 
-/** Prefix all tool/prompt names and resource URIs with a string. */
+/** Prefix all tool, prompt, and resource names with a string. URIs are left unchanged. */
 export class NamespaceTransform implements Transform {
   constructor(private readonly prefix: string) {}
 
@@ -133,10 +142,10 @@ export class NamespaceTransform implements Transform {
     return { ...v, name: `${this.prefix}${v.name}` }
   }
   transformResource(v: ResourceView): ResourceView {
-    return { ...v, uri: `${this.prefix}${v.uri}`, name: `${this.prefix}${v.name}` }
+    return { ...v, name: `${this.prefix}${v.name}` }
   }
   transformResourceTemplate(v: ResourceView): ResourceView {
-    return { ...v, uri: `${this.prefix}${v.uri}`, name: `${this.prefix}${v.name}` }
+    return { ...v, name: `${this.prefix}${v.name}` }
   }
   transformPrompt(v: PromptView): PromptView {
     return { ...v, name: `${this.prefix}${v.name}` }

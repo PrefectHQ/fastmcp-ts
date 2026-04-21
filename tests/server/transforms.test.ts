@@ -11,6 +11,7 @@ import {
   PromptsAsTools,
   VersionFilter,
 } from '../../src/server/transform'
+import type { SynthesizedTool } from '../../src/server/transform'
 
 async function makeClient(server: FastMCP): Promise<Client> {
   const client = new Client({ name: 'test-client', version: '1.0.0' })
@@ -137,6 +138,22 @@ describe('Server — Transforms', () => {
       const result = await client.getPrompt({ name: 'internal_prompt' })
       expect(result.messages[0].content).toEqual({ type: 'text', text: 'secret message' })
     })
+
+    it('resourceTemplates predicate is independent from resources predicate', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [new FilterTransform({ resourceTemplates: () => false })],
+      })
+      server.resource({ uri: 'static://data', name: 'Static' }, () => 'static')
+      server.resource({ uri: 'template://{id}', name: 'Template' }, () => 'templated')
+      client = await makeClient(server)
+
+      const { resources } = await client.listResources()
+      expect(resources.map((r) => r.uri)).toContain('static://data')
+
+      const { resourceTemplates } = await client.listResourceTemplates()
+      expect(resourceTemplates).toHaveLength(0)
+    })
   })
 
   describe('metadata modification', () => {
@@ -151,6 +168,32 @@ describe('Server — Transforms', () => {
       const { tools } = await client.listTools()
       const tool = tools.find((t) => t.name === 'get_weather')
       expect(tool?.description).toBe('Fetch current weather conditions')
+    })
+
+    it('a tool title is passed through to the client and a transform can rewrite it', async () => {
+      server = new FastMCP({
+        name: 'test',
+        transforms: [
+          {
+            transformTool: (v) => (v.name === 'get_weather' ? { ...v, title: 'Fetch Weather' } : v),
+          },
+        ],
+      })
+      server.tool({ name: 'get_weather', title: 'Get Current Weather', description: 'Get weather' }, () => 'sunny')
+      client = await makeClient(server)
+
+      const { tools } = await client.listTools()
+      const tool = tools.find((t) => t.name === 'get_weather')
+      expect(tool?.title).toBe('Fetch Weather')
+    })
+
+    it('a tool with no title has no title field in the list response', async () => {
+      server = new FastMCP({ name: 'test' })
+      server.tool({ name: 'search', description: 'Search' }, () => 'results')
+      client = await makeClient(server)
+
+      const { tools } = await client.listTools()
+      expect('title' in tools[0]).toBe(false)
     })
   })
 
@@ -186,14 +229,15 @@ describe('Server — Transforms', () => {
       expect(listed).toHaveLength(1)
     })
 
-    it('ResourcesAsTools combined with NamespaceTransform reports transformed URIs', async () => {
+    it('ResourcesAsTools combined with NamespaceTransform preserves original URIs and prefixes names', async () => {
       server = new FastMCP({ name: 'test', transforms: [new NamespaceTransform('v1_'), new ResourcesAsTools()] })
       server.resource({ uri: 'data://items', name: 'Items' }, () => 'items')
       client = await makeClient(server)
 
       const result = await client.callTool({ name: 'v1_list_resources', arguments: {} })
-      const listed = JSON.parse((result.content as Array<{ type: string; text: string }>)[0].text) as Array<{ uri: string }>
-      expect(listed[0].uri).toBe('v1_data://items')
+      const listed = JSON.parse((result.content as Array<{ type: string; text: string }>)[0].text) as Array<{ uri: string; name: string }>
+      expect(listed[0].uri).toBe('data://items')
+      expect(listed[0].name).toBe('v1_Items')
     })
 
     it('ResourcesAsTools does not expose disabled resources', async () => {
@@ -232,6 +276,43 @@ describe('Server — Transforms', () => {
       const { tools } = await client.listTools()
       expect(tools.map((t) => t.name)).not.toContain('list_resources')
     })
+
+    it('a synthesized tool with an auth check rejects unauthorised callers', async () => {
+      const { AuthorizationError } = await import('../../src/server/auth/types')
+      const guardedTransform = {
+        synthesizeTools: (): SynthesizedTool[] => [
+          {
+            name: 'guarded',
+            description: 'Guarded',
+            auth: () => { throw new AuthorizationError('forbidden') },
+            handler: () => 'secret',
+          },
+        ],
+      }
+      server = new FastMCP({ name: 'test', transforms: [guardedTransform] })
+      client = await makeClient(server)
+
+      await expect(client.callTool({ name: 'guarded', arguments: {} })).rejects.toThrow()
+    })
+
+    it('a synthesized tool with a timeout returns an error when it exceeds the limit', async () => {
+      const slowTransform = {
+        synthesizeTools: (): SynthesizedTool[] => [
+          {
+            name: 'slow',
+            description: 'Slow',
+            timeout: 50,
+            handler: () => new Promise((resolve) => setTimeout(() => resolve('done'), 300)),
+          },
+        ],
+      }
+      server = new FastMCP({ name: 'test', transforms: [slowTransform] })
+      client = await makeClient(server)
+
+      const result = await client.callTool({ name: 'slow', arguments: {} })
+      expect(result.isError).toBe(true)
+      expect((result.content as Array<{ type: string; text: string }>)[0].text).toMatch(/timed out/)
+    })
   })
 
   describe('namespacing', () => {
@@ -247,7 +328,7 @@ describe('Server — Transforms', () => {
 
       const { resources } = await client.listResources()
       expect(resources[0].name).toBe('v1_Items')
-      expect(resources[0].uri).toBe('v1_data://items')
+      expect(resources[0].uri).toBe('data://items')
 
       const { prompts } = await client.listPrompts()
       expect(prompts[0].name).toBe('v1_greet')
@@ -266,12 +347,12 @@ describe('Server — Transforms', () => {
       expect(promptResult.messages[0].content).toEqual({ type: 'text', text: 'hello friend' })
     })
 
-    it('a namespaced resource URI is correctly routed back to the original resource handler', async () => {
+    it('NamespaceTransform does not alter resource URIs — resources are read by their original URI', async () => {
       server = new FastMCP({ name: 'test', transforms: [new NamespaceTransform('v1_')] })
       server.resource({ uri: 'data://items', name: 'Items' }, () => 'item content')
       client = await makeClient(server)
 
-      const result = await client.readResource({ uri: 'v1_data://items' })
+      const result = await client.readResource({ uri: 'data://items' })
       expect(result.contents[0]).toMatchObject({ text: 'item content' })
     })
 

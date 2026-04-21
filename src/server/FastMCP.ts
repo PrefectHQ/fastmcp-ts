@@ -88,6 +88,8 @@ export interface ServerAddress {
 
 export interface ToolConfig {
   name: string
+  /** Human-readable display name shown in UIs. Takes precedence over `name` for display purposes. */
+  title?: string
   description: string
   /** Standard Schema validator for the tool's input arguments. Used for runtime validation. */
   input?: StandardSchemaV1
@@ -244,15 +246,15 @@ export class FastMCP {
           const synthesized = this._buildSynthesizedTools(resourceViews, promptViews)
 
           type ListEntry =
-            | { kind: 'registered'; name: string; description: string; config: ToolConfig }
-            | { kind: 'synthesized'; name: string; description: string; inputSchema: Record<string, unknown> | undefined }
+            | { kind: 'registered'; name: string; title: string | undefined; description: string; config: ToolConfig }
+            | { kind: 'synthesized'; name: string; title: string | undefined; description: string; inputSchema: Record<string, unknown> | undefined }
 
           const allEntries: ListEntry[] = [
             ...transformedTools.map(
-              (t): ListEntry => ({ kind: 'registered', name: t.name, description: t.description, config: t.config }),
+              (t): ListEntry => ({ kind: 'registered', name: t.name, title: t.title, description: t.description, config: t.config }),
             ),
             ...synthesized.map(
-              (s): ListEntry => ({ kind: 'synthesized', name: s.name, description: s.description, inputSchema: s.inputSchema }),
+              (s): ListEntry => ({ kind: 'synthesized', name: s.name, title: s.title, description: s.description, inputSchema: s.inputSchema }),
             ),
           ]
 
@@ -277,6 +279,7 @@ export class FastMCP {
               if (entry.kind === 'synthesized') {
                 return {
                   name: entry.name,
+                  ...(entry.title !== undefined ? { title: entry.title } : {}),
                   description: entry.description,
                   inputSchema: entry.inputSchema ?? { type: 'object' as const },
                 }
@@ -294,6 +297,7 @@ export class FastMCP {
                   : undefined)
               return {
                 name: entry.name,
+                ...(entry.title !== undefined ? { title: entry.title } : {}),
                 description: entry.description,
                 inputSchema,
                 ...(outputSchema ? { outputSchema } : {}),
@@ -315,6 +319,7 @@ export class FastMCP {
       const synthesizedList = this._buildSynthesizedTools(resourceViews, promptViews)
       const synthTool = synthesizedList.find((s) => s.name === requestedName)
       if (synthTool) {
+        if (synthTool.auth) await runAuthCheck(synthTool.auth, token)
         const ctx = createContext(
           server,
           extra.requestId !== undefined ? String(extra.requestId) : undefined,
@@ -324,9 +329,25 @@ export class FastMCP {
         )
         try {
           return await contextStore.run(ctx, () =>
-            runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () =>
-              convertResult(await synthTool.handler(req.params.arguments ?? {})),
-            ),
+            runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
+              let executePromise: Promise<unknown> = Promise.resolve(
+                synthTool.handler(req.params.arguments ?? {}),
+              )
+              if (synthTool.timeout) {
+                const ms = synthTool.timeout
+                let timer!: ReturnType<typeof setTimeout>
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                  timer = setTimeout(
+                    () => reject(new Error(`Tool "${requestedName}" timed out after ${ms}ms`)),
+                    ms,
+                  )
+                })
+                executePromise = Promise.race([executePromise, timeoutPromise]).finally(() =>
+                  clearTimeout(timer),
+                )
+              }
+              return convertResult(await executePromise)
+            }),
           )
         } catch (err) {
           if (err instanceof McpError) throw err
@@ -755,15 +776,15 @@ export class FastMCP {
 
   private _applyTransformsToTools(
     tools: RegisteredTool[],
-  ): Array<{ name: string; description: string; originalName: string; config: ToolConfig; handler: (args: unknown) => unknown }> {
+  ): Array<{ name: string; title: string | undefined; description: string; originalName: string; config: ToolConfig; handler: (args: unknown) => unknown }> {
     return tools.flatMap((tool) => {
       const view = applyTransformChain<ToolView>(
-        { name: tool.config.name, description: tool.config.description, tags: tool.config.tags ?? [] },
+        { name: tool.config.name, title: tool.config.title, description: tool.config.description, tags: tool.config.tags ?? [] },
         this._transforms,
         (t, v) => t.transformTool?.(v),
       )
       return view
-        ? [{ name: view.name, description: view.description, originalName: tool.config.name, config: tool.config, handler: tool.handler }]
+        ? [{ name: view.name, title: view.title, description: view.description, originalName: tool.config.name, config: tool.config, handler: tool.handler }]
         : []
     })
   }
@@ -820,11 +841,11 @@ export class FastMCP {
     const raw = this._transforms.flatMap((t) => t.synthesizeTools?.(resourceViews, promptViews) ?? [])
     return raw.flatMap((s) => {
       const view = applyTransformChain<ToolView>(
-        { name: s.name, description: s.description, tags: [] },
+        { name: s.name, title: s.title, description: s.description, tags: [] },
         this._transforms,
         (t, v) => t.transformTool?.(v),
       )
-      return view ? [{ ...s, name: view.name, description: view.description }] : []
+      return view ? [{ ...s, name: view.name, title: view.title, description: view.description }] : []
     })
   }
 
