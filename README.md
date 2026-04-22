@@ -76,11 +76,29 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 
 ## Documentation
 
-- [ ] Tooling — Mintlify (`docs/` folder in the main repo, served locally via `npx mint dev`); API reference auto-generated from TSDoc comments via TypeDoc and integrated into Mintlify as a dedicated **SDK Reference** tab; `llms.txt` / `llms-full.txt` endpoints for LLM-friendly sitemap and full-text access; MCP server endpoint at `/mcp` for AI-native docs queries
-- [ ] Information architecture — mirroring `gofastmcp.com`: **Get Started** (installation, quickstart, concepts); **Servers** (tools, resources, prompts, context, auth, middleware, transforms, composition, deployment); **Clients** (transports, auth, sampling adapters, multi-server); **Apps** (overview, quickstart, `@fastmcp/ui-runtime`, Vite plugin, built-in providers, generative UI, low-level); **CLI**; **Integrations** (auth providers, AI assistants, AI SDKs); **SDK Reference** (auto-generated, separate tab)
-- [ ] Apps guides — TypeScript-native DX that has no Python equivalent: **shared Zod schemas** (import the same schema in the server handler and the UI component — argument types and `toolInput` types flow through automatically with no duplication or codegen); **bring-your-own component library** (shadcn/ui, Radix, Mantine, Tailwind, etc.) with a guide to mapping `HostContext` CSS custom properties onto any design system's theme variables; `useTools<typeof server>()` reference; Vite plugin co-location walkthrough
-- [ ] Servers, clients, and CLI guides — one guide per feature: tools, resources, prompts, context, middleware, auth, transforms, composition, transports, sampling adapters, roots, multi-server, each CLI command
-- [ ] Integrations guides — auth providers; AI assistants (Claude Code, Claude Desktop, Cursor, Gemini CLI, Goose); AI SDKs (Anthropic, OpenAI, Google) with sampling adapter usage examples
+- [ ] Tooling
+  - [ ] Mintlify — `docs/` folder in the main repo; served locally via `npx mint dev`
+  - [ ] API reference — auto-generated from TSDoc comments via TypeDoc; integrated into Mintlify as a dedicated **SDK Reference** tab
+  - [ ] `llms.txt` / `llms-full.txt` — LLM-friendly sitemap and full-text endpoints
+  - [ ] MCP server endpoint at `/mcp` — AI-native docs queries
+- [ ] Information architecture — mirroring `gofastmcp.com`
+  - [ ] Get Started — installation, quickstart, concepts
+  - [ ] Servers — tools, resources, prompts, context, auth, middleware, transforms, composition, deployment
+  - [ ] Clients — transports, auth, sampling adapters, multi-server
+  - [ ] Apps — overview, quickstart, `@fastmcp/ui-runtime`, Vite plugin, built-in providers, generative UI, low-level
+  - [ ] CLI
+  - [ ] Integrations — auth providers, AI assistants, AI SDKs
+  - [ ] SDK Reference — auto-generated from TSDoc; separate tab
+- [ ] Apps guides — TypeScript-native DX with no Python equivalent
+  - [ ] Shared Zod schemas — import the same schema in the server handler and UI component; argument types and `toolInput` types flow through automatically, no duplication or codegen required
+  - [ ] Bring-your-own component library — shadcn/ui, Radix, Mantine, Tailwind, etc.; use `hostContext.theme` to sync your design system's dark mode with the host; full styling control otherwise
+  - [ ] `useTools<typeof server>()` — fully-typed tool call signatures derived from the server's exported type; IntelliSense on tool names, arguments, and return types inside the iframe
+  - [ ] Vite plugin co-location walkthrough — `.tool.tsx` file structure, build pipeline, HMR setup
+- [ ] Servers, clients, and CLI guides — one guide per shipped feature: tools, resources, prompts, context, middleware, auth, transforms, composition, transports, sampling adapters, roots, multi-server, each CLI command
+- [ ] Integrations guides
+  - [ ] Auth providers
+  - [ ] AI assistants — Claude Code, Claude Desktop, Cursor, Gemini CLI, Goose
+  - [ ] AI SDKs — Anthropic, OpenAI, Google; with sampling adapter usage examples
 
 ---
 
