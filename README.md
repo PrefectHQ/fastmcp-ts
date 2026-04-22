@@ -41,11 +41,14 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 
 ## Apps
 
-- [ ] Tool-UI binding — associate tools with interactive UIs via `ui://` resources and serializable component trees
-- [ ] Component library — layout, data display, charts, forms, conditional rendering, and client-side reactive state
-- [ ] FastMCPApp — multi-tool apps with managed LLM visibility and composition-safe tool references
-- [ ] Built-in providers — Approval, Choice, FileUpload, and FormInput
-- [ ] Generative UI — LLM-designed interfaces rendered in a sandboxed runtime
+- [ ] `ui://` resources — standard MCP resources with `mimeType: text/html;profile=mcp-app`; served via `resources/list` and `resources/read`; `_meta.ui` carries CSP policy, browser permissions (`camera`, `microphone`, `geolocation`, `clipboardWrite`), a stable iframe `domain` origin, and `prefersBorder`; `io.modelcontextprotocol/ui` extension negotiated in `initialize` with graceful degradation to text-only tool responses when the host opts out
+- [ ] Tool-UI binding — link any tool to a `ui://` resource via `_meta.ui.resourceUri`; `_meta.ui.visibility` controls who can call the tool: `"model"` (LLM-visible), `"app"` (hidden from LLM, invocable only from the rendered iframe), or both; resource URI auto-generated from tool name when not provided explicitly
+- [ ] Host context — iframe receives `HostContext` on init: `theme` (`light`/`dark`), ~50 standardised CSS custom properties, `displayMode` (`inline`/`fullscreen`/`pip`), `containerDimensions`, `locale`, `timeZone`, `platform`, `deviceCapabilities`, and `safeAreaInsets`; View can request a display mode change and receive resize notifications
+- [ ] Bidirectional communication — View↔Host JSON-RPC 2.0 over `postMessage`; View calls `tools/call`, `resources/read`, `sampling/createMessage`, `ui/message` (inject a user turn into the conversation), `ui/update-model-context`, `ui/open-link`, `ui/download-file`, and `ui/request-display-mode`; app-provided tools let the View register ephemeral tools callable by the host or agent for the iframe's lifetime
+- [ ] Component library — layout (`Column`, `Row`, `Grid`), data display (`Table`, `Badge`, `Text`), charts (`Bar`, `Line`, `Area`, `Pie`), forms (`Input`, `Select`, `Button`), conditional rendering (`If`/`Elif`/`Else`), dynamic lists (`ForEach`), and client-side reactive state (`Rx`)
+- [ ] FastMCPApp — model-visible entry-point tools that return component trees and are automatically linked to a `ui://` resource; UI-only backend tools hidden from the LLM but callable from within the rendered iframe; stable composition-safe tool references via hashed identifiers that survive namespace transforms; composable as a `Provider` via `server.mount()` and `server.addProvider()`
+- [ ] Built-in providers — `Approval` (confirm/deny UI card with decision injected back into conversation), `Choice` (clickable option list), `FileUpload` (drag-and-drop file picker with server-side storage that bypasses the LLM context window), and `FormInput` (auto-generated validated form from a Zod schema with field-level error display)
+- [ ] Generative UI — LLM generates component code at runtime via a registered `generate_ui` tool; component APIs discoverable via a companion `search_components` tool; code executes in an isolated sandbox; streamed to the host for progressive rendering via partial tool arguments; registers as a `Provider`
 
 ---
 
