@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "description": "🏎️  The official FastMCP TypeScript library - build MCP servers and clients, fast 🏎️",
   "type": "module",
-  "main": "dist/index.js",
   "exports": {
     "./server": {
       "types": "./dist/server.d.ts",
@@ -17,8 +16,16 @@
   "bin": {
     "fastmcp": "./dist/cli/index.cjs"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
