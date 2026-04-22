@@ -32,7 +32,8 @@ describe('Apps — Generative UI', () => {
         // Returns the full component catalog with type and description per entry
         const result = await client.callTool({ name: 'search_components', arguments: {} })
         expect(result.isError).toBeFalsy()
-        const catalog = result.structuredContent as Array<{ type: string; description: string }>
+        // The catalog is delivered as JSON text (structuredContent must be a plain object per MCP spec)
+        const catalog = JSON.parse((result.content[0] as { text: string }).text) as Array<{ type: string; description: string }>
         expect(Array.isArray(catalog)).toBe(true)
         expect(catalog.some((c) => c.type === 'column')).toBe(true)
         expect(catalog.some((c) => c.type === 'text')).toBe(true)
