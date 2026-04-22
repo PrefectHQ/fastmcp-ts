@@ -365,6 +365,49 @@ await multi.callTool('github_list_repos', { org: 'PrefectHQ' })
 
 ---
 
+## CLI
+
+**Bundle:** The CLI is built as a self-contained CJS bundle (`dist/cli/index.cjs`) via tsup with `noExternal: /.*/`. This means all dependencies — including the MCP SDK — are inlined, so users don't need to install anything beyond the package itself. The shebang (`#!/usr/bin/env node`) and compile-time constants `__FASTMCP_VERSION__` / `__MCP_SDK_VERSION__` are injected by tsup at build time. A custom esbuild plugin appends `.js` to bare `@modelcontextprotocol/sdk` sub-path imports to satisfy Node's ESM resolution inside the CJS bundle.
+
+**Framework:** `citty` for command parsing. Commands are lazy-loaded via dynamic `import()` in `subCommands`, keeping startup time minimal. Global `--quiet` and `--json` flags are set once in the root `setup()` hook and stored in module-level state (`output.ts` / `format.ts`).
+
+**stdout / stderr discipline:** Human-readable output (tables, spinners, section headers, key-value pairs, status messages) goes to **stderr** via `log.*`. Machine-readable output (raw tool results, resource content, JSON mode) goes to **stdout** via `log.raw()` or `output()`. This keeps the CLI composable in pipelines — `fastmcp call ... | jq` works correctly.
+
+**UI modules (`src/cli/ui/`):**
+- `theme.ts` — chalk-based palette: primary (bold cyan), success (green), warning (yellow), error (red), muted (dim gray), value (white), label (bold), url (cyan underline), code (dim white)
+- `symbols.ts` — Unicode/ASCII fallback symbols based on `TERM !== 'dumb' && !CI`
+- `output.ts` — `log` object; all methods write to stderr except `log.raw` (stdout); respects `quiet` flag
+- `format.ts` — `output<T>(data, renderFn)` dispatcher: JSON.stringify to stdout in JSON mode, renderFn otherwise
+- `spinner.ts` — `withSpinner(label, fn)` wraps async ops with `@clack/prompts` spinner; no-op when quiet
+- `table.ts` — `renderTable(headers, rows)` via `cli-table3`; writes to stderr
+- `schema.ts` — `renderSchema(jsonSchema, json)` pretty-prints JSON Schema properties with type, required/optional, and description
+
+**Utils (`src/cli/utils/`):**
+- `connect.ts` — `connectClient(mode, auth?)`: three modes: `url` (HTTP), `stdio` (subprocess), `inprocess` (spawns file via `npx tsx` or `node` with `MCP_TRANSPORT=stdio`)
+- `file-spec.ts` — `parseFileSpec("server.ts:app")`: splits on last colon (skips Windows drive letters via `colonIdx > 1`), resolves absolute path, checks existence, detects TypeScript by extension; **note: `exportName` is parsed but not yet used by any command**
+- `config-paths.ts` — `getConfigPaths()`: platform-aware paths for all six install targets; `readConfig`/`writeConfig` branch on `json` vs `yaml` format; Goose config uses YAML
+- `auth.ts` — `resolveAuth(flag)`: parses `--auth` string into `BearerAuth`; OAuth not available in CLI
+- `error.ts` — `cliError(message, opts)`: writes to stderr and exits; `formatError(err)`: normalises ECONNREFUSED/401/404 to friendly messages; exit codes: OK=0, USER=1, CONNECTION=2, SERVER=3
+- `fuzzy.ts` — `closestMatch(query, candidates)` using `fastest-levenshtein`; threshold 4; used by `call` for name suggestions
+
+**Command notes:**
+
+`run` — Spawns file via `npx tsx` (TypeScript) or `node` (JS) with `MCP_TRANSPORT` / `MCP_PORT` env vars. Detects server start from "listening/started/running" keywords in stderr; for HTTP servers this fires reliably. `--reload` uses `chokidar` to kill and respawn on file change. The `exportName` from `server.ts:app` file spec syntax is parsed but not passed to the subprocess — only the file path is used.
+
+`inspect` — Spawns the server file via `inprocess` mode (`StdioTransport` to `npx tsx`), lists tools/resources/prompts in parallel, renders tables. Does not paginate beyond the first page.
+
+`list` — Connects via URL or `--command`. The `--command` value is passed as a single string to `StdioTransport(command, [])` — **multi-word commands like `npx tsx server.ts` will fail** because Node tries to exec the whole string as a binary name; users must pass the command as the binary and use separate args.
+
+`call` — Parses `key=value` positional args with `JSON.parse` fallback for non-string values. Filters out non-kv args from `rawArgs` by exclusion (fragile; use `--input-json` for complex inputs). Fuzzy match threshold is 4 Levenshtein distance. Same `--command` splitting issue as `list`.
+
+`discover` — Reads all six config files silently (skips on read error). Handles both standard `mcpServers` shape and Goose's `extensions` shape. Source key for project-local `mcp.json` is `mcp-json` (not `project`).
+
+`install` — Six subcommands, all sharing `installServer()` from `shared.ts`. Uses Listr2 for the 4-step task display: resolve path → check duplicate (interactive `@clack/prompts` confirm) → write → verify. The `--args` flag is comma-separated (values with commas are unsupported). The `--env` flag is comma-separated `KEY=VALUE`; values containing `=` are silently truncated (should split on first `=` only). **`install goose` writes `mcpServers` format but Goose expects an `extensions` key** — this is a known bug; the two shapes are incompatible.
+
+`dev inspector` — Has a fundamental bug: the command spawns `serverProcess` (subprocess with piped stdio), then passes `node <file>` to `npx @modelcontextprotocol/inspector` which creates its *own* separate server process. The `serverProcess` is orphaned — the file watcher restarts it but nothing is connected to it. The `--server-port` arg is defined but not used. TypeScript files are incorrectly invoked as `node <file>` instead of `npx tsx <file>`.
+
+---
+
 **Foundation:** Built on `@modelcontextprotocol/sdk` (official MCP TypeScript SDK).
 
 **Module format:** ESM throughout (`"type": "module"`).
