@@ -15,6 +15,7 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     testTimeout: 10_000,
+    globalSetup: ['tests/helpers/cli-setup.ts'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
