@@ -4,7 +4,7 @@ import { symbols } from './symbols.js'
 import { isQuiet } from './output.js'
 
 export async function withSpinner<T>(label: string, fn: () => Promise<T>): Promise<T> {
-  if (isQuiet()) {
+  if (isQuiet() || !process.stdout.isTTY) {
     return fn()
   }
   const s = clackSpinner()

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { execa } from 'execa'
+import { execa, type ResultPromise } from 'execa'
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -22,6 +22,28 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 // Path to the built simple-server fixture
 const SIMPLE_SERVER = resolve(import.meta.dirname, 'fixtures/simple-server.mjs')
 const ERROR_SERVER = resolve(import.meta.dirname, 'fixtures/error-server.mjs')
+const EMPTY_SERVER = resolve(import.meta.dirname, 'fixtures/empty-server.mjs')
+const HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/http-server.mjs')
+
+/** Spawn an HTTP fixture and resolve with the actual bound port once it prints "listening on". */
+function waitForPort(subprocess: ResultPromise): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('HTTP server did not report port within 7 s')),
+      7_000,
+    )
+    let buf = ''
+    subprocess.stderr!.on('data', (chunk: Buffer) => {
+      buf += chunk.toString()
+      const m = buf.match(/listening on http:\/\/[^:]+:(\d+)/)
+      if (m) { clearTimeout(timer); resolve(parseInt(m[1], 10)) }
+    })
+    subprocess.on('exit', () => {
+      clearTimeout(timer)
+      reject(new Error('HTTP server exited before reporting port'))
+    })
+  })
+}
 
 // ---------------------------------------------------------------------------
 // version
@@ -682,5 +704,88 @@ describe.sequential('CLI — run', () => {
     const { exitCode, stderr } = await runCli(['run', 'nonexistent-server.ts'])
     expect(exitCode).not.toBe(0)
     expect(stderr).toMatch(/not found|File not found/i)
+  })
+
+  it('run --transport http starts an HTTP server reachable via list --url', async () => {
+    const subprocess = execa(
+      'node',
+      [process.env['FASTMCP_BIN']!, 'run', HTTP_SERVER, '--transport', 'http', '--port', '0'],
+      { reject: false, timeout: 15_000, env: { ...process.env } },
+    )
+
+    const port = await waitForPort(subprocess)
+
+    const { exitCode, stderr } = await runCli([
+      'list', `http://localhost:${port}/mcp`,
+    ])
+
+    subprocess.kill()
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// list — URL mode
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — list (URL mode)', () => {
+  it('--url connects to an HTTP server and lists tools', async () => {
+    const subprocess = execa('node', [HTTP_SERVER], {
+      reject: false,
+      timeout: 15_000,
+      env: { ...process.env, MCP_TRANSPORT: 'http', MCP_PORT: '0' },
+    })
+
+    const port = await waitForPort(subprocess)
+
+    const { exitCode, stderr } = await runCli([
+      'list', `http://localhost:${port}/mcp`,
+    ])
+
+    subprocess.kill()
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+    expect(stderr).toMatch(/add/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// inspect / list — empty state
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — empty state', () => {
+  it('inspect exits 0 and shows an empty-state message when the server has no components', async () => {
+    const { exitCode, stderr } = await runCli(['inspect', EMPTY_SERVER])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/no tools|0 tools|empty/i)
+  })
+
+  it('list exits 0 when the server has no tools', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--command', `node ${EMPTY_SERVER}`,
+    ])
+    expect(exitCode).toBe(0)
+    // Should not crash; no tool entries should appear
+    expect(stderr).not.toMatch(/echo/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// call — spinner does not contaminate --json stdout in non-TTY environments
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — spinner in non-TTY', () => {
+  it('call --json produces clean JSON without --quiet when stdout is a pipe', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--command', `node ${SIMPLE_SERVER}`,
+      '--json',
+      'message=hello',
+    ])
+    expect(exitCode).toBe(0)
+    // Should parse cleanly — no spinner characters mixed into stdout
+    const data = JSON.parse(stdout)
+    expect(Array.isArray(data.content)).toBe(true)
   })
 })
