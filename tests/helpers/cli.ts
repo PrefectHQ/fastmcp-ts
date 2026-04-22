@@ -37,7 +37,3 @@ export async function runCli(args: string[], opts: ExecaOptions = {}): Promise<R
   }
 }
 
-export function fixtureCommand(name: string): string {
-  const fixturePath = resolve(import.meta.dirname, '../fixtures', name)
-  return `node ${fixturePath}`
-}

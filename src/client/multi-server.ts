@@ -2,17 +2,20 @@ import { Client as SdkClient } from '@modelcontextprotocol/sdk/client'
 import {
   CompatibilityCallToolResultSchema,
   LoggingMessageNotificationSchema,
+  ResourceUpdatedNotificationSchema,
   CreateMessageRequestSchema,
   ElicitRequestSchema,
   ListRootsRequestSchema,
 } from '@modelcontextprotocol/sdk/types'
+import type { LoggingLevel } from '@modelcontextprotocol/sdk/types'
 
 import type { BearerAuth, OAuth, ClientCredentials } from './auth.js'
-import type { ClientHandlers, ProgressHandler } from './handlers.js'
+import type { ClientHandlers, LogHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
 import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
 import type {
   CallToolResult,
+  CompletionResult,
   ContentBlock,
   GetPromptResult,
   Prompt,
@@ -51,10 +54,15 @@ export class MultiServerClient implements IClient {
   private _uriMap: Map<string, string> = new Map()
 
   private readonly _config: McpConfig
-  private readonly _handlers: Required<Omit<ClientHandlers, 'sampling' | 'elicitation'>> &
-    Pick<ClientHandlers, 'sampling' | 'elicitation'>
+  private readonly _handlers: {
+    log: LogHandler
+    progress: ProgressHandler
+    sampling?: ClientHandlers['sampling']
+    elicitation?: ClientHandlers['elicitation']
+  }
   private readonly _roots: string[] | undefined
   private readonly _defaultOptions: ClientDefaultOptions
+  private _resourceSubscriptions: Map<string, ResourceUpdateHandler> = new Map()
 
   constructor(config: McpConfig, options?: MultiServerOptions) {
     this._config = config
@@ -327,6 +335,121 @@ export class MultiServerClient implements IClient {
   }
 
   // -------------------------------------------------------------------------
+  // Resource subscriptions
+  // -------------------------------------------------------------------------
+
+  async subscribeResource(
+    uri: string,
+    handler: ResourceUpdateHandler,
+    options?: RequestOptions,
+  ): Promise<void> {
+    this._assertConnected()
+    this._resourceSubscriptions.set(uri, handler)
+    const serverName = this._uriMap.get(uri)
+    if (serverName) {
+      await this._clients.get(serverName)!.subscribeResource(
+        { uri },
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      )
+      return
+    }
+    const errors: unknown[] = []
+    for (const sdk of this._clients.values()) {
+      try {
+        await sdk.subscribeResource(
+          { uri },
+          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+        )
+        return
+      } catch (err) {
+        errors.push(err)
+      }
+    }
+    throw new Error(`Subscribe failed on all servers:\n${errors.map(String).join('\n')}`)
+  }
+
+  async unsubscribeResource(uri: string, options?: RequestOptions): Promise<void> {
+    this._assertConnected()
+    this._resourceSubscriptions.delete(uri)
+    const serverName = this._uriMap.get(uri)
+    if (serverName) {
+      await this._clients.get(serverName)!.unsubscribeResource(
+        { uri },
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      )
+      return
+    }
+    await Promise.allSettled(
+      [...this._clients.values()].map((sdk) =>
+        sdk.unsubscribeResource(
+          { uri },
+          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+        ),
+      ),
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Completion
+  // -------------------------------------------------------------------------
+
+  async complete(
+    ref: { type: 'ref/prompt'; name: string } | { type: 'ref/resource'; uri: string },
+    argument: { name: string; value: string },
+    context?: { arguments?: Record<string, string> },
+    options?: RequestOptions,
+  ): Promise<CompletionResult> {
+    this._assertConnected()
+    const sdkOptions = this._toSdkOptions(options)
+
+    if (ref.type === 'ref/prompt') {
+      const { serverName, localName } = this._parseNamespacedName(ref.name)
+      const sdk = this._sdkForServer(serverName)
+      const result = await sdk.complete(
+        { ref: { type: 'ref/prompt', name: localName }, argument, ...(context ? { context } : {}) },
+        sdkOptions,
+      )
+      return result.completion as CompletionResult
+    }
+
+    const serverName = this._uriMap.get(ref.uri)
+    if (serverName) {
+      const result = await this._clients.get(serverName)!.complete(
+        { ref, argument, ...(context ? { context } : {}) },
+        sdkOptions,
+      )
+      return result.completion as CompletionResult
+    }
+
+    const errors: unknown[] = []
+    for (const sdk of this._clients.values()) {
+      try {
+        const result = await sdk.complete(
+          { ref, argument, ...(context ? { context } : {}) },
+          sdkOptions,
+        )
+        return result.completion as CompletionResult
+      } catch (err) {
+        errors.push(err)
+      }
+    }
+    throw new Error(`Completion failed on all servers:\n${errors.map(String).join('\n')}`)
+  }
+
+  // -------------------------------------------------------------------------
+  // Logging
+  // -------------------------------------------------------------------------
+
+  async setLogLevel(level: LoggingLevel, options?: RequestOptions): Promise<void> {
+    this._assertConnected()
+    await Promise.all(
+      [...this._clients.values()].map((sdk) =>
+        sdk.setLoggingLevel(level, this._toSdkOptions(options)),
+      ),
+    )
+  }
+
+  // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
 
@@ -380,6 +503,11 @@ export class MultiServerClient implements IClient {
         logger: notification.params.logger ?? undefined,
         data: notification.params.data,
       })
+    })
+
+    sdk.setNotificationHandler(ResourceUpdatedNotificationSchema, (notification) => {
+      const handler = this._resourceSubscriptions.get(notification.params.uri)
+      if (handler) void handler(notification.params.uri)
     })
 
     if (this._handlers.sampling) {

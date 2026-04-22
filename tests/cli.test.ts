@@ -318,6 +318,39 @@ describe.sequential('CLI — discover', () => {
     })
   })
 
+  it('finds MCP servers in a Claude Desktop config file', async () => {
+    await withTempDir(async (dir) => {
+      const configDir = join(dir, 'Library', 'Application Support', 'Claude')
+      await mkdir(configDir, { recursive: true })
+      await writeFile(
+        join(configDir, 'claude_desktop_config.json'),
+        JSON.stringify({ mcpServers: { 'desktop-tool': { command: 'node d.js' } } }),
+      )
+      const { exitCode, stderr } = await runCli(['discover'], {
+        cwd: dir,
+        env: { ...process.env, HOME: dir },
+      })
+      expect(exitCode).toBe(0)
+      expect(stderr).toMatch(/desktop-tool/)
+    })
+  })
+
+  it('finds MCP servers in a Gemini config file', async () => {
+    await withTempDir(async (dir) => {
+      await mkdir(join(dir, '.gemini'), { recursive: true })
+      await writeFile(
+        join(dir, '.gemini', 'settings.json'),
+        JSON.stringify({ mcpServers: { 'gemini-tool': { command: 'node g.js' } } }),
+      )
+      const { exitCode, stderr } = await runCli(['discover'], {
+        cwd: dir,
+        env: { ...process.env, HOME: dir },
+      })
+      expect(exitCode).toBe(0)
+      expect(stderr).toMatch(/gemini-tool/)
+    })
+  })
+
   it('finds MCP servers in a Goose config file', async () => {
     await withTempDir(async (dir) => {
       await mkdir(join(dir, '.config', 'goose'), { recursive: true })
@@ -502,6 +535,50 @@ describe.sequential('CLI — install claude-code', () => {
       )
       expect(exitCode).toBe(0)
       const config = JSON.parse(await readFile(join(dir, '.claude.json'), 'utf8'))
+      expect(config.mcpServers['my-server'].command).toBe('node new.js')
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// install claude-desktop
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — install claude-desktop', () => {
+  it('writes the server entry to the Claude Desktop config file', async () => {
+    await withTempDir(async (dir) => {
+      await mkdir(join(dir, 'Library', 'Application Support', 'Claude'), { recursive: true })
+      const { exitCode } = await runCli(
+        ['install', 'claude-desktop', 'my-server', 'node server.js'],
+        { env: { ...process.env, HOME: dir } },
+      )
+      expect(exitCode).toBe(0)
+      const config = JSON.parse(
+        await readFile(
+          join(dir, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'),
+          'utf8',
+        ),
+      )
+      expect(config.mcpServers['my-server'].command).toBe('node server.js')
+    })
+  })
+
+  it('--force overwrites a pre-existing entry', async () => {
+    await withTempDir(async (dir) => {
+      const configDir = join(dir, 'Library', 'Application Support', 'Claude')
+      await mkdir(configDir, { recursive: true })
+      await writeFile(
+        join(configDir, 'claude_desktop_config.json'),
+        JSON.stringify({ mcpServers: { 'my-server': { command: 'node old.js' } } }),
+      )
+      const { exitCode } = await runCli(
+        ['install', 'claude-desktop', 'my-server', 'node new.js', '--force'],
+        { env: { ...process.env, HOME: dir } },
+      )
+      expect(exitCode).toBe(0)
+      const config = JSON.parse(
+        await readFile(join(configDir, 'claude_desktop_config.json'), 'utf8'),
+      )
       expect(config.mcpServers['my-server'].command).toBe('node new.js')
     })
   })
