@@ -1,5 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index'
 import {
+  CallToolResultSchema,
+  type CallToolResult,
   ToolListChangedNotificationSchema,
   ResourceListChangedNotificationSchema,
   PromptListChangedNotificationSchema,
@@ -76,11 +78,13 @@ export async function buildProxyFromClient(
             inputSchema: (tool.inputSchema as Record<string, unknown>) ?? {},
           },
           async (args: unknown) => {
-            const result = await client.callTool({
-              name: tool.name,
-              arguments: args as Record<string, unknown>,
-            })
-            return new ToolResult(result)
+            const result = await client.callTool(
+              { name: tool.name, arguments: args as Record<string, unknown> },
+              CallToolResultSchema,
+            )
+            // Zod infers _meta on content items as Record<string,unknown> but
+            // CallToolResult types it more specifically — identical at runtime.
+            return new ToolResult(result as unknown as CallToolResult)
           },
         )
         proxiedTools.add(tool.name)
@@ -278,7 +282,7 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
 
   const client = new Client(
     { name: name ?? 'fastmcp-proxy', version: '0.0.1' },
-    { capabilities: { tools: {}, resources: {}, prompts: {} } },
+    { capabilities: {} },
   )
 
   await client.connect(transport)

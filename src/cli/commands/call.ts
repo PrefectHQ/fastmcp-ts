@@ -111,7 +111,7 @@ export default defineCommand({
         )
 
         output(result, (r) => {
-          for (const content of r.contents) {
+          for (const content of r) {
             if ('text' in content) {
               log.raw(content.text as string)
             } else {

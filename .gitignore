@@ -18,6 +18,9 @@ coverage/
 # OS
 .DS_Store
 
+# local MCP server config (created by `fastmcp install mcp-json`)
+mcp.json
+
 # editors
 .idea/
 *.suo
