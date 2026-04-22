@@ -13,8 +13,17 @@ export interface ServerEntry {
   env?: Record<string, string>
 }
 
-interface McpConfig {
-  mcpServers?: Record<string, unknown>
+export function parseArgList(raw: string): string[] {
+  return raw.trim().split(/\s+/).filter(Boolean)
+}
+
+export function parseEnvMap(raw: string): Record<string, string> {
+  return Object.fromEntries(
+    raw.split(',').map((kv) => {
+      const i = kv.indexOf('=')
+      return i === -1 ? [kv, ''] : [kv.slice(0, i), kv.slice(i + 1)]
+    }),
+  )
 }
 
 function ensureDir(path: string): void {
@@ -24,26 +33,35 @@ function ensureDir(path: string): void {
   }
 }
 
+type InstallCtx = {
+  config: Record<string, unknown>
+  exists: boolean
+  overwrite: boolean
+}
+
 export async function installServer(opts: {
   configPath: string
   format: ConfigFormat
   entry: ServerEntry
+  force?: boolean
+  configSection?: string
+  configWriter?: (config: Record<string, unknown>, entry: ServerEntry) => void
 }): Promise<void> {
   const { configPath, format, entry } = opts
+  const configSection = opts.configSection ?? 'mcpServers'
 
-  const tasks = new Listr(
+  const tasks = new Listr<InstallCtx>(
     [
       {
         title: 'Resolving config file',
-        task: async (ctx: { config: McpConfig; exists: boolean }) => {
+        task: async (ctx) => {
           ctx.exists = existsSync(configPath)
           if (!ctx.exists) {
             ensureDir(configPath)
-            ctx.config = { mcpServers: {} }
+            ctx.config = {}
           } else {
             try {
-              ctx.config = (readConfig(configPath, format) as McpConfig) ?? { mcpServers: {} }
-              if (!ctx.config.mcpServers) ctx.config.mcpServers = {}
+              ctx.config = (readConfig(configPath, format) as Record<string, unknown>) ?? {}
             } catch {
               throw new Error(`Could not parse ${configPath} — is it valid ${format.toUpperCase()}?`)
             }
@@ -52,8 +70,16 @@ export async function installServer(opts: {
       },
       {
         title: 'Checking for existing entry',
-        task: async (ctx: { config: McpConfig; exists: boolean; overwrite: boolean }, task) => {
-          if (ctx.config.mcpServers?.[entry.name]) {
+        task: async (ctx, task) => {
+          const section = ctx.config[configSection] as Record<string, unknown> | undefined
+          if (section?.[entry.name]) {
+            if (opts.force) {
+              ctx.overwrite = true
+              return
+            }
+            if (!process.stdin.isTTY || process.env['CI']) {
+              throw new Error(`Server "${entry.name}" already exists. Use --force to overwrite.`)
+            }
             const overwrite = await confirm({
               message: `Server "${entry.name}" already exists. Overwrite?`,
             })
@@ -68,20 +94,24 @@ export async function installServer(opts: {
       },
       {
         title: 'Writing config',
-        skip: (ctx: { overwrite: boolean }) => !ctx.overwrite,
-        task: async (ctx: { config: McpConfig }) => {
-          const serverEntry: Record<string, unknown> = {
-            command: entry.command,
-            ...(entry.args ? { args: entry.args } : {}),
-            ...(entry.env ? { env: entry.env } : {}),
+        skip: (ctx) => !ctx.overwrite,
+        task: async (ctx) => {
+          if (opts.configWriter) {
+            opts.configWriter(ctx.config, entry)
+          } else {
+            if (!ctx.config[configSection]) ctx.config[configSection] = {}
+            ;(ctx.config[configSection] as Record<string, unknown>)[entry.name] = {
+              command: entry.command,
+              ...(entry.args ? { args: entry.args } : {}),
+              ...(entry.env ? { env: entry.env } : {}),
+            }
           }
-          ctx.config.mcpServers![entry.name] = serverEntry
           writeConfig(configPath, ctx.config, format)
         },
       },
       {
         title: 'Verifying config',
-        skip: (ctx: { overwrite: boolean }) => !ctx.overwrite,
+        skip: (ctx) => !ctx.overwrite,
         task: async () => {
           try {
             readConfig(configPath, format)

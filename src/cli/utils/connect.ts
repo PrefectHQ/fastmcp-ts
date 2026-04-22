@@ -16,7 +16,8 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth): Promis
   }
 
   if (mode.kind === 'stdio') {
-    const transport = new StdioTransport(mode.command, mode.args ?? [])
+    const [cmd, ...rest] = mode.command.split(/\s+/)
+    const transport = new StdioTransport(cmd!, [...rest, ...(mode.args ?? [])])
     const client = new Client(transport)
     await client.connect()
     return client
