@@ -32,10 +32,10 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 - [x] Sampling adapters — built-in `AnthropicSamplingAdapter`, `OpenAISamplingAdapter`, and `GoogleSamplingAdapter`; optional provider SDKs as peer dependencies; streaming with `onToken` callback; protocol-level tool-call forwarding (`stopReason: 'toolUse'`); `GenericSamplingAdapter` template for custom providers
 - [x] Roots — static (`string[]` / `Root[]`) or dynamic (async callback) filesystem roots advertised via `roots/list`; automatic `file://` URI normalisation; `notifyRootsChanged()` sends `notifications/roots/list_changed`
 - [x] Multi-server — `MultiServerClient` connects to N servers from a single client; tools, resources, and prompts are namespaced by server name (`serverName_toolName`); `callTool()`, `getPrompt()`, and `readResource()` route automatically; `Client.connect()` returns a `MultiServerClient` transparently when given a multi-entry `McpConfig`
-- [ ] Resource subscriptions — `subscribe()` / `unsubscribe()` and `notifications/resources/updated` handler
-- [ ] Argument completion — `complete()` for server-side autocompletion of prompt and resource arguments (`completion/complete`)
-- [ ] Log level control — `setLogLevel()` to configure server-side log verbosity at runtime (`logging/setLevel`)
-- [ ] List-change notifications — re-fetch and surface updated tool, resource, and prompt lists on server-initiated `notifications/*/list_changed` events
+- [x] Resource subscriptions — `subscribeResource()` / `unsubscribeResource()` with a per-URI `ResourceUpdateHandler` callback; fires on `notifications/resources/updated`
+- [x] Argument completion — `complete()` for server-side autocompletion of prompt and resource arguments (`completion/complete`)
+- [x] Log level control — `setLogLevel()` to configure server-side log verbosity at runtime (`logging/setLevel`)
+- [x] List-change notifications — `onToolsListChanged`, `onResourcesListChanged`, `onPromptsListChanged` handlers; configurable `autoRefresh` (default `true`) and `debounceMs` (default `300`); re-fetches and delivers updated lists on server-initiated `notifications/*/list_changed` events
 
 ---
 
@@ -57,15 +57,15 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 - [x] `list` — connect to a running server and list its components; `--resources` and `--prompts` to include those types; `--input-schema` to print full input schemas; `--json` for machine-readable output; `--auth` for bearer token; `--command` to spawn a stdio server inline; `--output-schema` not yet implemented
 - [x] `call` — invoke a tool, read a resource, or get a prompt via `target key=value …` syntax; `--input-json` to supply arguments as a JSON string; `--json` for raw output; `--auth`; fuzzy name matching with suggestions on mismatch; `--command` for stdio servers
 - [x] `discover` — find locally configured MCP servers; sources: `claude-desktop`, `claude-code`, `cursor`, `gemini`, `goose`, `mcp-json` (`mcp.json` in cwd); `--source` to filter; `--json` for machine-readable output
-- [ ] `install` — install a server into editor/client configs
+- [x] `install` — install a server into editor/client configs
   - [x] `install claude-code` — write server entry to `~/.claude.json`
   - [x] `install claude-desktop` — write server entry to `claude_desktop_config.json`
   - [x] `install cursor` — write server entry to `.cursor/mcp.json`
   - [x] `install gemini` — write server entry to `~/.gemini/settings.json`
-  - [ ] `install goose` — write server entry to `~/.config/goose/config.yaml`
+  - [x] `install goose` — write server entry to `~/.config/goose/config.yaml`
   - [x] `install mcp-json` — write server entry to a local `mcp.json` file
-- [ ] `dev` — development utilities
-  - [ ] `dev inspector` — run a server and open the MCP Inspector UI; `--ui-port`, `--server-port`; file-watching auto-reload enabled by default
+- [x] `dev` — development utilities
+  - [x] `dev inspector` — run a server and open the MCP Inspector UI; `--ui-port`, `--server-port`; file-watching auto-reload enabled by default
 
 ---
 

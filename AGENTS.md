@@ -85,7 +85,7 @@ Static resources are served via `resources/list` + `resources/read`. Templates a
 
 **Resource timeout:** Same `Promise.race` + `clearTimeout` pattern as tools. A timed-out handler throws an error that propagates as a JSON-RPC error to the client.
 
-**Resource subscriptions:** Not yet implemented. Python FastMCP also omits subscription support. The `subscribe` capability flag is not advertised.
+**Resource subscriptions:** `client.subscribeResource(uri, handler)` sends `resources/subscribe` and registers a `ResourceUpdateHandler = (uri: string) => void | Promise<void>` that fires when the server sends `notifications/resources/updated` for that URI. `client.unsubscribeResource(uri)` sends `resources/unsubscribe` and removes the handler. Subscriptions are tracked in a `Map<uri, ResourceUpdateHandler>` on the client instance.
 
 **Prompts:** Registered with `mcp.prompt(config, handler)`. Config fields: `name` (inferred from `handler.name` when omitted), `title`, `description` (inferred via camelCase→words when omitted), `arguments` (array of `{ name, description?, required? }`), `disabled`, `timeout`, `auth`. Required arguments are validated before the handler runs — missing a required arg returns `InvalidParams` without invoking the handler. Handler receives a `Record<string, string>` of the supplied arguments and can return:
 
@@ -271,6 +271,9 @@ await client.close()     // refCount → 0, SDK closed
 | `handlers.progress` | `ProgressHandler` | Global default; overridden per-call via `CallToolOptions.onProgress` |
 | `handlers.sampling` | `SamplingHandler` | Called when the server sends `sampling/createMessage`; client must also advertise `sampling` capability |
 | `handlers.elicitation` | `ElicitationHandler` | Called when the server sends `elicitation/create`; client must advertise `elicitation` capability |
+| `handlers.onToolsListChanged` | `ListChangedHandler<Tool>` | Called when the server sends `notifications/tools/list_changed`; `autoRefresh: true` (default) re-fetches the list before invoking `onChanged`; `debounceMs: 300` (default, set to `0` in tests for instant delivery) |
+| `handlers.onResourcesListChanged` | `ListChangedHandler<Resource>` | Same pattern for `notifications/resources/list_changed` |
+| `handlers.onPromptsListChanged` | `ListChangedHandler<Prompt>` | Same pattern for `notifications/prompts/list_changed` |
 
 The SDK client capabilities are included only when the corresponding handler or option is provided:
 
@@ -283,6 +286,10 @@ The SDK client capabilities are included only when the corresponding handler or 
 **Roots:** `ClientOptions.roots` accepts `string[]` (plain URIs), `Root[]` (objects with `uri` and optional `name`), or an async callback `() => string[] | Root[] | Promise<...>` for dynamic roots. URIs without a `file://` scheme are normalised automatically. `client.notifyRootsChanged()` sends `notifications/roots/list_changed` to the server. The advertised capability includes `listChanged: true` only when a callback is provided (static roots never change).
 
 **`autoInitialize` option:** Stored in `ClientOptions` but currently has no effect — the underlying SDK's `connect()` always performs the MCP initialize handshake. Kept in the API for a future SDK path that supports deferred initialization.
+
+**Argument completion:** `client.complete(ref, argument, context?, options?)` sends `completion/complete` and returns a `CompletionResult`. `ref` is either `{ type: 'ref/prompt'; name: string }` or `{ type: 'ref/resource'; uri: string }`. `argument` is `{ name: string; value: string }`. Optional `context.arguments` passes previously resolved argument values for multi-argument completion.
+
+**Log level control:** `client.setLogLevel(level, options?)` sends `logging/setLevel` to the server. `level` is one of the RFC 5424 severity strings (`'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'`). The server filters which log notifications it forwards based on this level.
 
 ---
 
@@ -402,7 +409,7 @@ await multi.callTool('github_list_repos', { org: 'PrefectHQ' })
 
 `discover` — Reads all six config files silently (skips on read error). Handles both standard `mcpServers` shape and Goose's `extensions` shape. Source key for project-local `mcp.json` is `mcp-json` (not `project`).
 
-`install` — Six subcommands, all sharing `installServer()` from `shared.ts`. Uses Listr2 for the 4-step task display: resolve path → check duplicate (interactive `@clack/prompts` confirm) → write → verify. The `--args` flag is comma-separated (values with commas are unsupported). The `--env` flag is comma-separated `KEY=VALUE`; values containing `=` are silently truncated (should split on first `=` only). **`install goose` writes `mcpServers` format but Goose expects an `extensions` key** — this is a known bug; the two shapes are incompatible.
+`install` — Six subcommands, all sharing `installServer()` from `shared.ts`. Uses Listr2 for the 4-step task display: resolve path → check duplicate (interactive `@clack/prompts` confirm) → write → verify. The `--args` flag is comma-separated (values with commas are unsupported). The `--env` flag is comma-separated `KEY=VALUE`; values containing `=` are silently truncated (should split on first `=` only). `install goose` writes to the `extensions` key with Goose's expected shape: `{ cmd, args?, env?, enabled: true, type: 'stdio' }`.
 
 `dev inspector` — Has a fundamental bug: the command spawns `serverProcess` (subprocess with piped stdio), then passes `node <file>` to `npx @modelcontextprotocol/inspector` which creates its *own* separate server process. The `serverProcess` is orphaned — the file watcher restarts it but nothing is connected to it. The `--server-port` arg is defined but not used. TypeScript files are incorrectly invoked as `node <file>` instead of `npx tsx <file>`.
 
