@@ -49,6 +49,8 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
 - [ ] FastMCPApp — model-visible entry-point tools that return component trees and are automatically linked to a `ui://` resource; UI-only backend tools hidden from the LLM but callable from within the rendered iframe; stable composition-safe tool references via hashed identifiers that survive namespace transforms; composable as a `Provider` via `server.mount()` and `server.addProvider()`
 - [ ] Built-in providers — `Approval` (confirm/deny UI card with decision injected back into conversation), `Choice` (clickable option list), `FileUpload` (drag-and-drop file picker with server-side storage that bypasses the LLM context window), and `FormInput` (auto-generated validated form from a Zod schema with field-level error display)
 - [ ] Generative UI — LLM generates component code at runtime via a registered `generate_ui` tool; component APIs discoverable via a companion `search_components` tool; code executes in an isolated sandbox; streamed to the host for progressive rendering via partial tool arguments; registers as a `Provider`
+- [ ] `@fastmcp/ui-runtime` — client-side package for use inside app iframes; `useMCPApp()` hook delivers typed `toolInput`, `hostContext`, `callTool()`, `sendMessage()`, `updateModelContext()`, and `registerTool()`; `useTools<typeof server>()` generic derives fully-typed call signatures (tool names, argument shapes, return types) from the server's exported type — eliminates stringly-typed tool calls and gives full IntelliSense inside the iframe; framework-agnostic core with React bindings included
+- [ ] Vite plugin (`@fastmcp/vite-plugin`) — co-locate server handler and React component in a single `.tool.tsx` file; plugin extracts the default-exported component, bundles it for the browser, auto-generates the `ui://` URI from the filename, registers the resource on the server, and wires `_meta.ui.resourceUri` — no URI strings written by hand; HMR for the UI component wired into `fastmcp dev --reload`
 
 ---
 
@@ -69,6 +71,34 @@ A TypeScript/Node.js library for building and consuming [FastMCP](https://github
   - [x] `install mcp-json` — write server entry to a local `mcp.json` file
 - [x] `dev` — development utilities
   - [x] `dev inspector` — run a server and open the MCP Inspector UI; `--ui-port`, `--server-port`; file-watching auto-reload enabled by default
+
+---
+
+## Documentation
+
+- [ ] Tooling
+  - [ ] Mintlify — `docs/` folder in the main repo; served locally via `npx mint dev`
+  - [ ] API reference — auto-generated from TSDoc comments via TypeDoc; integrated into Mintlify as a dedicated **SDK Reference** tab
+  - [ ] `llms.txt` / `llms-full.txt` — LLM-friendly sitemap and full-text endpoints
+  - [ ] MCP server endpoint at `/mcp` — AI-native docs queries
+- [ ] Information architecture — mirroring `gofastmcp.com`
+  - [ ] Get Started — installation, quickstart, concepts
+  - [ ] Servers — tools, resources, prompts, context, auth, middleware, transforms, composition, deployment
+  - [ ] Clients — transports, auth, sampling adapters, multi-server
+  - [ ] Apps — overview, quickstart, `@fastmcp/ui-runtime`, Vite plugin, built-in providers, generative UI, low-level
+  - [ ] CLI
+  - [ ] Integrations — auth providers, AI assistants, AI SDKs
+  - [ ] SDK Reference — auto-generated from TSDoc; separate tab
+- [ ] Apps guides — TypeScript-native DX with no Python equivalent
+  - [ ] Shared Zod schemas — import the same schema in the server handler and UI component; argument types and `toolInput` types flow through automatically, no duplication or codegen required
+  - [ ] Bring-your-own component library — shadcn/ui, Radix, Mantine, Tailwind, etc.; use `hostContext.theme` to sync your design system's dark mode with the host; full styling control otherwise
+  - [ ] `useTools<typeof server>()` — fully-typed tool call signatures derived from the server's exported type; IntelliSense on tool names, arguments, and return types inside the iframe
+  - [ ] Vite plugin co-location walkthrough — `.tool.tsx` file structure, build pipeline, HMR setup
+- [ ] Servers, clients, and CLI guides — one guide per shipped feature: tools, resources, prompts, context, middleware, auth, transforms, composition, transports, sampling adapters, roots, multi-server, each CLI command
+- [ ] Integrations guides
+  - [ ] Auth providers
+  - [ ] AI assistants — Claude Code, Claude Desktop, Cursor, Gemini CLI, Goose
+  - [ ] AI SDKs — Anthropic, OpenAI, Google; with sampling adapter usage examples
 
 ---
 
