@@ -331,7 +331,10 @@ export class FastMCP {
                   ? await toJsonSchema(t.output, `tool "${t.name}" output`)
                   : undefined)
               const uiMeta = clientIsUiCapable && t.ui
-                ? { resourceUri: t.ui.resourceUri ?? `ui://${t.name}` }
+                ? {
+                    resourceUri: t.ui.resourceUri ?? `ui://${t.name}`,
+                    ...(t.ui.visibility ? { visibility: t.ui.visibility } : {}),
+                  }
                 : undefined
               return {
                 name: entry.name,
@@ -455,8 +458,7 @@ export class FastMCP {
             if (resolvedTool.config.ui) {
               const clientIsUi = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
               if (!clientIsUi && callResult.structuredContent !== undefined) {
-                const text = JSON.stringify(callResult.structuredContent)
-                return { content: [{ type: 'text' as const, text }] }
+                return { content: [{ type: 'text' as const, text: '[UI not available in this client]' }] }
               }
             }
             return callResult

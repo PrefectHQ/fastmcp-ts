@@ -82,7 +82,7 @@ describe('Apps', () => {
           mimeType: 'text/html;profile=mcp-app',
           ui: {
             csp: { connectDomains: ['api.example.com'] },
-            permissions: ['camera'],
+            permissions: { camera: {} },
             domain: 'my-app.example.com',
             prefersBorder: false,
           },
@@ -95,7 +95,7 @@ describe('Apps', () => {
         const ui = result.resources.find((r) => r.uri === 'ui://my-app/view')!
         expect(ui._meta?.ui).toMatchObject({
           csp: { connectDomains: ['api.example.com'] },
-          permissions: ['camera'],
+          permissions: { camera: {} },
           domain: 'my-app.example.com',
           prefersBorder: false,
         })

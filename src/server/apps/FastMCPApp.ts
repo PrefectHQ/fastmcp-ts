@@ -45,6 +45,12 @@ export class FastMCPApp {
       ui: { visibility: ['model', 'app'], resourceUri },
     }
     this.server.tool(toolConfig, handler)
+    // Stub resource so resources/read on the ui:// URI doesn't 404.
+    // Replaced by the real UI runtime bundle when bundling is implemented.
+    this.server.resource(
+      { uri: resourceUri, mimeType: 'text/html;profile=mcp-app', name: config.name },
+      () => `<!doctype html><html><head><meta charset="utf-8"></head><body><!-- fastmcp ui-runtime placeholder --></body></html>`,
+    )
   }
 
   /**

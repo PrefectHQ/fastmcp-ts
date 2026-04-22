@@ -26,7 +26,13 @@ export class GenerativeUI {
       {
         name: 'generate_ui',
         description: 'Execute a UI component expression and return the component tree. Use search_components to discover available component APIs first.',
-        ui: { visibility: ['model'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'A JavaScript expression using the component builders (Column, Text, Button, etc.) that evaluates to a component tree' },
+          },
+          required: ['code'],
+        },
       },
       (args: Record<string, unknown>) => {
         const { code } = args as { code: string }

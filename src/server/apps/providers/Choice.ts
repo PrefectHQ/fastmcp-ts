@@ -1,4 +1,5 @@
 import { FastMCP } from '../../FastMCP'
+import { actionRef } from '../actionRef'
 import { Row, Button } from '../components'
 
 export class Choice {
@@ -7,27 +8,39 @@ export class Choice {
   constructor() {
     this.server = new FastMCP({ name: 'choice' })
 
-    // LLM-visible: renders a row of clickable options
     this.server.tool(
       {
         name: 'choice_present',
         description: 'Present a list of options for the user to choose from',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            question: { type: 'string', description: 'The question to ask the user' },
+            options: { type: 'array', items: { type: 'string' }, description: 'The options to present' },
+          },
+          required: ['question', 'options'],
+        },
         ui: { visibility: ['model', 'app'] },
       },
       (args: Record<string, unknown>) => {
         const options = (args.options as string[]) ?? []
         return Row(
           {},
-          options.map((opt: string) =>
-            Button({ label: opt, action: `choice_select` }),
+          // Each button carries its option value as args so the host can
+          // forward it to choice_select without extra state.
+          options.map((opt) =>
+            Button({ label: opt, action: actionRef('choice_select'), args: { option: opt } }),
           ),
         )
       },
     )
 
-    // Backend-only: called by host bridge when user clicks an option
     this.server.tool(
-      { name: 'choice_select', description: 'Record the user\'s selection', ui: { visibility: ['app'] } },
+      {
+        name: 'choice_select',
+        description: "Record the user's selection",
+        ui: { visibility: ['app'] },
+      },
       (args: Record<string, unknown>) => ({ selected: args.option as string }),
     )
   }

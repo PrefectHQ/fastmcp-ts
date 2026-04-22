@@ -1,4 +1,5 @@
 export { FastMCPApp } from './FastMCPApp'
+export { actionRef } from './actionRef'
 export type { EntrypointConfig, BackendToolConfig, FastMCPAppOptions } from './FastMCPApp'
 export { GenerativeUI } from './generative'
 export {
@@ -12,4 +13,4 @@ export {
 export type { Component, IfNode, CatalogEntry } from './components'
 export { Approval, Choice, FileUpload, FormInput } from './providers'
 export type { FileHandle, FileStorageAdapter, FileUploadOptions, FormInputOptions } from './providers'
-export type { UiToolMeta, ResourceUiMeta, CspPolicy, Visibility } from './types'
+export type { UiToolMeta, ResourceUiMeta, CspPolicy, BrowserPermissions, Visibility } from './types'

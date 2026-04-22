@@ -67,4 +67,5 @@ export {
 export type { Component, IfNode, CatalogEntry } from './apps'
 export { Approval, Choice, FileUpload, FormInput } from './apps'
 export type { FileHandle, FileStorageAdapter, FileUploadOptions, FormInputOptions, EntrypointConfig, BackendToolConfig, FastMCPAppOptions } from './apps'
-export type { UiToolMeta, ResourceUiMeta, CspPolicy, Visibility } from './apps'
+export { actionRef } from './apps'
+export type { UiToolMeta, ResourceUiMeta, CspPolicy, BrowserPermissions, Visibility } from './apps'

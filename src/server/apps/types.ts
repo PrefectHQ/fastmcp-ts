@@ -5,8 +5,10 @@ export type Visibility = 'model' | 'app'
 
 export interface CspPolicy {
   connectDomains?: string[]
-  scriptSrc?: string[]
-  imgSrc?: string[]
+  /** Covers img-src, script-src, style-src, font-src, media-src. */
+  resourceDomains?: string[]
+  frameDomains?: string[]
+  baseUriDomains?: string[]
 }
 
 export interface UiToolMeta {
@@ -16,9 +18,16 @@ export interface UiToolMeta {
   visibility?: Visibility[]
 }
 
+export interface BrowserPermissions {
+  camera?: Record<string, never>
+  microphone?: Record<string, never>
+  geolocation?: Record<string, never>
+  clipboardWrite?: Record<string, never>
+}
+
 export interface ResourceUiMeta {
   csp?: CspPolicy
-  permissions?: string[]
+  permissions?: BrowserPermissions
   domain?: string
   prefersBorder?: boolean
 }
