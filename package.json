@@ -29,7 +29,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "np --tag alpha"
+  },
+  "np": {
+    "branch": "alpha-ready",
+    "testScript": "test",
+    "release": true
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
@@ -40,6 +46,7 @@
     "arktype": "^2.2.0",
     "execa": "^9.6.1",
     "get-bin-path": "^11.0.1",
+    "np": "^11.2.0",
     "openai": "^6.34.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
