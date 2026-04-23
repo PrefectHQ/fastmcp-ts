@@ -33,7 +33,7 @@
     "release": "np --tag alpha"
   },
   "np": {
-    "branch": "alpha-ready",
+    "branch": "main",
     "testScript": "test",
     "release": true
   },
