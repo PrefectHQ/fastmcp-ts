@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execa, type ResultPromise } from 'execa'
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -25,6 +25,7 @@ const ERROR_SERVER = resolve(import.meta.dirname, 'fixtures/error-server.mjs')
 const EMPTY_SERVER = resolve(import.meta.dirname, 'fixtures/empty-server.mjs')
 const HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/http-server.mjs')
 const FASTMCP_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/fastmcp-http-server.ts')
+const AUTH_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/auth-http-server.ts')
 
 /** Spawn an HTTP fixture and resolve with the actual bound port once it prints "listening on". */
 function waitForPort(subprocess: ResultPromise): Promise<number> {
@@ -836,5 +837,113 @@ describe.sequential('CLI — spinner in non-TTY', () => {
     // Should parse cleanly — no spinner characters mixed into stdout
     const data = JSON.parse(stdout)
     expect(Array.isArray(data.content)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// auth — --url mode (end-to-end: HTTP Bearer token enforced by server)
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — auth (--url mode)', () => {
+  let subprocess: ReturnType<typeof execa>
+  let port: number
+
+  beforeAll(async () => {
+    subprocess = execa(
+      'node',
+      [process.env['FASTMCP_BIN']!, 'run', AUTH_HTTP_SERVER, '--transport', 'http', '--port', '0'],
+      { reject: false, timeout: 30_000, env: { ...process.env } },
+    )
+    port = await waitForPort(subprocess)
+  }, 30_000)
+
+  afterAll(() => {
+    subprocess.kill()
+  })
+
+  it('call: tool call succeeds with a valid --auth token', async () => {
+    const { exitCode, stdout } = await runCli([
+      '--quiet', 'call', 'protected_tool',
+      '--url', `http://localhost:${port}/mcp`,
+      '--auth', 'valid-token',
+      'msg=hello',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/protected: hello/)
+  })
+
+  it('call: exits non-zero when --auth is omitted on a protected server', async () => {
+    const { exitCode, stderr } = await runCli([
+      'call', 'protected_tool',
+      '--url', `http://localhost:${port}/mcp`,
+    ])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/failed|refused|401|auth|connect|token|missing/i)
+  })
+
+  it('call: exits non-zero when an invalid token is supplied', async () => {
+    const { exitCode } = await runCli([
+      'call', 'protected_tool',
+      '--url', `http://localhost:${port}/mcp`,
+      '--auth', 'bad-token',
+    ])
+    expect(exitCode).not.toBe(0)
+  })
+
+  it('list: protected tools are visible with a valid --auth token', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', `http://localhost:${port}/mcp`,
+      '--auth', 'valid-token',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/protected_tool/)
+    expect(stderr).toMatch(/public_tool/)
+  })
+
+  it('list: exits non-zero when --auth is omitted on a protected server', async () => {
+    const { exitCode } = await runCli([
+      'list', `http://localhost:${port}/mcp`,
+    ])
+    expect(exitCode).not.toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// auth — --command and --file modes (wiring: auth forwarded, no crash)
+// stdio does not carry HTTP headers so the server cannot enforce auth, but
+// passing --auth must not break the connection.
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — auth (--command and --file wiring)', () => {
+  it('call --command: passing --auth does not break an unauthenticated server', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--command', `node ${SIMPLE_SERVER}`,
+      '--auth', 'any-token',
+      'message=wired',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/wired/)
+  })
+
+  it('list --command: passing --auth does not break an unauthenticated server', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list',
+      '--command', `node ${SIMPLE_SERVER}`,
+      '--auth', 'any-token',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('call --file: passing --auth does not break an unauthenticated server', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--file', FASTMCP_HTTP_SERVER,
+      '--auth', 'any-token',
+      'message=wired',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/wired/)
   })
 })
