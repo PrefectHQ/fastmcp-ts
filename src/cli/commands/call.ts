@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty'
 import { connectClient } from '../utils/connect.js'
 import { resolveAuth } from '../utils/auth.js'
+import { parseFileSpec } from '../utils/file-spec.js'
 import { withSpinner } from '../ui/spinner.js'
 import { output, setJsonMode } from '../ui/format.js'
 import { log } from '../ui/output.js'
@@ -33,19 +34,31 @@ export default defineCommand({
     target: { type: 'positional', description: 'Tool name, resource URI, or prompt name', required: true },
     url: { type: 'string', description: 'Server URL' },
     command: { type: 'string', description: 'stdio server command' },
+    file: { type: 'string', description: 'Server file (e.g. server.ts)' },
     auth: { type: 'string', description: 'Bearer token' },
     'input-json': { type: 'string', description: 'Raw JSON input instead of key=value args' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
   },
   async run({ args, rawArgs }) {
     if (args.json) setJsonMode(true)
-    if (!args.url && !args.command) {
-      cliError('Provide --url <url> or --command <cmd>')
+    if (!args.url && !args.command && !args.file) {
+      cliError('Provide --url <url>, --command <cmd>, or --file <file>')
     }
 
     const authObj = resolveAuth(args.auth)
-    const mode =
-      args.command
+
+    let fileSpec
+    if (args.file) {
+      try {
+        fileSpec = parseFileSpec(args.file)
+      } catch (err) {
+        cliError(formatError(err))
+      }
+    }
+
+    const mode = args.file
+      ? { kind: 'inprocess' as const, spec: fileSpec }
+      : args.command
         ? { kind: 'stdio' as const, command: args.command }
         : { kind: 'url' as const, url: args.url! }
 

@@ -24,6 +24,7 @@ const SIMPLE_SERVER = resolve(import.meta.dirname, 'fixtures/simple-server.mjs')
 const ERROR_SERVER = resolve(import.meta.dirname, 'fixtures/error-server.mjs')
 const EMPTY_SERVER = resolve(import.meta.dirname, 'fixtures/empty-server.mjs')
 const HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/http-server.mjs')
+const FASTMCP_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/fastmcp-http-server.ts')
 
 /** Spawn an HTTP fixture and resolve with the actual bound port once it prints "listening on". */
 function waitForPort(subprocess: ResultPromise): Promise<number> {
@@ -673,6 +674,54 @@ describe.sequential('CLI — install goose', () => {
       const config = yaml.parse(raw)
       expect(config.extensions['my-server'].args).toEqual(['--debug', '--verbose'])
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// inspect — FastMCP server that hardcodes transport: 'http'
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — inspect (FastMCP HTTP fixture)', () => {
+  it('connects via stdio even when the server hardcodes transport: http', async () => {
+    const { exitCode, stderr } = await runCli(['inspect', FASTMCP_HTTP_SERVER], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+    expect(stderr).toMatch(/Tools/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// call — --file flag (inprocess mode)
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — call (--file flag)', () => {
+  it('calls a tool on a FastMCP server file that hardcodes transport: http', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--file', FASTMCP_HTTP_SERVER,
+      'message=hello',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/hello/)
+  })
+
+  it('exits non-zero with a suggestion when the tool name is not found', async () => {
+    const { exitCode, stderr } = await runCli([
+      'call', 'ech',
+      '--file', FASTMCP_HTTP_SERVER,
+    ], { timeout: 20_000 })
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/Did you mean/)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('exits non-zero with an error when the file does not exist', async () => {
+    const { exitCode, stderr } = await runCli([
+      'call', 'echo',
+      '--file', 'nonexistent-server.ts',
+    ])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/not found|File not found/i)
   })
 })
 
