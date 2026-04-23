@@ -274,16 +274,17 @@ fastmcp run server.ts
 fastmcp run server.ts --transport http --port 3000
 
 # Inspect a server's tools, resources, and prompts
-fastmcp inspect server.ts
-fastmcp inspect server.ts --json
+fastmcp inspect --file server.ts
+fastmcp inspect --url http://localhost:3000
+fastmcp inspect --file server.ts --json
 
 # Call a tool, read a resource, or get a prompt
-fastmcp call server.ts add a=1 b=2
-fastmcp call http://localhost:3000 config://settings
+fastmcp call add --file server.ts a=1 b=2
+fastmcp call config://settings --url http://localhost:3000
 
 # Connect to a running server and list its components
-fastmcp list http://localhost:3000
-fastmcp list http://localhost:3000 --resources --prompts --json
+fastmcp list --url http://localhost:3000
+fastmcp list --url http://localhost:3000 --resources --prompts --json
 
 # Open the MCP Inspector UI with file-watch reload
 fastmcp dev inspector server.ts

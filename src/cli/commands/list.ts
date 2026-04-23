@@ -12,7 +12,7 @@ import { cliError, formatError, EXIT } from '../utils/error.js'
 export default defineCommand({
   meta: { name: 'list', description: 'List tools, resources, and prompts from an MCP server' },
   args: {
-    url: { type: 'positional', description: 'Server URL', required: false },
+    url: { type: 'string', description: 'Server URL' },
     command: { type: 'string', description: 'stdio server command' },
     file: { type: 'string', description: 'Server file (e.g. server.ts)' },
     auth: { type: 'string', description: 'Bearer token' },
