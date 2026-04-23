@@ -15,9 +15,15 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth): Promis
     return client
   }
 
+  // For stdio transports the MCP protocol carries no HTTP headers, so
+  // extra.authInfo on the server is always undefined. Inject the bearer
+  // token as an environment variable so FastMCP can reconstruct the auth
+  // context server-side (see FASTMCP_CLI_AUTH_TOKEN handling in FastMCP.ts).
+  const stdioEnv = buildStdioEnv(auth)
+
   if (mode.kind === 'stdio') {
     const [cmd, ...rest] = mode.command.split(/\s+/)
-    const transport = new StdioTransport(cmd!, [...rest, ...(mode.args ?? [])])
+    const transport = new StdioTransport(cmd!, [...rest, ...(mode.args ?? [])], { env: stdioEnv })
     const client = new Client(transport, { auth })
     await client.connect()
     return client
@@ -29,10 +35,18 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth): Promis
     ? ['npx', ['tsx', spec.filePath]]
     : ['node', [spec.filePath]]
 
-  const transport = new StdioTransport(command, cmdArgs, {
-    env: { MCP_TRANSPORT: 'stdio' },
-  })
+  const transport = new StdioTransport(command, cmdArgs, { env: stdioEnv })
   const client = new Client(transport, { auth })
   await client.connect()
   return client
+}
+
+function buildStdioEnv(auth: CliAuth | undefined): Record<string, string> {
+  const env: Record<string, string> = { MCP_TRANSPORT: 'stdio' }
+  if (auth) {
+    const authHeader = auth.getHeaders().Authorization
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader
+    if (token) env['FASTMCP_CLI_AUTH_TOKEN'] = token
+  }
+  return env
 }
