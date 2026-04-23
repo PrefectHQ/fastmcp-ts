@@ -18,7 +18,7 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth): Promis
   if (mode.kind === 'stdio') {
     const [cmd, ...rest] = mode.command.split(/\s+/)
     const transport = new StdioTransport(cmd!, [...rest, ...(mode.args ?? [])])
-    const client = new Client(transport)
+    const client = new Client(transport, { auth })
     await client.connect()
     return client
   }
@@ -32,7 +32,7 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth): Promis
   const transport = new StdioTransport(command, cmdArgs, {
     env: { MCP_TRANSPORT: 'stdio' },
   })
-  const client = new Client(transport)
+  const client = new Client(transport, { auth })
   await client.connect()
   return client
 }
