@@ -207,7 +207,7 @@ describe.sequential('CLI — call', () => {
     expect(stdout).toMatch(/hello/)
   })
 
-  it('coerces numeric string values to numbers', async () => {
+  it('coerces numeric string values to numbers for number-typed fields', async () => {
     const { exitCode, stdout } = await runCli([
       '--quiet', 'call', 'add',
       '--command', `node ${SIMPLE_SERVER}`,
@@ -217,6 +217,30 @@ describe.sequential('CLI — call', () => {
     // The add tool returns { sum: 10 } — rendered as JSON via log.raw
     const data = JSON.parse(stdout)
     expect(data.sum).toBe(10)
+  })
+
+  it('coerces a number-looking value to string when the schema declares string type', async () => {
+    // message=42 would JSON.parse to the number 42; schema says string → must coerce back
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--command', `node ${SIMPLE_SERVER}`,
+      'message=42',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/42/)
+  })
+
+  it('does not include --file or --auth values as kv args', async () => {
+    // Before fix, args.file value ("server.ts") and args.auth value ("any-token") leaked
+    // into the parsed kv set; they should be excluded from tool input.
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--file', FASTMCP_HTTP_SERVER,
+      '--auth', 'any-token',
+      'message=hello',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/hello/)
   })
 
   it('--input-json accepts a JSON object as the argument set', async () => {
