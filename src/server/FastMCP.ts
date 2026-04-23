@@ -36,6 +36,8 @@ import {
   ResourceResult,
 } from './resource'
 import type { ResourceConfig } from './resource'
+import { UI_EXTENSION_KEY } from './apps/types'
+import type { UiToolMeta } from './apps/types'
 import { convertPromptResult, PromptResult } from './prompt'
 import type { PromptConfig } from './prompt'
 
@@ -120,6 +122,8 @@ export interface ToolConfig {
   /** Arbitrary tags for server-side filtering. */
   tags?: string[]
   auth?: AuthCheck
+  /** Apps extension — links this tool to a UI resource and controls visibility. */
+  ui?: UiToolMeta
 }
 
 interface RegisteredTool {
@@ -225,12 +229,26 @@ export class FastMCP {
     this._primaryServer = this._makeServer()
   }
 
+  private _hasUiComponents(): boolean {
+    for (const t of this._tools.values()) {
+      if (t.config.ui) return true
+    }
+    for (const r of this._staticResources.values()) {
+      if (r.config.ui || r.config.uri.startsWith('ui://')) return true
+    }
+    for (const r of this._templateResources.values()) {
+      if (r.config.uri.startsWith('ui://')) return true
+    }
+    return false
+  }
+
   /** Create a new Server instance with all request handlers wired up. */
   private _makeServer(sessionState?: Map<string, unknown>): Server {
     const state = sessionState ?? this._primaryState
+    const extensions = this._hasUiComponents() ? { [UI_EXTENSION_KEY]: {} } : undefined
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {} } },
+      { capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {}, ...(extensions ? { extensions } : {}) } },
     )
     for (const mw of this._middleware) mw.setup?.(server)
     this._setupHandlers(server, state)
@@ -243,10 +261,14 @@ export class FastMCP {
       const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
+          const clientIsUiCapable = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
+
           const allVisible = (
             await Promise.all(
               [...this._tools.values()].map(async (t) => {
                 if (t.config.disabled) return null
+                // App-only tools are hidden from listTools (visible only inside the iframe)
+                if (t.config.ui?.visibility && !t.config.ui.visibility.includes('model')) return null
                 if (!t.config.auth) return t
                 if (!token) return null
                 try { await t.config.auth(token); return t } catch { return null }
@@ -308,12 +330,19 @@ export class FastMCP {
                 (t.output
                   ? await toJsonSchema(t.output, `tool "${t.name}" output`)
                   : undefined)
+              const uiMeta = clientIsUiCapable && t.ui
+                ? {
+                    resourceUri: t.ui.resourceUri ?? `ui://${t.name}`,
+                    ...(t.ui.visibility ? { visibility: t.ui.visibility } : {}),
+                  }
+                : undefined
               return {
                 name: entry.name,
                 ...(entry.title !== undefined ? { title: entry.title } : {}),
                 description: entry.description,
                 inputSchema,
                 ...(outputSchema ? { outputSchema } : {}),
+                ...(uiMeta ? { _meta: { ui: uiMeta } } : {}),
               }
             }),
           )
@@ -424,7 +453,15 @@ export class FastMCP {
 
             let resultValue = await executePromise
             if (resolvedTool.config.output) resultValue = await validateInput(resolvedTool.config.output, resultValue)
-            return convertResult(resultValue)
+            const callResult = convertResult(resultValue)
+            // Graceful degradation: strip structuredContent for non-UI clients calling UI tools
+            if (resolvedTool.config.ui) {
+              const clientIsUi = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
+              if (!clientIsUi && callResult.structuredContent !== undefined) {
+                return { content: [{ type: 'text' as const, text: '[UI not available in this client]' }] }
+              }
+            }
+            return callResult
           }),
         )
       } catch (err) {
@@ -470,6 +507,7 @@ export class FastMCP {
               ? Buffer.from(page[page.length - 1].uri).toString('base64url')
               : undefined
 
+          const clientIsUiCapableRes = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
           return {
             resources: page.map((r) => ({
               uri: r.uri,
@@ -479,6 +517,7 @@ export class FastMCP {
               ...(r.config.mimeType !== undefined ? { mimeType: r.config.mimeType } : {}),
               ...(r.config.size !== undefined ? { size: r.config.size } : {}),
               ...(r.config.annotations !== undefined ? { annotations: r.config.annotations } : {}),
+              ...(clientIsUiCapableRes && r.config.ui ? { _meta: { ui: r.config.ui } } : {}),
             })),
             ...(nextCursor ? { nextCursor } : {}),
           }
@@ -964,8 +1003,12 @@ export class FastMCP {
     // inputSchema/outputSchema are kept so clients see the correct JSON Schema.
     const forwardedConfig: ToolConfig = { ...tool.config, name: key, input: undefined, output: undefined }
     this.tool(forwardedConfig, (args: unknown) => {
-      const ctx = contextStore.getStore()!
-      return child._dispatchTool(originalName, args, ctx).then((result) => new ToolResult(result))
+      const parentCtx = contextStore.getStore()!
+      // Inject prefix-aware tool name resolver so toolRef() inside the child resolves correctly.
+      const childCtx: typeof parentCtx = prefix
+        ? { ...parentCtx, resolveToolName: (name) => `${prefix}_${name}` }
+        : parentCtx
+      return child._dispatchTool(originalName, args, childCtx).then((result) => new ToolResult(result))
     })
   }
 
@@ -1029,6 +1072,16 @@ export class FastMCP {
   /** Register a callback invoked when this server is closed — used by proxy connections. */
   _addCloseCallback(cb: () => Promise<void>): void {
     this._proxyCloseCallbacks.push(cb)
+  }
+
+  /**
+   * Register a provider (FastMCPApp or FastMCP) on this server.
+   * All tools, resources, and prompts from the provider are mounted without a prefix.
+   * For FastMCPApp, pass provider.server; for FastMCP, pass directly.
+   */
+  addProvider(provider: FastMCP | { server: FastMCP }): this {
+    const child = 'server' in provider ? provider.server : provider
+    return this.mount(child)
   }
 
   private _applyTransformsToTools(
@@ -1189,6 +1242,8 @@ export class FastMCP {
   }
 
   async connect(transport: Transport): Promise<void> {
+    // Rebuild so UI extension capability reflects all registered components.
+    this._primaryServer = this._makeServer()
     await this._primaryServer.connect(transport)
   }
 

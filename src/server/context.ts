@@ -135,6 +135,15 @@ export interface McpContext {
   setState(key: string, value: unknown): void
   /** Remove a value from session-scoped state. */
   deleteState(key: string): void
+
+  // --- Apps ---
+
+  /**
+   * Resolve a logical tool name to its current external name, accounting for
+   * any namespace prefix applied when the owning FastMCPApp was mounted.
+   * Returns the name unchanged when called outside a mounted context.
+   */
+  resolveToolName(name: string): string
 }
 
 // ---------------------------------------------------------------------------
@@ -260,5 +269,7 @@ export function createContext(
     deleteState: (key) => {
       sessionState.delete(key)
     },
+
+    resolveToolName: (name) => name,
   }
 }

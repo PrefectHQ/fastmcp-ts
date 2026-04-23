@@ -1,4 +1,5 @@
 import type { AuthCheck } from './auth/authorization'
+import type { ResourceUiMeta } from './apps/types'
 
 export interface ResourceAnnotations {
   /** Intended audience(s) — 'user', 'assistant', or both. */
@@ -33,6 +34,8 @@ export interface ResourceConfig {
   /** Arbitrary tags for server-side filtering. */
   tags?: string[]
   auth?: AuthCheck
+  /** Apps extension metadata. Included in _meta.ui in resources/list for UI-capable clients. */
+  ui?: ResourceUiMeta
 }
 
 /**

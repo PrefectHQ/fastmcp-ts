@@ -54,3 +54,18 @@ export { oauthProxy } from './auth/oauth/proxy'
 export type { OAuthProxyOptions } from './auth/oauth/proxy'
 export { createProxy } from './proxy'
 export type { ProxyTransport } from './proxy'
+
+// Apps
+export { FastMCPApp, GenerativeUI } from './apps'
+export {
+  Column, Row, Grid,
+  Text, Badge, Table,
+  Bar, Line, Area, Pie,
+  Input, Select, Button,
+  If, ForEach, Rx,
+} from './apps'
+export type { Component, IfNode, CatalogEntry } from './apps'
+export { Approval, Choice, FileUpload, FormInput } from './apps'
+export type { FileHandle, FileStorageAdapter, FileUploadOptions, FormInputOptions, EntrypointConfig, BackendToolConfig, FastMCPAppOptions } from './apps'
+export { actionRef } from './apps'
+export type { UiToolMeta, ResourceUiMeta, CspPolicy, BrowserPermissions, Visibility } from './apps'
