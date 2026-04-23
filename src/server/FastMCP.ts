@@ -1248,7 +1248,7 @@ export class FastMCP {
   }
 
   async run(options?: RunOptions): Promise<void> {
-    const rawTransport = options?.transport ?? process.env.MCP_TRANSPORT ?? 'stdio'
+    const rawTransport = process.env.MCP_TRANSPORT ?? options?.transport ?? 'stdio'
     if (rawTransport !== 'stdio' && rawTransport !== 'http') {
       throw new Error(`Unknown transport: "${rawTransport}". Supported: stdio, http.`)
     }
