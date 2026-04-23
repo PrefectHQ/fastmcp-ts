@@ -1055,3 +1055,24 @@ describe.sequential('CLI — auth (--command and --file wiring)', () => {
     expect(stdout).toMatch(/wired/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// dev apps
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — dev apps', () => {
+  it.todo('starts the browser preview UI and does not immediately exit')
+  it.todo('mounts all app tools and resources from the server file')
+  it.todo('exits non-zero when the server file does not exist')
+})
+
+// ---------------------------------------------------------------------------
+// generate-cli
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — generate-cli', () => {
+  it.todo('scaffolds a typed CLI file from a server with tools')
+  it.todo('--output writes the generated file to the specified path')
+  it.todo('generated file includes a command for each registered tool')
+  it.todo('exits non-zero when the server file does not exist')
+})
