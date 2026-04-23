@@ -50,6 +50,11 @@ export class FormInput {
     const { name, description, schema } = options
     const submitName = `${name}_submit`
 
+    this.server.resource(
+      { uri: `ui://${name}`, mimeType: 'text/html;profile=mcp-app', name },
+      () => `<!doctype html><html><head><meta charset="utf-8"></head><body><!-- fastmcp ui-runtime placeholder --></body></html>`,
+    )
+
     this.server.tool(
       { name, description, ui: { visibility: ['model', 'app'] } },
       async () => {

@@ -261,4 +261,27 @@ describe('Proxy — buildProxyFromClient', () => {
     const text = result.contents.find((c) => 'text' in c)?.text
     expect(text).toBe('world')
   })
+
+  // ─── tool metadata refresh ────────────────────────────────────────────────
+
+  it('updates tool description when the backend replaces a tool with new metadata', async () => {
+    const backend = trackFastMCP(new FastMCP({ name: 'backend' }))
+    backend.tool({ name: 'versioned', description: 'v1' }, () => 'ok')
+
+    const proxyClient = trackClient(await connectBackendToClient(backend))
+    const proxy = trackFastMCP(await buildProxyFromClient(proxyClient, { cacheTtl: 0 }))
+    const consumer = trackClient(await connectConsumerToProxy(proxy))
+
+    const notified = new Promise<void>((resolve) => {
+      consumer.setNotificationHandler(ToolListChangedNotificationSchema, () => resolve())
+    })
+
+    backend._removeTool('versioned')
+    backend.tool({ name: 'versioned', description: 'v2' }, () => 'ok')
+    await notified
+
+    const { tools } = await consumer.listTools()
+    const tool = tools.find((t) => t.name === 'versioned')
+    expect(tool?.description).toBe('v2')
+  })
 })

@@ -407,5 +407,34 @@ describe('Client — Multi-server', () => {
       const pingTools = tools.filter((t) => t.name.includes('ping'))
       expect(pingTools.map((t) => t.name).sort()).toEqual(['a_ping', 'b_ping'])
     })
+
+    it('server names containing underscores route callTool() correctly', async () => {
+      // If the server is named "my_server", its tool "greet" appears as "my_server_greet".
+      // indexOf('_') would split this as serverName="my", localName="server_greet" — wrong.
+      // The fix (longest-prefix-first matching) must produce serverName="my_server".
+      const my_server = new FastMCP({ name: 'my_server' })
+      my_server.tool({ name: 'greet', input: z.object({}) }, () => 'hello from my_server')
+      await using client = await MultiServerClient.connect({ mcpServers: { my_server } })
+
+      const tools = await client.listTools()
+      expect(tools.map((t) => t.name)).toContain('my_server_greet')
+
+      const result = await client.callTool('my_server_greet')
+      expect(result.content[0]).toMatchObject({ type: 'text', text: 'hello from my_server' })
+    })
+
+    it('server named "a" and "a_b" both route correctly when "a_b" has a tool "c"', async () => {
+      const a = new FastMCP({ name: 'a' })
+      a.tool({ name: 'ping', input: z.object({}) }, () => 'from-a')
+      const a_b = new FastMCP({ name: 'a_b' })
+      a_b.tool({ name: 'c', input: z.object({}) }, () => 'from-a_b')
+      await using client = await MultiServerClient.connect({ mcpServers: { a, a_b } })
+
+      const resultA = await client.callTool('a_ping')
+      expect(resultA.content[0]).toMatchObject({ type: 'text', text: 'from-a' })
+
+      const resultAB = await client.callTool('a_b_c')
+      expect(resultAB.content[0]).toMatchObject({ type: 'text', text: 'from-a_b' })
+    })
   })
 })

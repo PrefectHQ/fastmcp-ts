@@ -88,11 +88,12 @@ export class FileUpload {
           data: fileData,
         })
 
-        // Track handle in session state for future cleanup
+        // Track handle in session state and register cleanup on session close
         const ctx = contextStore.getStore()
         if (ctx) {
           const existing = (ctx.getState(SESSION_HANDLES_KEY) as string[] | undefined) ?? []
           ctx.setState(SESSION_HANDLES_KEY, [...existing, handle])
+          ctx.onClose(() => storage.delete(handle))
         }
 
         const uri = `ui://files/${handle}`

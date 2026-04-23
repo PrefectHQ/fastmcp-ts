@@ -144,6 +144,15 @@ export interface McpContext {
    * Returns the name unchanged when called outside a mounted context.
    */
   resolveToolName(name: string): string
+
+  // --- Session lifecycle ---
+
+  /**
+   * Register a callback that runs when the current session closes.
+   * Useful for releasing per-session resources (e.g. uploaded files).
+   * No-op if called outside an active HTTP session.
+   */
+  onClose(callback: () => void): void
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +160,9 @@ export interface McpContext {
 // ---------------------------------------------------------------------------
 
 export const contextStore = new AsyncLocalStorage<McpContext>()
+
+/** Internal session-state key for per-session close callbacks. */
+export const SESSION_CLOSE_CALLBACKS_KEY = '__fastmcp_session_close_callbacks'
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -271,5 +283,10 @@ export function createContext(
     },
 
     resolveToolName: (name) => name,
+
+    onClose(callback) {
+      const existing = (sessionState.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
+      sessionState.set(SESSION_CLOSE_CALLBACKS_KEY, [...existing, callback])
+    },
   }
 }

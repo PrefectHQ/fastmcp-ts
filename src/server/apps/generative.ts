@@ -41,6 +41,8 @@ export class GenerativeUI {
         delete sandbox['COMPONENT_CATALOG']
 
         try {
+          // NOTE: vm.runInNewContext is NOT a true security sandbox — prototype chain
+          // escapes are possible. Do not execute untrusted code in production.
           return runInNewContext(code, sandbox, { timeout: 2000 })
         } catch (err) {
           throw new Error(`[generate_ui] ${err instanceof Error ? err.message : String(err)}`)

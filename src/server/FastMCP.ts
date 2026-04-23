@@ -22,7 +22,7 @@ import type { AddressInfo } from 'node:net'
 import { AuthorizationError } from './auth/types'
 import type { TokenVerifier, AccessToken } from './auth/types'
 import type { AuthCheck } from './auth/authorization'
-import { contextStore, createContext } from './context'
+import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
@@ -176,6 +176,24 @@ function toAccessToken(authInfo: AuthInfo | undefined): AccessToken | undefined 
   }
 }
 
+// Cached result of verifying FASTMCP_CLI_AUTH_TOKEN once per process.
+// undefined = not yet resolved; null = env var absent or verification failed.
+let _cliEnvToken: AccessToken | null | undefined
+
+async function resolveCliEnvToken(verifier: TokenVerifier | undefined): Promise<AccessToken | undefined> {
+  if (!verifier) return undefined
+  if (_cliEnvToken !== undefined) return _cliEnvToken ?? undefined
+  const raw = process.env['FASTMCP_CLI_AUTH_TOKEN']
+  if (!raw) { _cliEnvToken = null; return undefined }
+  try {
+    _cliEnvToken = await verifier.verify(raw)
+    return _cliEnvToken
+  } catch {
+    _cliEnvToken = null
+    return undefined
+  }
+}
+
 async function runAuthCheck(check: AuthCheck, token: AccessToken | undefined): Promise<void> {
   if (!token) throw new McpError(ErrorCode.InvalidRequest, 'Authentication required')
   try {
@@ -255,9 +273,13 @@ export class FastMCP {
     return server
   }
 
+  private async _resolveToken(authInfo: AuthInfo | undefined): Promise<AccessToken | undefined> {
+    return toAccessToken(authInfo) ?? await resolveCliEnvToken(this._auth)
+  }
+
   private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
     server.setRequestHandler(ListToolsRequestSchema, async (req, extra) => {
-      const token = toAccessToken(extra.authInfo)
+      const token = await this._resolveToken(extra.authInfo)
       const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
@@ -354,7 +376,7 @@ export class FastMCP {
 
     server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
       const requestedName = req.params.name
-      const token = toAccessToken(extra.authInfo)
+      const token = await this._resolveToken(extra.authInfo)
 
       // Check synthesized tools first
       const { resourceViews, promptViews } = await this._getVisibleViews(token)
@@ -474,7 +496,7 @@ export class FastMCP {
     })
 
     server.setRequestHandler(ListResourcesRequestSchema, async (req, extra) => {
-      const token = toAccessToken(extra.authInfo)
+      const token = await this._resolveToken(extra.authInfo)
       const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
@@ -526,7 +548,7 @@ export class FastMCP {
     })
 
     server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req, extra) => {
-      const token = toAccessToken(extra.authInfo)
+      const token = await this._resolveToken(extra.authInfo)
       const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
@@ -576,7 +598,7 @@ export class FastMCP {
 
     server.setRequestHandler(ReadResourceRequestSchema, async (req, extra) => {
       const requestedUri = req.params.uri
-      const token = toAccessToken(extra.authInfo)
+      const token = await this._resolveToken(extra.authInfo)
 
       let resource: RegisteredResource | undefined = this._staticResources.get(requestedUri)
       let templateParams: Record<string, string> | undefined
@@ -658,7 +680,7 @@ export class FastMCP {
     })
 
     server.setRequestHandler(ListPromptsRequestSchema, async (req, extra) => {
-      const token = toAccessToken(extra.authInfo)
+      const token = await this._resolveToken(extra.authInfo)
       const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
@@ -724,7 +746,7 @@ export class FastMCP {
       }
 
       const resolvedPrompt = prompt
-      const token = toAccessToken(extra.authInfo)
+      const token = await this._resolveToken(extra.authInfo)
       if (resolvedPrompt.config.auth) await runAuthCheck(resolvedPrompt.config.auth, token)
 
       const suppliedArgs = req.params.arguments ?? {}
@@ -1248,7 +1270,7 @@ export class FastMCP {
   }
 
   async run(options?: RunOptions): Promise<void> {
-    const rawTransport = options?.transport ?? process.env.MCP_TRANSPORT ?? 'stdio'
+    const rawTransport = process.env.MCP_TRANSPORT ?? options?.transport ?? 'stdio'
     if (rawTransport !== 'stdio' && rawTransport !== 'http') {
       throw new Error(`Unknown transport: "${rawTransport}". Supported: stdio, http.`)
     }
@@ -1323,6 +1345,11 @@ export class FastMCP {
               this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
             },
             onsessionclosed: (id) => {
+              const session = this._sessions.get(id)
+              if (session) {
+                const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
+                for (const cb of callbacks) cb()
+              }
               this._sessions.delete(id)
             },
           })
@@ -1345,11 +1372,26 @@ export class FastMCP {
 
     const auth = this._auth
 
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
+    }
+
     const httpServer = createServer(async (req, res) => {
+      // CORS preflight
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, corsHeaders).end()
+        return
+      }
+
       if (req.url?.split('?')[0] !== path) {
         res.writeHead(404).end()
         return
       }
+
+      // Attach CORS headers to all responses
+      for (const [k, v] of Object.entries(corsHeaders)) res.setHeader(k, v)
 
       // Auth middleware
       if (auth) {
@@ -1408,6 +1450,11 @@ export class FastMCP {
             this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
           },
           onsessionclosed: (id) => {
+            const session = this._sessions.get(id)
+            if (session) {
+              const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
+              for (const cb of callbacks) cb()
+            }
             this._sessions.delete(id)
           },
         })

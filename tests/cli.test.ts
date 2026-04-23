@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execa, type ResultPromise } from 'execa'
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -24,6 +24,9 @@ const SIMPLE_SERVER = resolve(import.meta.dirname, 'fixtures/simple-server.mjs')
 const ERROR_SERVER = resolve(import.meta.dirname, 'fixtures/error-server.mjs')
 const EMPTY_SERVER = resolve(import.meta.dirname, 'fixtures/empty-server.mjs')
 const HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/http-server.mjs')
+const FASTMCP_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/fastmcp-http-server.ts')
+const AUTH_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/auth-http-server.ts')
+const ENV_SERVER = resolve(import.meta.dirname, 'fixtures/env-server.mjs')
 
 /** Spawn an HTTP fixture and resolve with the actual bound port once it prints "listening on". */
 function waitForPort(subprocess: ResultPromise): Promise<number> {
@@ -68,6 +71,15 @@ describe.sequential('CLI — version', () => {
     expect(data).toHaveProperty('node')
     expect(data).toHaveProperty('platform')
   })
+
+  it('--version flag reports the version from package.json', async () => {
+    const { version } = JSON.parse(
+      await readFile(resolve(import.meta.dirname, '../package.json'), 'utf8'),
+    ) as { version: string }
+    const { exitCode, stdout, stderr } = await runCli(['--version'])
+    expect(exitCode).toBe(0)
+    expect(stdout + stderr).toContain(version)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -76,7 +88,7 @@ describe.sequential('CLI — version', () => {
 
 describe.sequential('CLI — inspect', () => {
   it('lists tools with their names and descriptions', async () => {
-    const { exitCode, stderr } = await runCli(['inspect', SIMPLE_SERVER])
+    const { exitCode, stderr } = await runCli(['inspect', '--file', SIMPLE_SERVER])
     expect(exitCode).toBe(0)
     expect(stderr).toMatch(/echo/)
     expect(stderr).toMatch(/add/)
@@ -84,21 +96,21 @@ describe.sequential('CLI — inspect', () => {
   })
 
   it('lists resources with their URIs', async () => {
-    const { exitCode, stderr } = await runCli(['inspect', SIMPLE_SERVER])
+    const { exitCode, stderr } = await runCli(['inspect', '--file', SIMPLE_SERVER])
     expect(exitCode).toBe(0)
     expect(stderr).toMatch(/memo:\/\/greeting/)
     expect(stderr).toMatch(/Resources/)
   })
 
   it('lists prompts with their names', async () => {
-    const { exitCode, stderr } = await runCli(['inspect', SIMPLE_SERVER])
+    const { exitCode, stderr } = await runCli(['inspect', '--file', SIMPLE_SERVER])
     expect(exitCode).toBe(0)
     expect(stderr).toMatch(/greet/)
     expect(stderr).toMatch(/Prompts/)
   })
 
   it('--json outputs tools, resources, and prompts as machine-readable JSON', async () => {
-    const { exitCode, stdout } = await runCli(['--quiet', 'inspect', SIMPLE_SERVER, '--json'])
+    const { exitCode, stdout } = await runCli(['--quiet', 'inspect', '--file', SIMPLE_SERVER, '--json'])
     expect(exitCode).toBe(0)
     const data = JSON.parse(stdout)
     expect(Array.isArray(data.tools)).toBe(true)
@@ -110,9 +122,47 @@ describe.sequential('CLI — inspect', () => {
   })
 
   it('exits non-zero with an error message when the file does not exist', async () => {
-    const { exitCode, stderr } = await runCli(['inspect', 'nonexistent-file.ts'])
+    const { exitCode, stderr } = await runCli(['inspect', '--file', 'nonexistent-file.ts'])
     expect(exitCode).not.toBe(0)
     expect(stderr).toMatch(/not found|File not found/i)
+  })
+
+  it('--command lists tools from a stdio server', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--command', `node ${SIMPLE_SERVER}`,
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+    expect(stderr).toMatch(/Tools/)
+    expect(stderr).toMatch(/Resources/)
+    expect(stderr).toMatch(/Prompts/)
+  })
+
+  it('--url lists tools, resources, and prompts from an HTTP server', async () => {
+    const subprocess = execa('node', [HTTP_SERVER], {
+      reject: false,
+      timeout: 15_000,
+      env: { ...process.env, MCP_TRANSPORT: 'http', MCP_PORT: '0' },
+    })
+
+    const port = await waitForPort(subprocess)
+
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--url', `http://localhost:${port}/mcp`,
+    ])
+
+    subprocess.kill()
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+    expect(stderr).toMatch(/Tools/)
+    expect(stderr).toMatch(/Resources/)
+    expect(stderr).toMatch(/Prompts/)
+  })
+
+  it('exits non-zero with an error when no connection flag is given', async () => {
+    const { exitCode, stderr } = await runCli(['inspect'])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/--url|--command|--file/i)
   })
 })
 
@@ -184,9 +234,24 @@ describe.sequential('CLI — list', () => {
   })
 
   it('exits non-zero with an error when the server is unreachable', async () => {
-    const { exitCode, stderr } = await runCli(['list', 'http://127.0.0.1:19999/mcp'])
+    const { exitCode, stderr } = await runCli(['list', '--url', 'http://127.0.0.1:19999/mcp'])
     expect(exitCode).not.toBe(0)
     expect(stderr).toMatch(/refused|unreachable|failed/i)
+  })
+
+  it('--file lists tools from an in-process server file', async () => {
+    const { exitCode, stderr } = await runCli(['list', '--file', SIMPLE_SERVER])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+    expect(stderr).toMatch(/add/)
+  })
+
+  it('--file --json outputs tools as machine-readable JSON', async () => {
+    const { exitCode, stdout } = await runCli(['--quiet', 'list', '--file', SIMPLE_SERVER, '--json'])
+    expect(exitCode).toBe(0)
+    const data = JSON.parse(stdout)
+    expect(Array.isArray(data.tools)).toBe(true)
+    expect(data.tools.map((t: { name: string }) => t.name)).toContain('echo')
   })
 })
 
@@ -205,7 +270,7 @@ describe.sequential('CLI — call', () => {
     expect(stdout).toMatch(/hello/)
   })
 
-  it('coerces numeric string values to numbers', async () => {
+  it('coerces numeric string values to numbers for number-typed fields', async () => {
     const { exitCode, stdout } = await runCli([
       '--quiet', 'call', 'add',
       '--command', `node ${SIMPLE_SERVER}`,
@@ -215,6 +280,30 @@ describe.sequential('CLI — call', () => {
     // The add tool returns { sum: 10 } — rendered as JSON via log.raw
     const data = JSON.parse(stdout)
     expect(data.sum).toBe(10)
+  })
+
+  it('coerces a number-looking value to string when the schema declares string type', async () => {
+    // message=42 would JSON.parse to the number 42; schema says string → must coerce back
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--command', `node ${SIMPLE_SERVER}`,
+      'message=42',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/42/)
+  })
+
+  it('does not include --file or --auth values as kv args', async () => {
+    // Before fix, args.file value ("server.ts") and args.auth value ("any-token") leaked
+    // into the parsed kv set; they should be excluded from tool input.
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--file', FASTMCP_HTTP_SERVER,
+      '--auth', 'any-token',
+      'message=hello',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/hello/)
   })
 
   it('--input-json accepts a JSON object as the argument set', async () => {
@@ -285,6 +374,27 @@ describe.sequential('CLI — call', () => {
     ])
     expect(exitCode).not.toBe(0)
     expect(stderr).toMatch(/error|failed/i)
+  })
+
+  it('--command: spawned server inherits the parent process environment (PATH not stripped)', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo_env',
+      '--command', `node ${ENV_SERVER}`,
+      'name=PATH',
+    ])
+    expect(exitCode).toBe(0)
+    // PATH must be non-empty for the child process to have resolved `node`
+    expect(stdout.trim()).not.toBe('')
+  })
+
+  it('--file: spawned in-process server inherits the parent process environment', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo_env',
+      '--file', ENV_SERVER,
+      'name=PATH',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout.trim()).not.toBe('')
   })
 })
 
@@ -677,6 +787,54 @@ describe.sequential('CLI — install goose', () => {
 })
 
 // ---------------------------------------------------------------------------
+// inspect — FastMCP server that hardcodes transport: 'http'
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — inspect (FastMCP HTTP fixture)', () => {
+  it('connects via stdio even when the server hardcodes transport: http', async () => {
+    const { exitCode, stderr } = await runCli(['inspect', '--file', FASTMCP_HTTP_SERVER], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+    expect(stderr).toMatch(/Tools/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// call — --file flag (inprocess mode)
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — call (--file flag)', () => {
+  it('calls a tool on a FastMCP server file that hardcodes transport: http', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--file', FASTMCP_HTTP_SERVER,
+      'message=hello',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/hello/)
+  })
+
+  it('exits non-zero with a suggestion when the tool name is not found', async () => {
+    const { exitCode, stderr } = await runCli([
+      'call', 'ech',
+      '--file', FASTMCP_HTTP_SERVER,
+    ], { timeout: 20_000 })
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/Did you mean/)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('exits non-zero with an error when the file does not exist', async () => {
+    const { exitCode, stderr } = await runCli([
+      'call', 'echo',
+      '--file', 'nonexistent-server.ts',
+    ])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/not found|File not found/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // run
 // ---------------------------------------------------------------------------
 
@@ -716,7 +874,7 @@ describe.sequential('CLI — run', () => {
     const port = await waitForPort(subprocess)
 
     const { exitCode, stderr } = await runCli([
-      'list', `http://localhost:${port}/mcp`,
+      'list', '--url', `http://localhost:${port}/mcp`,
     ])
 
     subprocess.kill()
@@ -740,7 +898,7 @@ describe.sequential('CLI — list (URL mode)', () => {
     const port = await waitForPort(subprocess)
 
     const { exitCode, stderr } = await runCli([
-      'list', `http://localhost:${port}/mcp`,
+      'list', '--url', `http://localhost:${port}/mcp`,
     ])
 
     subprocess.kill()
@@ -756,7 +914,7 @@ describe.sequential('CLI — list (URL mode)', () => {
 
 describe.sequential('CLI — empty state', () => {
   it('inspect exits 0 and shows an empty-state message when the server has no components', async () => {
-    const { exitCode, stderr } = await runCli(['inspect', EMPTY_SERVER])
+    const { exitCode, stderr } = await runCli(['inspect', '--file', EMPTY_SERVER])
     expect(exitCode).toBe(0)
     expect(stderr).toMatch(/no tools|0 tools|empty/i)
   })
@@ -788,4 +946,133 @@ describe.sequential('CLI — spinner in non-TTY', () => {
     const data = JSON.parse(stdout)
     expect(Array.isArray(data.content)).toBe(true)
   })
+})
+
+// ---------------------------------------------------------------------------
+// auth — --url mode (end-to-end: HTTP Bearer token enforced by server)
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — auth (--url mode)', () => {
+  let subprocess: ReturnType<typeof execa>
+  let port: number
+
+  beforeAll(async () => {
+    subprocess = execa(
+      'node',
+      [process.env['FASTMCP_BIN']!, 'run', AUTH_HTTP_SERVER, '--transport', 'http', '--port', '0'],
+      { reject: false, timeout: 30_000, env: { ...process.env } },
+    )
+    port = await waitForPort(subprocess)
+  }, 30_000)
+
+  afterAll(() => {
+    subprocess.kill()
+  })
+
+  it('call: tool call succeeds with a valid --auth token', async () => {
+    const { exitCode, stdout } = await runCli([
+      '--quiet', 'call', 'protected_tool',
+      '--url', `http://localhost:${port}/mcp`,
+      '--auth', 'valid-token',
+      'msg=hello',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/protected: hello/)
+  })
+
+  it('call: exits non-zero when --auth is omitted on a protected server', async () => {
+    const { exitCode, stderr } = await runCli([
+      'call', 'protected_tool',
+      '--url', `http://localhost:${port}/mcp`,
+    ])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/failed|refused|401|auth|connect|token|missing/i)
+  })
+
+  it('call: exits non-zero when an invalid token is supplied', async () => {
+    const { exitCode } = await runCli([
+      'call', 'protected_tool',
+      '--url', `http://localhost:${port}/mcp`,
+      '--auth', 'bad-token',
+    ])
+    expect(exitCode).not.toBe(0)
+  })
+
+  it('list: protected tools are visible with a valid --auth token', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--url', `http://localhost:${port}/mcp`,
+      '--auth', 'valid-token',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/protected_tool/)
+    expect(stderr).toMatch(/public_tool/)
+  })
+
+  it('list: exits non-zero when --auth is omitted on a protected server', async () => {
+    const { exitCode } = await runCli([
+      'list', '--url', `http://localhost:${port}/mcp`,
+    ])
+    expect(exitCode).not.toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// auth — --command and --file modes (wiring: auth forwarded, no crash)
+// stdio does not carry HTTP headers so the server cannot enforce auth, but
+// passing --auth must not break the connection.
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — auth (--command and --file wiring)', () => {
+  it('call --command: passing --auth does not break an unauthenticated server', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--command', `node ${SIMPLE_SERVER}`,
+      '--auth', 'any-token',
+      'message=wired',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/wired/)
+  })
+
+  it('list --command: passing --auth does not break an unauthenticated server', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list',
+      '--command', `node ${SIMPLE_SERVER}`,
+      '--auth', 'any-token',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('call --file: passing --auth does not break an unauthenticated server', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--file', FASTMCP_HTTP_SERVER,
+      '--auth', 'any-token',
+      'message=wired',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/wired/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// dev apps
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — dev apps', () => {
+  it.todo('starts the browser preview UI and does not immediately exit')
+  it.todo('mounts all app tools and resources from the server file')
+  it.todo('exits non-zero when the server file does not exist')
+})
+
+// ---------------------------------------------------------------------------
+// generate-cli
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — generate-cli', () => {
+  it.todo('scaffolds a typed CLI file from a server with tools')
+  it.todo('--output writes the generated file to the specified path')
+  it.todo('generated file includes a command for each registered tool')
+  it.todo('exits non-zero when the server file does not exist')
 })

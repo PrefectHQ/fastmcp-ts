@@ -148,6 +148,7 @@ export class OAuth implements OAuthClientProvider {
   private _codeVerifier: string | undefined
   private _callbackPromise: Promise<string> | null = null
   private _callbackResolve: ((code: string) => void) | null = null
+  private _callbackReject: ((err: Error) => void) | null = null
   private _callbackServer: http.Server | null = null
   private _actualCallbackPort: number | null = null
 
@@ -218,9 +219,12 @@ export class OAuth implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    this._callbackPromise = new Promise<string>((resolve) => {
+    this._callbackPromise = new Promise<string>((resolve, reject) => {
       this._callbackResolve = resolve
+      this._callbackReject = reject
     })
+    // Suppress unhandled-rejection warnings — waitForCallback observes this via Promise.race
+    this._callbackPromise.catch(() => {})
     await this._startCallbackServer()
     if (this._onRedirect) {
       await this._onRedirect(authorizationUrl)
@@ -298,6 +302,7 @@ export class OAuth implements OAuthClientProvider {
     } finally {
       this._callbackPromise = null
       this._callbackResolve = null
+      this._callbackReject = null
       this._stopCallbackServer()
     }
   }
@@ -311,6 +316,16 @@ export class OAuth implements OAuthClientProvider {
     return new Promise((resolve, reject) => {
       const server = http.createServer((req, res) => {
         const url = new URL(req.url ?? '/', `http://localhost`)
+        const error = url.searchParams.get('error')
+        if (error && this._callbackReject) {
+          const description = url.searchParams.get('error_description') ?? error
+          this._callbackReject(new Error(`OAuth authorization denied: ${description}`))
+          res.writeHead(200, { 'content-type': 'text/html' })
+          res.end(
+            '<html><body><h1>Authorization denied</h1><p>You may close this tab.</p></body></html>',
+          )
+          return
+        }
         const code = url.searchParams.get('code')
         if (code && this._callbackResolve) {
           this._callbackResolve(code)

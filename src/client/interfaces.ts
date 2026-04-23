@@ -16,8 +16,6 @@ export interface RequestOptions {
   timeout?: number
   /** AbortSignal for caller-controlled cancellation. */
   signal?: AbortSignal
-  /** Additional HTTP headers merged into the request. */
-  headers?: Record<string, string>
 }
 
 export interface CallToolOptions extends RequestOptions {

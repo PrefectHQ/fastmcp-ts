@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
+import { Client } from '@modelcontextprotocol/sdk/client'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
 import { FastMCP, Approval, Choice, FileUpload, FormInput } from 'fastmcp-ts/server'
+import type { FileStorageAdapter } from '../../src/server/apps/providers/FileUpload.js'
 import { createUiTestClient } from '../helpers/createUiTestClient'
 
 // ---------------------------------------------------------------------------
@@ -151,6 +155,90 @@ describe('Apps — Built-in Providers', () => {
           text: original,
         })
       })
+    })
+  })
+
+  describe('ui:// resources', () => {
+    it('Approval registers a ui://approval_request resource readable by UI clients', async () => {
+      const approval = new Approval()
+      await withProvider(approval, async (client) => {
+        const { resources } = await client.listResources()
+        expect(resources.map((r) => r.uri)).toContain('ui://approval_request')
+
+        const result = await client.readResource({ uri: 'ui://approval_request' })
+        expect(result.contents.length).toBeGreaterThan(0)
+      })
+    })
+
+    it('Choice registers a ui://choice_present resource readable by UI clients', async () => {
+      const choice = new Choice()
+      await withProvider(choice, async (client) => {
+        const { resources } = await client.listResources()
+        expect(resources.map((r) => r.uri)).toContain('ui://choice_present')
+
+        const result = await client.readResource({ uri: 'ui://choice_present' })
+        expect(result.contents.length).toBeGreaterThan(0)
+      })
+    })
+
+    it('FormInput registers a ui://<name> resource readable by UI clients', async () => {
+      const schema = z.object({ name: z.string() })
+      const form = new FormInput({ name: 'my_form', description: 'A form', schema })
+      await withProvider(form, async (client) => {
+        const { resources } = await client.listResources()
+        expect(resources.map((r) => r.uri)).toContain('ui://my_form')
+
+        const result = await client.readResource({ uri: 'ui://my_form' })
+        expect(result.contents.length).toBeGreaterThan(0)
+      })
+    })
+  })
+
+  describe('FileUpload — session cleanup', () => {
+    function makeTrackingStorage(): FileStorageAdapter & { files: Map<string, unknown> } {
+      const files = new Map<string, unknown>()
+      return {
+        files,
+        save: (handle, file) => files.set(handle, file),
+        load: (handle) => files.get(handle) as ReturnType<FileStorageAdapter['load']>,
+        delete: (handle) => { files.delete(handle) },
+      }
+    }
+
+    it('deletes uploaded files from storage when the HTTP session closes', async () => {
+      const storage = makeTrackingStorage()
+      const upload = new FileUpload({ storage })
+      const server = new FastMCP({ name: 'cleanup-test' })
+      server.addProvider(upload.server as FastMCP)
+
+      await server.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      const { port } = server.address!
+
+      const client = new Client(
+        { name: 'test', version: '1' },
+        { capabilities: { extensions: { 'io.modelcontextprotocol/ui': {} } } },
+      )
+      const transport = new StreamableHTTPClientTransport(
+        new URL(`http://127.0.0.1:${port}/mcp`),
+      )
+      await client.connect(transport)
+
+      const data = Buffer.from('hello').toString('base64')
+      const result = await client.callTool({
+        name: 'file_upload_submit',
+        arguments: { name: 'test.txt', mimeType: 'text/plain', data },
+      })
+      const { handle } = result.structuredContent as { handle: string }
+
+      expect(storage.load(handle)).toBeDefined()
+
+      // Explicitly terminate the session so the server fires onsessionclosed
+      await transport.terminateSession()
+      await client.close()
+
+      expect(storage.load(handle)).toBeUndefined()
+
+      await server.close()
     })
   })
 
