@@ -22,7 +22,7 @@ import type { AddressInfo } from 'node:net'
 import { AuthorizationError } from './auth/types'
 import type { TokenVerifier, AccessToken } from './auth/types'
 import type { AuthCheck } from './auth/authorization'
-import { contextStore, createContext } from './context'
+import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
@@ -1345,6 +1345,11 @@ export class FastMCP {
               this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
             },
             onsessionclosed: (id) => {
+              const session = this._sessions.get(id)
+              if (session) {
+                const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
+                for (const cb of callbacks) cb()
+              }
               this._sessions.delete(id)
             },
           })
@@ -1367,11 +1372,26 @@ export class FastMCP {
 
     const auth = this._auth
 
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
+    }
+
     const httpServer = createServer(async (req, res) => {
+      // CORS preflight
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, corsHeaders).end()
+        return
+      }
+
       if (req.url?.split('?')[0] !== path) {
         res.writeHead(404).end()
         return
       }
+
+      // Attach CORS headers to all responses
+      for (const [k, v] of Object.entries(corsHeaders)) res.setHeader(k, v)
 
       // Auth middleware
       if (auth) {
@@ -1430,6 +1450,11 @@ export class FastMCP {
             this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
           },
           onsessionclosed: (id) => {
+            const session = this._sessions.get(id)
+            if (session) {
+              const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
+              for (const cb of callbacks) cb()
+            }
             this._sessions.delete(id)
           },
         })

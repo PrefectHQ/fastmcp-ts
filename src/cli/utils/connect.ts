@@ -42,7 +42,7 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth): Promis
 }
 
 function buildStdioEnv(auth: CliAuth | undefined): Record<string, string> {
-  const env: Record<string, string> = { MCP_TRANSPORT: 'stdio' }
+  const env: Record<string, string> = { ...process.env as Record<string, string>, MCP_TRANSPORT: 'stdio' }
   if (auth) {
     const authHeader = auth.getHeaders().Authorization
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader

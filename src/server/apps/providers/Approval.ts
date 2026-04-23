@@ -31,6 +31,11 @@ export class Approval {
       },
     )
 
+    this.server.resource(
+      { uri: 'ui://approval_request', mimeType: 'text/html;profile=mcp-app', name: 'approval_request' },
+      () => `<!doctype html><html><head><meta charset="utf-8"></head><body><!-- fastmcp ui-runtime placeholder --></body></html>`,
+    )
+
     this.server.tool(
       {
         name: 'approval_confirm',

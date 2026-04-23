@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty'
-import { output } from '../ui/format.js'
+import { output, setJsonMode } from '../ui/format.js'
 import { renderTable } from '../ui/table.js'
 import { log } from '../ui/output.js'
 import { getConfigPaths, readConfig } from '../utils/config-paths.js'
@@ -54,6 +54,7 @@ export default defineCommand({
     json: { type: 'boolean', description: 'Output JSON', default: false },
   },
   async run({ args }) {
+    if (args.json) setJsonMode(true)
     const paths = getConfigPaths()
     const all: DiscoveredServer[] = []
 

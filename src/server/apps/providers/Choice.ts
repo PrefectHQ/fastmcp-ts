@@ -35,6 +35,11 @@ export class Choice {
       },
     )
 
+    this.server.resource(
+      { uri: 'ui://choice_present', mimeType: 'text/html;profile=mcp-app', name: 'choice_present' },
+      () => `<!doctype html><html><head><meta charset="utf-8"></head><body><!-- fastmcp ui-runtime placeholder --></body></html>`,
+    )
+
     this.server.tool(
       {
         name: 'choice_select',

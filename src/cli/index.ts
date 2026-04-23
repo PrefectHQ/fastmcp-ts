@@ -2,10 +2,12 @@ import { defineCommand, runMain } from 'citty'
 import { setQuiet } from './ui/output.js'
 import { setJsonMode } from './ui/format.js'
 
+declare const __FASTMCP_VERSION__: string
+
 const main = defineCommand({
   meta: {
     name: 'fastmcp',
-    version: '0.0.1',
+    version: __FASTMCP_VERSION__,
     description: 'FastMCP CLI — build, run, and manage MCP servers',
   },
   args: {

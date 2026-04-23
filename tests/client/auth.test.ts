@@ -334,6 +334,40 @@ describe('OAuth', () => {
       const oauth = makeOAuth()
       await expect(oauth.waitForCallback(10)).rejects.toThrow('No pending OAuth callback')
     })
+
+    it('waitForCallback rejects immediately when the callback URL carries ?error=access_denied', async () => {
+      const oauth = new OAuth({ callbackPort: 0, onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+
+      await oauth.redirectToAuthorization(new URL('https://auth.example.com/authorize'))
+
+      const port = oauth.callbackServerPort!
+      const callbackPromise = oauth.waitForCallback(30_000)
+
+      // Race fetch and the rejection expectation concurrently to avoid an
+      // unhandled-rejection window between when the promise settles and when
+      // the next `await` line runs.
+      const [res] = await Promise.all([
+        fetch(`http://localhost:${port}/callback?error=access_denied&error_description=User+denied+access`),
+        expect(callbackPromise).rejects.toThrow('denied'),
+      ])
+      expect(res.status).toBe(200)
+    })
+
+    it('waitForCallback rejects immediately on any ?error= redirect, not just access_denied', async () => {
+      const oauth = new OAuth({ callbackPort: 0, onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+
+      await oauth.redirectToAuthorization(new URL('https://auth.example.com/authorize'))
+
+      const port = oauth.callbackServerPort!
+      const callbackPromise = oauth.waitForCallback(30_000)
+
+      await Promise.all([
+        fetch(`http://localhost:${port}/callback?error=server_error`),
+        expect(callbackPromise).rejects.toThrow('OAuth authorization denied'),
+      ])
+    })
   })
 })
 

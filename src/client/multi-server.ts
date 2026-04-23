@@ -460,14 +460,19 @@ export class MultiServerClient implements IClient {
   }
 
   private _parseNamespacedName(name: string): { serverName: string; localName: string } {
-    const idx = name.indexOf('_')
-    if (idx === -1) {
-      throw new Error(
-        `Tool/prompt name "${name}" has no server namespace prefix. ` +
-          `Expected format: "<serverName>_<name>".`,
-      )
+    // Sort longest-first so that server names like "my_server" are matched
+    // before the shorter prefix "my".
+    const serverNames = [...this._clients.keys()].sort((a, b) => b.length - a.length)
+    for (const serverName of serverNames) {
+      const prefix = `${serverName}_`
+      if (name.startsWith(prefix)) {
+        return { serverName, localName: name.slice(prefix.length) }
+      }
     }
-    return { serverName: name.slice(0, idx), localName: name.slice(idx + 1) }
+    throw new Error(
+      `Tool/prompt name "${name}" has no server namespace prefix. ` +
+        `Expected format: "<serverName>_<name>".`,
+    )
   }
 
   private _sdkForServer(serverName: string): SdkClient {

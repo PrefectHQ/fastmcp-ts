@@ -58,7 +58,14 @@ export async function buildProxyFromClient(
   const lastSync = { tools: 0, resources: 0, prompts: 0 }
 
   async function resyncTools(): Promise<void> {
-    const { tools } = await client.listTools()
+    const tools: Awaited<ReturnType<typeof client.listTools>>['tools'] = []
+    let cursor: string | undefined
+    do {
+      const page = await client.listTools({ cursor })
+      tools.push(...page.tools)
+      cursor = page.nextCursor
+    } while (cursor)
+
     const incoming = new Set(tools.map((t) => t.name))
 
     for (const name of proxiedTools) {
@@ -69,26 +76,29 @@ export async function buildProxyFromClient(
     }
 
     for (const tool of tools) {
-      if (!proxiedTools.has(tool.name)) {
-        proxy.tool(
-          {
-            name: tool.name,
-            ...(tool.title !== undefined ? { title: tool.title } : {}),
-            description: tool.description ?? tool.name,
-            inputSchema: (tool.inputSchema as Record<string, unknown>) ?? {},
-          },
-          async (args: unknown) => {
-            const result = await client.callTool(
-              { name: tool.name, arguments: args as Record<string, unknown> },
-              CallToolResultSchema,
-            )
-            // Zod infers _meta on content items as Record<string,unknown> but
-            // CallToolResult types it more specifically — identical at runtime.
-            return new ToolResult(result as unknown as CallToolResult)
-          },
-        )
-        proxiedTools.add(tool.name)
+      if (proxiedTools.has(tool.name)) {
+        // Update metadata if it changed
+        proxy._removeTool(tool.name)
+        proxiedTools.delete(tool.name)
       }
+      proxy.tool(
+        {
+          name: tool.name,
+          ...(tool.title !== undefined ? { title: tool.title } : {}),
+          description: tool.description ?? tool.name,
+          inputSchema: (tool.inputSchema as Record<string, unknown>) ?? {},
+        },
+        async (args: unknown) => {
+          const result = await client.callTool(
+            { name: tool.name, arguments: args as Record<string, unknown> },
+            CallToolResultSchema,
+          )
+          // Zod infers _meta on content items as Record<string,unknown> but
+          // CallToolResult types it more specifically — identical at runtime.
+          return new ToolResult(result as unknown as CallToolResult)
+        },
+      )
+      proxiedTools.add(tool.name)
     }
 
     lastSync.tools = Date.now()
@@ -98,7 +108,14 @@ export async function buildProxyFromClient(
     const incoming = new Set<string>()
 
     try {
-      const { resources } = await client.listResources()
+      const resources: Awaited<ReturnType<typeof client.listResources>>['resources'] = []
+      let cursor: string | undefined
+      do {
+        const page = await client.listResources({ cursor })
+        resources.push(...page.resources)
+        cursor = page.nextCursor
+      } while (cursor)
+
       for (const resource of resources) {
         incoming.add(resource.uri)
         if (!proxiedResources.has(resource.uri)) {
@@ -129,7 +146,14 @@ export async function buildProxyFromClient(
     }
 
     try {
-      const { resourceTemplates } = await client.listResourceTemplates()
+      const resourceTemplates: Awaited<ReturnType<typeof client.listResourceTemplates>>['resourceTemplates'] = []
+      let templateCursor: string | undefined
+      do {
+        const page = await client.listResourceTemplates({ cursor: templateCursor })
+        resourceTemplates.push(...page.resourceTemplates)
+        templateCursor = page.nextCursor
+      } while (templateCursor)
+
       for (const template of resourceTemplates) {
         const uriTemplate = template.uriTemplate
         incoming.add(uriTemplate)
@@ -175,7 +199,14 @@ export async function buildProxyFromClient(
   }
 
   async function resyncPrompts(): Promise<void> {
-    const { prompts } = await client.listPrompts()
+    const prompts: Awaited<ReturnType<typeof client.listPrompts>>['prompts'] = []
+    let cursor: string | undefined
+    do {
+      const page = await client.listPrompts({ cursor })
+      prompts.push(...page.prompts)
+      cursor = page.nextCursor
+    } while (cursor)
+
     const incoming = new Set(prompts.map((p) => p.name))
 
     for (const name of proxiedPrompts) {

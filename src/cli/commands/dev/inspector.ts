@@ -11,8 +11,7 @@ export default defineCommand({
   meta: { name: 'inspector', description: 'Launch the MCP inspector for a server file' },
   args: {
     spec: { type: 'positional', description: 'File spec (e.g. server.ts or server.ts:app)', required: true },
-    port: { type: 'string', description: 'Server port', default: '6274' },
-    'server-port': { type: 'string', description: 'Run server as subprocess on this port instead of in-process' },
+    port: { type: 'string', description: 'Inspector UI port', default: '6274' },
   },
   async run({ args }) {
     let fileSpec
@@ -22,26 +21,19 @@ export default defineCommand({
       cliError(formatError(err))
     }
 
-    // Start the MCP server as a subprocess
-    const [cmd, spawnArgs] = fileSpec.isTypeScript
-      ? ['npx', ['tsx', fileSpec.filePath]]
-      : ['node', [fileSpec.filePath]]
+    // Build the server command for the inspector: tsx for TypeScript, node for JS
+    const serverCmd = fileSpec.isTypeScript
+      ? `npx tsx ${fileSpec.filePath}`
+      : `node ${fileSpec.filePath}`
 
-    let serverProcess = spawn(cmd, spawnArgs, {
-      env: { ...process.env, MCP_TRANSPORT: 'stdio' },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-
-    await withSpinner('Starting server…', () =>
-      new Promise<void>((resolve) => setTimeout(resolve, 500)),
+    await withSpinner('Starting inspector…', () =>
+      new Promise<void>((resolve) => setTimeout(resolve, 300)),
     )
-    log.success('Server started')
 
-    // Launch inspector pointing at the server subprocess
     const inspectorProcess = spawn(
       'npx',
-      ['@modelcontextprotocol/inspector', '--server', `node ${fileSpec.filePath}`],
-      { stdio: 'inherit', shell: true },
+      ['@modelcontextprotocol/inspector', '--server', serverCmd],
+      { stdio: 'inherit', shell: true, env: { ...process.env, MCP_TRANSPORT: 'stdio' } },
     )
 
     log.info(`Inspector running — ${theme.url(`http://localhost:${args.port}`)}`)
@@ -50,17 +42,12 @@ export default defineCommand({
     const watcher = watch(fileSpec.filePath, { ignoreInitial: true })
 
     watcher.on('change', () => {
-      process.stderr.write(`${theme.muted(symbols.reload)} File changed, reloading server…\n`)
-      serverProcess.kill()
-      serverProcess = spawn(cmd, spawnArgs, {
-        env: { ...process.env, MCP_TRANSPORT: 'stdio' },
-        stdio: ['pipe', 'pipe', 'pipe'],
-      })
+      process.stderr.write(`${theme.muted(symbols.reload)} File changed, reloading inspector…\n`)
+      inspectorProcess.kill()
     })
 
     process.on('SIGINT', () => {
       watcher.close()
-      serverProcess.kill()
       inspectorProcess.kill()
       process.exit(0)
     })

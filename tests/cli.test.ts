@@ -26,6 +26,7 @@ const EMPTY_SERVER = resolve(import.meta.dirname, 'fixtures/empty-server.mjs')
 const HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/http-server.mjs')
 const FASTMCP_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/fastmcp-http-server.ts')
 const AUTH_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/auth-http-server.ts')
+const ENV_SERVER = resolve(import.meta.dirname, 'fixtures/env-server.mjs')
 
 /** Spawn an HTTP fixture and resolve with the actual bound port once it prints "listening on". */
 function waitForPort(subprocess: ResultPromise): Promise<number> {
@@ -69,6 +70,15 @@ describe.sequential('CLI — version', () => {
     expect(data).toHaveProperty('mcp-sdk')
     expect(data).toHaveProperty('node')
     expect(data).toHaveProperty('platform')
+  })
+
+  it('--version flag reports the version from package.json', async () => {
+    const { version } = JSON.parse(
+      await readFile(resolve(import.meta.dirname, '../package.json'), 'utf8'),
+    ) as { version: string }
+    const { exitCode, stdout, stderr } = await runCli(['--version'])
+    expect(exitCode).toBe(0)
+    expect(stdout + stderr).toContain(version)
   })
 })
 
@@ -189,6 +199,21 @@ describe.sequential('CLI — list', () => {
     const { exitCode, stderr } = await runCli(['list', 'http://127.0.0.1:19999/mcp'])
     expect(exitCode).not.toBe(0)
     expect(stderr).toMatch(/refused|unreachable|failed/i)
+  })
+
+  it('--file lists tools from an in-process server file', async () => {
+    const { exitCode, stderr } = await runCli(['list', '--file', SIMPLE_SERVER])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+    expect(stderr).toMatch(/add/)
+  })
+
+  it('--file --json outputs tools as machine-readable JSON', async () => {
+    const { exitCode, stdout } = await runCli(['--quiet', 'list', '--file', SIMPLE_SERVER, '--json'])
+    expect(exitCode).toBe(0)
+    const data = JSON.parse(stdout)
+    expect(Array.isArray(data.tools)).toBe(true)
+    expect(data.tools.map((t: { name: string }) => t.name)).toContain('echo')
   })
 })
 
@@ -311,6 +336,27 @@ describe.sequential('CLI — call', () => {
     ])
     expect(exitCode).not.toBe(0)
     expect(stderr).toMatch(/error|failed/i)
+  })
+
+  it('--command: spawned server inherits the parent process environment (PATH not stripped)', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo_env',
+      '--command', `node ${ENV_SERVER}`,
+      'name=PATH',
+    ])
+    expect(exitCode).toBe(0)
+    // PATH must be non-empty for the child process to have resolved `node`
+    expect(stdout.trim()).not.toBe('')
+  })
+
+  it('--file: spawned in-process server inherits the parent process environment', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo_env',
+      '--file', ENV_SERVER,
+      'name=PATH',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout.trim()).not.toBe('')
   })
 })
 
