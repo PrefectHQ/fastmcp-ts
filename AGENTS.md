@@ -216,6 +216,89 @@ type ProxyTransport =
 
 ---
 
+## Apps
+
+**Extension key:** `io.modelcontextprotocol/ui`. Advertised in `initialize` under `serverCapabilities.extensions`. Only added when `_hasUiComponents()` returns true. `_primaryServer` is rebuilt at the start of `connect()` so registrations made after the constructor (the common case) are captured.
+
+**`_hasUiComponents()`:** Returns true if any registered tool has a `ui` field, or if any registered resource URI starts with `ui://`. Called inside `connect()` to decide whether to include the extension in `ServerInfo`.
+
+**`ToolConfig.ui`:** Optional `UiToolMeta` field on tool config:
+
+```typescript
+interface UiToolMeta {
+  visibility?: Visibility[]   // ['model'] | ['app'] | ['model','app']
+  resourceUri?: string        // defaults to `ui://${name}` when omitted
+}
+```
+
+`listTools` filters out tools where `visibility` does not include `'model'`. For UI-capable clients, each tool response includes `_meta.ui` with `resourceUri` and `visibility`. Tools without a `ui` field are always included in `listTools` normally.
+
+**Graceful degradation:** When `callTool` is called on a tool with a `ui` config by a client that has NOT negotiated `io.modelcontextprotocol/ui`, and the handler returns a `structuredContent` response, the MCP layer strips `structuredContent` and returns `'[UI not available in this client]'` as a plain text content block.
+
+**`ResourceConfig.ui`:** Optional `ResourceUiMeta` field:
+
+```typescript
+interface ResourceUiMeta {
+  csp?: CspPolicy
+  permissions?: BrowserPermissions
+  domain?: string
+  prefersBorder?: boolean
+}
+interface CspPolicy {
+  connectDomains?: string[]
+  resourceDomains?: string[]
+  frameDomains?: string[]
+  baseUriDomains?: string[]
+}
+interface BrowserPermissions {
+  camera?: Record<string, never>
+  microphone?: Record<string, never>
+  geolocation?: Record<string, never>
+  clipboardWrite?: Record<string, never>
+}
+```
+
+These are forwarded as `_meta.ui` in `resources/list` and `resources/read` responses for UI-capable clients. `CspPolicy` uses per-directive domain arrays rather than a flat string (spec-aligned). `BrowserPermissions` is a keyed object (presence of a key grants that permission) rather than a string array.
+
+**`McpContext.resolveToolName(name)`:** Added to the `McpContext` interface. Default implementation in `createContext()` is `(name) => name` (identity). `_mirrorTool` in `FastMCP` overrides it in the child's `McpContext` to `(name) => \`${prefix}_${name}\`` so that handlers inside a mounted child resolve the prefixed name when generating action strings.
+
+**`actionRef(name)`:** Standalone helper exported from `src/server/apps/actionRef.ts`. Reads `contextStore.getStore()?.resolveToolName(name) ?? name`. Called at handler execution time (not at registration time), so the correct prefix is resolved from `AsyncLocalStorage` context. Used by provider Button components to generate mount-prefix–aware action strings.
+
+**`FastMCPApp`:** Thin wrapper around `FastMCP`. Provides:
+- `entrypoint(config, handler)` — registers a tool with `visibility: ['model', 'app']` and automatically registers a stub `text/html;profile=mcp-app` resource at `ui://${name}` so `resources/read` doesn't 404 before the real UI bundle is wired in.
+- `backendTool(config, handler)` — registers a tool with `visibility: ['app']` by default; pass `visibility: ['model', 'app']` to expose it to the LLM as well.
+- `toolRef(name)` — calls `contextStore.getStore()?.resolveToolName(name) ?? name`; same as `actionRef` but instance-scoped.
+- `server` — the underlying `FastMCP` instance; pass to `parent.addProvider(app)` or `parent.mount(app.server)`.
+
+**`addProvider(provider)`:** Added to `FastMCP`. Accepts `FastMCPApp | FastMCP` and calls `this.mount()` on the underlying server. Convenience method so callers don't need to unwrap `.server`.
+
+**Built-in providers** (all in `src/server/apps/providers/`):
+
+| Provider | Tools registered | Notes |
+|---|---|---|
+| `Approval` | `${name}`, `${name}_confirm`, `${name}_deny` | Confirm/deny are `visibility: ['app']`; uses `actionRef` for button actions |
+| `Choice` | `${name}`, `${name}_select` | Each option button carries `args: { option }` on the Button node; `_select` is `visibility: ['app']` |
+| `FileUpload` | `${name}`, `${name}_submit`, `${name}_delete` | `submit` stores file via `FileStorageAdapter`, tracks `FileHandle[]` in session state under `file_upload_handles_${name}`; `delete` removes a handle by id |
+| `FormInput` | `${name}`, `${name}_submit` | Uses shared `toJsonSchema` from `tool.ts` (supports Zod v4, Valibot, ArkType); renders fields from JSON Schema `properties`; `_submit` validates via `schema['~standard'].validate` |
+
+**`GenerativeUI`:** Creates an internal `FastMCP` with `name: 'generative-ui'` and registers two tools:
+- `search_components` — returns `COMPONENT_CATALOG` as JSON text in `content[0].text` (not `structuredContent` — the MCP SDK rejects arrays there); no `ui` config.
+- `generate_ui` — runs caller-supplied JS expression in `vm.runInNewContext(code, sandbox, { timeout: 2000 })`; sandbox contains only the component builder functions (no Node globals); no `ui` config.
+
+**Component model:** Pure JSON-serializable trees. All builders return plain objects `{ type, props?, children? }`. `If` is the only exception: `.elif()` and `.else()` chaining methods are attached via `Object.defineProperty` with `enumerable: false` so Vitest's `toEqual` ignores them and only compares the data fields (`type`, `branches`, `fallback?`).
+
+```typescript
+// If/elif/else chaining
+If({ condition: 'x > 0' }, Text('positive'))
+  .elif({ condition: 'x < 0' }, Text('negative'))
+  .else(Text('zero'))
+// → { type: 'if', branches: [...], fallback: { type: 'text', ... } }
+```
+
+**`toJsonSchema` in `FormInput`:** Rather than hand-rolling Zod v4 extraction (which diverged: `_def.type` not `_def.typeName`, shape as plain object not function), `FormInput` uses the shared `toJsonSchema(schema, label)` helper from `tool.ts`. This handles Zod v4, Valibot, ArkType, and anything else Standard Schema supports via the same code path as tool input schema advertisement.
+
+---
+
 ## Client
 
 **Design:** A flat `Client` class that implements three segregated interfaces — `IToolsClient`, `IResourcesClient`, `IPromptsClient` — plus the lifecycle members defined in `IClient`. Consumers can type parameters as a specific interface when they only need a subset of the API:
