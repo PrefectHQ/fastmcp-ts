@@ -1,0 +1,22 @@
+/**
+ * Smoke test for compiled dist artifacts.
+ *
+ * Run with plain `node` (no transpiler) so module resolution matches what a
+ * consumer's Node.js runtime actually does. This catches ERR_MODULE_NOT_FOUND
+ * errors that TypeScript compilation and Vitest (via tsx/Vite) both miss.
+ *
+ * Add new imports here whenever a new public export is introduced.
+ */
+
+import { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport } from '../dist/client.js'
+import { FastMCP } from '../dist/server.js'
+
+const required = { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport, FastMCP }
+const missing = Object.entries(required).filter(([, v]) => v === undefined).map(([k]) => k)
+
+if (missing.length) {
+  console.error(`✗ Missing exports: ${missing.join(', ')}`)
+  process.exit(1)
+}
+
+console.log('✓ dist exports resolve')
