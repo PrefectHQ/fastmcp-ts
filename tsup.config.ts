@@ -22,7 +22,6 @@ const MCP_SDK_NAMED_EXPORTS = new Set([
   '@modelcontextprotocol/sdk/experimental/tasks',
 ])
 
-// CLI build: resolves the actual file on disk so esbuild can bundle it.
 const mcpSdkPlugin: Plugin = {
   name: 'mcp-sdk-resolve',
   setup(build) {
@@ -37,22 +36,6 @@ const mcpSdkPlugin: Plugin = {
   },
 }
 
-// ESM build: rewrites the import specifier in the output to include '.js'.
-// Consuming projects resolve these imports at runtime, and the SDK wildcard
-// export './*' maps to './dist/esm/*' (no extension), so bare specifiers like
-// 'sdk/types' resolve to 'dist/esm/types' (not found). Adding '.js' gives the
-// correct 'dist/esm/types.js'.
-const mcpSdkEsmPlugin: Plugin = {
-  name: 'mcp-sdk-resolve-esm',
-  setup(build) {
-    build.onResolve({ filter: /^@modelcontextprotocol\/sdk\// }, (args) => {
-      if (MCP_SDK_NAMED_EXPORTS.has(args.path)) return undefined
-      if (/\.[cm]?js$/.test(args.path)) return undefined
-      return { path: args.path + '.js', external: true }
-    })
-  },
-}
-
 export default defineConfig([
   {
     entry: {
@@ -63,7 +46,6 @@ export default defineConfig([
     dts: true,
     clean: true,
     sourcemap: true,
-    esbuildPlugins: [mcpSdkEsmPlugin],
   },
   {
     entry: { 'cli/index': 'src/cli/index.ts' },
