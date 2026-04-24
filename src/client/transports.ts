@@ -1,10 +1,9 @@
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport'
-import { normalizeHeaders } from '@modelcontextprotocol/sdk/shared/transport'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { OAuth, BearerAuth, type ClientCredentials } from './auth.js'
 
 // ---------------------------------------------------------------------------
@@ -101,6 +100,13 @@ export type ResolvedTransport = {
 // ---------------------------------------------------------------------------
 // Auth header injection helpers
 // ---------------------------------------------------------------------------
+
+function normalizeHeaders(headers: RequestInit['headers']): Record<string, string> {
+  if (!headers) return {}
+  if (headers instanceof Headers) return Object.fromEntries(headers.entries())
+  if (Array.isArray(headers)) return Object.fromEntries(headers as string[][])
+  return { ...(headers as Record<string, string>) }
+}
 
 function isAsyncAuth(
   auth: BearerAuth | OAuth | ClientCredentials,

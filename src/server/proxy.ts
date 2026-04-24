@@ -1,11 +1,11 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import {
   CallToolResultSchema,
   type CallToolResult,
   ToolListChangedNotificationSchema,
   ResourceListChangedNotificationSchema,
   PromptListChangedNotificationSchema,
-} from '@modelcontextprotocol/sdk/types'
+} from '@modelcontextprotocol/sdk/types.js'
 import { parseTemplate } from 'url-template'
 import { FastMCP } from './FastMCP'
 import { ToolResult } from './tool'

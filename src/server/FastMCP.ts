@@ -9,11 +9,11 @@ import {
   GetPromptRequestSchema,
   McpError,
   ErrorCode,
-} from '@modelcontextprotocol/sdk/types'
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport'
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types'
-import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider'
-import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp'
+} from '@modelcontextprotocol/sdk/types.js'
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
+import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider.js'
+import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'

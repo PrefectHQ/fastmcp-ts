@@ -10,8 +10,8 @@ import {
   ListRootsRequestSchema,
   LoggingMessageNotificationSchema,
   ResourceUpdatedNotificationSchema,
-} from '@modelcontextprotocol/sdk/types'
-import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol'
+} from '@modelcontextprotocol/sdk/types.js'
+import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js'
 
 import { BearerAuth, OAuth } from './auth.js'
 import type { ClientCredentials } from './auth.js'

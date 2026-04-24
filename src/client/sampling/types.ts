@@ -1,4 +1,4 @@
-import type { ModelPreferences } from '@modelcontextprotocol/sdk/types'
+import type { ModelPreferences } from '@modelcontextprotocol/sdk/types.js'
 import type { SamplingHandler } from '../handlers.js'
 
 export type { SamplingHandler }
