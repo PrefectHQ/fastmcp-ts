@@ -6,8 +6,8 @@ import {
   CreateMessageRequestSchema,
   ElicitRequestSchema,
   ListRootsRequestSchema,
-} from '@modelcontextprotocol/sdk/types'
-import type { LoggingLevel } from '@modelcontextprotocol/sdk/types'
+} from '@modelcontextprotocol/sdk/types.js'
+import type { LoggingLevel } from '@modelcontextprotocol/sdk/types.js'
 
 import type { BearerAuth, OAuth, ClientCredentials } from './auth.js'
 import type { ClientHandlers, LogHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
@@ -28,7 +28,7 @@ import type { McpConfig, McpServerValue } from './transports.js'
 import { resolveEntryTransport } from './transports.js'
 import type { ClientDefaultOptions } from './client.js'
 import { ToolCallError } from './client.js'
-import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol'
+import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js'
 
 // ---------------------------------------------------------------------------
 // Options

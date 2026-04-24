@@ -5,7 +5,7 @@ import type {
   Tool,
   ToolChoice,
   ToolUseContent,
-} from '@modelcontextprotocol/sdk/types'
+} from '@modelcontextprotocol/sdk/types.js'
 import type { AnySamplingResult } from '../results.js'
 import type { SamplingHandler } from '../handlers.js'
 import type { SamplingAdapter, SamplingAdapterOptions } from './types.js'

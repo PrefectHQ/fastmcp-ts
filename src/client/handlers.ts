@@ -6,7 +6,7 @@ import type {
   Tool,
   Resource,
   Prompt,
-} from '@modelcontextprotocol/sdk/types'
+} from '@modelcontextprotocol/sdk/types.js'
 import type { AnySamplingResult } from './results.js'
 
 export type LogMessage = {

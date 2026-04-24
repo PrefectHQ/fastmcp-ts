@@ -1,4 +1,4 @@
-import { McpError, ErrorCode, CancelledNotificationSchema } from '@modelcontextprotocol/sdk/types'
+import { McpError, ErrorCode, CancelledNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Server } from '@modelcontextprotocol/sdk/server'
 import type { McpContext } from './context'
 

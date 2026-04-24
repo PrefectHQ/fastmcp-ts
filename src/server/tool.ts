@@ -1,5 +1,5 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types'
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types'
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js'
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 export class Image {
