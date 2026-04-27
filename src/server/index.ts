@@ -6,6 +6,10 @@ export type {
   ToolConfig,
   OAuthConfig,
 } from './FastMCP'
+export { resolveTaskConfig } from './tasks'
+export type { TaskMode, TaskConfig, TaskInput } from './tasks'
+export type { TaskStore } from '@modelcontextprotocol/sdk/experimental/tasks'
+export { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks'
 export { Image, File, ToolResult } from './tool'
 export { ResourceResult } from './resource'
 export type { ResourceConfig, ResourceAnnotations } from './resource'
