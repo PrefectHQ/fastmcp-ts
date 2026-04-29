@@ -38,7 +38,7 @@
     "release": true
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.90.0",
+    "@anthropic-ai/sdk": "^0.91.1",
     "@google/genai": "^1.50.1",
     "@types/node": "^22.0.0",
     "@types/url-template": "^2.0.31",
