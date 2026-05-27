@@ -40,6 +40,10 @@ import { UI_EXTENSION_KEY } from './apps/types'
 import type { UiToolMeta } from './apps/types'
 import { convertPromptResult, PromptResult } from './prompt'
 import type { PromptConfig } from './prompt'
+import { resolveTaskConfig } from './tasks'
+import type { TaskInput } from './tasks'
+import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks'
+import type { TaskStore } from '@modelcontextprotocol/sdk/experimental/tasks'
 
 function prefixResourceUri(uri: string, prefix: string): string {
   const idx = uri.indexOf('://')
@@ -76,6 +80,12 @@ export interface FastMCPOptions {
   middleware?: Middleware[]
   /** Transforms applied to component list responses in registration order. */
   transforms?: Transform[]
+  /**
+   * Enable task support for long-running operations.
+   * `true` — advertise task capability globally (tools opt in per-tool with `task`).
+   * `{ store }` — provide a custom TaskStore implementation.
+   */
+  tasks?: boolean | { store?: TaskStore }
 }
 
 export interface RunOptions {
@@ -124,6 +134,12 @@ export interface ToolConfig {
   auth?: AuthCheck
   /** Apps extension — links this tool to a UI resource and controls visibility. */
   ui?: UiToolMeta
+  /**
+   * Task execution mode for long-running operations.
+   * `true` / `false` — enable/disable (default: disabled).
+   * Object — fine-grained control: `mode` ('optional' | 'required') and `pollInterval` (ms).
+   */
+  task?: TaskInput
 }
 
 interface RegisteredTool {
@@ -228,6 +244,7 @@ export class FastMCP {
   // Primary server used by connect() and stdio
   private _primaryServer: Server
 
+  private _taskStore: TaskStore | undefined
   private _toolRegisteredCallbacks: Array<(tool: RegisteredTool) => void> = []
   private _resourceRegisteredCallbacks: Array<(resource: RegisteredResource) => void> = []
   private _promptRegisteredCallbacks: Array<(prompt: RegisteredPrompt) => void> = []
@@ -244,7 +261,25 @@ export class FastMCP {
     this._promptsPageSize = options.promptsPageSize ?? 50
     this._middleware = options.middleware ? [...options.middleware] : []
     this._transforms = options.transforms ? [...options.transforms] : []
+    if (options.tasks) {
+      this._taskStore = (typeof options.tasks === 'object' && options.tasks.store)
+        ? options.tasks.store
+        : new InMemoryTaskStore()
+    }
     this._primaryServer = this._makeServer()
+  }
+
+  private _hasTaskTools(): boolean {
+    for (const t of this._tools.values()) {
+      const cfg = resolveTaskConfig(t.config.task)
+      if (cfg.mode !== 'forbidden') return true
+    }
+    return false
+  }
+
+  private _ensureTaskStore(): TaskStore {
+    if (!this._taskStore) this._taskStore = new InMemoryTaskStore()
+    return this._taskStore
   }
 
   private _hasUiComponents(): boolean {
@@ -264,9 +299,21 @@ export class FastMCP {
   private _makeServer(sessionState?: Map<string, unknown>): Server {
     const state = sessionState ?? this._primaryState
     const extensions = this._hasUiComponents() ? { [UI_EXTENSION_KEY]: {} } : undefined
+    const hasTaskSupport = this._taskStore != null || this._hasTaskTools()
+    const taskStore = hasTaskSupport ? this._ensureTaskStore() : undefined
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {}, ...(extensions ? { extensions } : {}) } },
+      {
+        capabilities: {
+          tools: { listChanged: true },
+          resources: { listChanged: true },
+          prompts: { listChanged: true },
+          logging: {},
+          ...(extensions ? { extensions } : {}),
+          ...(taskStore ? { tasks: { requests: { tools: { call: {} } } } } : {}),
+        },
+        ...(taskStore ? { taskStore } : {}),
+      },
     )
     for (const mw of this._middleware) mw.setup?.(server)
     this._setupHandlers(server, state)
@@ -358,6 +405,8 @@ export class FastMCP {
                     ...(t.ui.visibility ? { visibility: t.ui.visibility } : {}),
                   }
                 : undefined
+              const taskMode = resolveTaskConfig(t.task).mode
+              const taskSupport = taskMode === 'forbidden' ? undefined : taskMode
               return {
                 name: entry.name,
                 ...(entry.title !== undefined ? { title: entry.title } : {}),
@@ -365,6 +414,7 @@ export class FastMCP {
                 inputSchema,
                 ...(outputSchema ? { outputSchema } : {}),
                 ...(uiMeta ? { _meta: { ui: uiMeta } } : {}),
+                ...(taskSupport ? { execution: { taskSupport } } : {}),
               }
             }),
           )
@@ -444,6 +494,17 @@ export class FastMCP {
 
       const resolvedTool = tool
       const rawArgs: unknown = req.params.arguments ?? {}
+      const taskCfg = resolveTaskConfig(resolvedTool.config.task)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const taskRequested = !!(req.params as any).task
+
+      if (taskRequested && taskCfg.mode === 'forbidden') {
+        throw new McpError(ErrorCode.InvalidRequest, `Tool "${requestedName}" does not support task execution`)
+      }
+      if (!taskRequested && taskCfg.mode === 'required') {
+        throw new McpError(ErrorCode.InvalidRequest, `Tool "${requestedName}" requires task-based execution. Use callToolStream() instead.`)
+      }
+
       const ctx = createContext(
         server,
         extra.requestId !== undefined ? String(extra.requestId) : undefined,
@@ -451,6 +512,38 @@ export class FastMCP {
         token,
         sessionState,
       )
+
+      // Task path: create task, execute in background, return CreateTaskResult immediately
+      if (taskRequested && extra.taskStore) {
+        const taskStore = extra.taskStore
+        // Validate input synchronously before creating the task
+        const args = resolvedTool.config.input
+          ? await validateInput(resolvedTool.config.input, rawArgs, true)
+          : rawArgs
+        const task = await taskStore.createTask({ pollInterval: taskCfg.pollInterval })
+        const { taskId } = task
+
+        // Background execution — no timeout applied for task mode
+        Promise.resolve()
+          .then(async () => {
+            let resultValue = await contextStore.run(ctx, () => resolvedTool.handler(args))
+            if (resolvedTool.config.output) resultValue = await validateInput(resolvedTool.config.output, resultValue)
+            const callResult = convertResult(resultValue)
+            await taskStore.storeTaskResult(taskId, 'completed', callResult)
+          })
+          .catch(async (err) => {
+            // Don't overwrite a cancelled task
+            const current = await this._taskStore!.getTask(taskId)
+            if (current && current.status === 'cancelled') return
+            const errResult = {
+              content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
+              isError: true,
+            }
+            await taskStore.storeTaskResult(taskId, 'failed', errResult)
+          })
+
+        return { task }
+      }
 
       try {
         return await contextStore.run(ctx, () =>
@@ -822,6 +915,10 @@ export class FastMCP {
   tool(config: ToolConfig, handler: (args: any) => any): void {
     const registered: RegisteredTool = { config, handler }
     this._tools.set(config.name, registered)
+    // Lazily initialise task store if this tool enables task support
+    if (resolveTaskConfig(config.task).mode !== 'forbidden') {
+      this._ensureTaskStore()
+    }
     this._notifyToolListChanged()
     for (const cb of this._toolRegisteredCallbacks) cb(registered)
   }

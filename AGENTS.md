@@ -55,6 +55,27 @@ Binary types (`Buffer`, `Uint8Array`) always require an explicit wrapper — MIM
 
 **Output schema validation:** When `output` is provided, the handler's raw return value is validated against it before `convertResult` runs. Validation uses `~standard.validate()`, so it works across all Standard Schema libraries. Primitives, objects, and arrays are all valid output types — the output schema describes the handler's contract, not the MCP content shape. Validation failure returns `isError: true` (a tool execution error, not a protocol error, because the client's input was valid).
 
+**Task support (long-running tools):** Tools can opt into MCP SEP-1686 task execution via `ToolConfig.task`. When a task is requested the server returns `CreateTaskResult` immediately; the handler runs in the background; the client polls `tasks/get` until terminal then fetches the result via `tasks/result`. Timeout (`ToolConfig.timeout`) is intentionally not applied in task mode.
+
+```typescript
+mcp.tool({ name: 'slow', description: '...', task: true }, async () => 'done')
+// or fine-grained:
+mcp.tool({ name: 'slow', task: { mode: 'required', pollInterval: 2000 } }, async () => 'done')
+```
+
+`task` accepts `boolean` or `{ mode?: 'optional' | 'required', pollInterval?: number }`. Resolved via `resolveTaskConfig()` exported from `fastmcp-ts/server`. Three modes:
+- `forbidden` (default / `false` / omitted): task requests are rejected
+- `optional` (`true` or `{ mode: 'optional' }`): both sync and task work
+- `required` (`{ mode: 'required' }`): sync `tools/call` is rejected; tool is advertised with `execution: { taskSupport: 'required' }` in `listTools`
+
+Server-level opt-in: `new FastMCP({ tasks: true })` enables capability globally. Custom store: `{ tasks: { store: myStore } }`.
+
+`TaskStore` and `InMemoryTaskStore` are re-exported from `fastmcp-ts/server`. `InMemoryTaskStore` is used automatically when any task-enabled tool is registered.
+
+**SDK capability requirement:** The server must advertise `tasks: { requests: { tools: { call: {} } } }` — the SDK's `assertTaskHandlerCapability` enforces this. Missing `tools.call` causes every task-augmented `tools/call` to fail with `UnsupportedOperation`. FastMCP sets this automatically.
+
+**Error model for task streams:** `client.experimental.tasks.callToolStream()` yields `{ type: 'error' }` messages rather than throwing for server-side rejections (mode violations, input validation failures) and for failed task handlers (task transitions to `failed`). Tests checking for these errors should inspect `msg.type === 'error'`, not `rejects.toThrow()`.
+
 **Pagination:** `tools/list`, `resources/list`, `resources/templates/list`, and `prompts/list` all support cursor-based pagination per the MCP spec. Page sizes default to 50 and are configurable via `FastMCPOptions.toolsPageSize` / `FastMCPOptions.resourcesPageSize` / `FastMCPOptions.promptsPageSize`. Cursors are base64url-encoded identifiers (tool name, resource URI, or prompt name); a stale or invalid cursor throws `McpError(InvalidParams, 'Invalid or expired cursor')`. `InvalidParams` (not `MethodNotFound`) is used for unknown identifiers — the name/URI is a parameter, not a method.
 
 **Dynamic registration:** Tools, resources, and prompts can be registered before or after `run()` is called. Adding a component to a running server automatically sends the appropriate `list_changed` notification to connected clients.
