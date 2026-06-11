@@ -7,7 +7,7 @@ Built on the official [`@modelcontextprotocol/sdk`](https://github.com/modelcont
 ## Installation
 
 ```bash
-npm install fastmcp-ts
+npm install @prefecthq/fastmcp-ts
 ```
 
 ---
@@ -17,7 +17,7 @@ npm install fastmcp-ts
 Turn TypeScript functions into MCP tools, resources, and prompts. Input schemas are inferred automatically from any [Standard Schema](https://standardschema.dev)-compatible library: Zod, Valibot, ArkType, and others.
 
 ```typescript
-import { FastMCP } from 'fastmcp-ts/server'
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
 import { z } from 'zod'
 
 const server = new FastMCP({ name: 'my-server', version: '1.0.0' })
@@ -63,7 +63,7 @@ await server.run()                              // stdio (default)
 Handlers access logging, progress, LLM sampling, user elicitation, and per-session state through an ambient context with no prop-drilling.
 
 ```typescript
-import { FastMCP } from 'fastmcp-ts/server'
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
 import { z } from 'zod'
 
 const server = new FastMCP({ name: 'assistant' })
@@ -93,7 +93,7 @@ server.tool(
 ### Middleware & Auth
 
 ```typescript
-import { FastMCP, LoggingMiddleware, RateLimitingMiddleware, jwtVerifier } from 'fastmcp-ts/server'
+import { FastMCP, LoggingMiddleware, RateLimitingMiddleware, jwtVerifier } from '@prefecthq/fastmcp-ts/server'
 
 const server = new FastMCP({
   name: 'secure-server',
@@ -115,7 +115,7 @@ await server.run({ transport: 'http', port: 3000 })
 Mount child servers onto a parent with optional name-prefix namespacing.
 
 ```typescript
-import { FastMCP, createProxy } from 'fastmcp-ts/server'
+import { FastMCP, createProxy } from '@prefecthq/fastmcp-ts/server'
 
 const weather = new FastMCP({ name: 'weather' })
 weather.tool({ name: 'forecast', description: 'Get a forecast', input: z.object({ city: z.string() }) }, ({ city }) => `Forecast for ${city}`)
@@ -135,7 +135,7 @@ await gateway.run({ transport: 'http', port: 3000 })
 ## Clients
 
 ```typescript
-import { Client } from 'fastmcp-ts/client'
+import { Client } from '@prefecthq/fastmcp-ts/client'
 
 const client = await Client.connect('http://localhost:3000')
 
@@ -163,7 +163,7 @@ const result = await client.callTool('add', { a: 1, b: 2 })
 Forward LLM sampling requests from servers to your AI provider with a single line:
 
 ```typescript
-import { Client, AnthropicSamplingAdapter } from 'fastmcp-ts/client'
+import { Client, AnthropicSamplingAdapter } from '@prefecthq/fastmcp-ts/client'
 import Anthropic from '@anthropic-ai/sdk'
 
 const client = await Client.connect('http://localhost:3000', {
@@ -180,7 +180,7 @@ Also ships with `OpenAISamplingAdapter` and `GoogleSamplingAdapter`.
 Connect to multiple servers from a single client. Tools, resources, and prompts are namespaced by server name automatically.
 
 ```typescript
-import { Client } from 'fastmcp-ts/client'
+import { Client } from '@prefecthq/fastmcp-ts/client'
 
 const client = await Client.connect({
   mcpServers: {
@@ -200,7 +200,7 @@ const forecast = await client.callTool('weather_forecast', { city: 'New York' })
 FastMCP ships a server-side component library for building interactive UIs rendered directly in MCP host conversations.
 
 ```typescript
-import { FastMCPApp, Column, Row, Text, Input, Button, Table } from 'fastmcp-ts/server'
+import { FastMCPApp, Column, Row, Text, Input, Button, Table } from '@prefecthq/fastmcp-ts/server'
 import { z } from 'zod'
 
 const app = new FastMCPApp({ name: 'search-app', version: '1.0.0' })
@@ -239,7 +239,7 @@ await app.server.run({ transport: 'http', port: 3000 })
 Ready-to-mount interactive primitives:
 
 ```typescript
-import { FastMCP, Approval, Choice, FileUpload, FormInput } from 'fastmcp-ts/server'
+import { FastMCP, Approval, Choice, FileUpload, FormInput } from '@prefecthq/fastmcp-ts/server'
 import { z } from 'zod'
 
 const server = new FastMCP({ name: 'my-server' })
@@ -255,7 +255,7 @@ server.addProvider(new FormInput())   // auto-generated validated form from any 
 Let the LLM compose component trees at runtime:
 
 ```typescript
-import { FastMCP, GenerativeUI } from 'fastmcp-ts/server'
+import { FastMCP, GenerativeUI } from '@prefecthq/fastmcp-ts/server'
 
 const server = new FastMCP({ name: 'my-server' })
 server.addProvider(new GenerativeUI())
