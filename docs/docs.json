@@ -160,7 +160,6 @@
                   "api/server/interfaces/SamplingResult",
                   "api/server/interfaces/ServerAddress",
                   "api/server/interfaces/SynthesizedTool",
-                  "api/server/interfaces/TaskConfig",
                   "api/server/interfaces/TokenVerifier",
                   "api/server/interfaces/ToolConfig",
                   "api/server/interfaces/ToolView",
@@ -177,8 +176,6 @@
                   "api/server/type-aliases/Next",
                   "api/server/type-aliases/PromptContent",
                   "api/server/type-aliases/ProxyTransport",
-                  "api/server/type-aliases/TaskInput",
-                  "api/server/type-aliases/TaskMode",
                   "api/server/type-aliases/Visibility"
                 ]
               },
@@ -207,7 +204,6 @@
                   "api/server/functions/redescribeTool",
                   "api/server/functions/renameTool",
                   "api/server/functions/requireScopes",
-                  "api/server/functions/resolveTaskConfig",
                   "api/server/functions/Row",
                   "api/server/functions/Rx",
                   "api/server/functions/Select",

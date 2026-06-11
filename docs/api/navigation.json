@@ -732,12 +732,6 @@
             "isDeprecated": false
           },
           {
-            "title": "TaskConfig",
-            "kind": 256,
-            "path": "server/interfaces/TaskConfig.mdx",
-            "isDeprecated": false
-          },
-          {
             "title": "TokenVerifier",
             "kind": 256,
             "path": "server/interfaces/TokenVerifier.mdx",
@@ -806,18 +800,6 @@
             "title": "ProxyTransport",
             "kind": 2097152,
             "path": "server/type-aliases/ProxyTransport.mdx",
-            "isDeprecated": false
-          },
-          {
-            "title": "TaskInput",
-            "kind": 2097152,
-            "path": "server/type-aliases/TaskInput.mdx",
-            "isDeprecated": false
-          },
-          {
-            "title": "TaskMode",
-            "kind": 2097152,
-            "path": "server/type-aliases/TaskMode.mdx",
             "isDeprecated": false
           },
           {
@@ -961,12 +943,6 @@
             "title": "requireScopes",
             "kind": 64,
             "path": "server/functions/requireScopes.mdx",
-            "isDeprecated": false
-          },
-          {
-            "title": "resolveTaskConfig",
-            "kind": 64,
-            "path": "server/functions/resolveTaskConfig.mdx",
             "isDeprecated": false
           },
           {
