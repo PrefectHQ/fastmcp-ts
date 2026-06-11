@@ -1,12 +1,12 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "almond",
-  "name": "FastMCP TypeScript",
+  "name": "FastMCP TS",
   "description": "The TypeScript framework for building MCP servers, clients, and apps.",
   "colors": {
-    "primary": "#2d00f7",
-    "light": "#6a4dff",
-    "dark": "#2d00f7"
+    "primary": "#FE9655",
+    "light": "#FFB283",
+    "dark": "#E0762F"
   },
   "logo": {
     "light": "/logo/light.svg",

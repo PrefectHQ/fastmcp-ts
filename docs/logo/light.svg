@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 32" width="220" height="32">
-  <rect width="32" height="32" rx="7" fill="#2d00f7"/>
-  <text x="16" y="22" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">ts</text>
-  <text x="42" y="22" font-family="ui-sans-serif, -apple-system, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#111111">FastMCP TypeScript</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32" width="160" height="32">
+  <rect width="32" height="32" rx="7" fill="#FE9655"/>
+  <text x="16" y="22" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700" fill="#1c1c1c" text-anchor="middle">ts</text>
+  <text x="42" y="22" font-family="ui-sans-serif, -apple-system, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#111111">FastMCP TS</text>
 </svg>

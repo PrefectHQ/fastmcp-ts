@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#2d00f7"/>
-  <text x="16" y="22" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">ts</text>
+  <rect width="32" height="32" rx="7" fill="#FE9655"/>
+  <text x="16" y="22" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" font-weight="700" fill="#1c1c1c" text-anchor="middle">ts</text>
 </svg>
