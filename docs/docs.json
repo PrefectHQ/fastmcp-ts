@@ -301,12 +301,10 @@
     ]
   },
   "navbar": {
-    "links": [
-      {
-        "label": "GitHub",
-        "href": "https://github.com/PrefectHQ/fastmcp-ts"
-      }
-    ]
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/PrefectHQ/fastmcp-ts"
+    }
   },
   "footer": {
     "socials": {
