@@ -303,6 +303,12 @@
     ]
   },
   "navbar": {
+    "links": [
+      {
+        "label": "Prefect Horizon",
+        "href": "https://prefect.io/horizon?utm_source=fastmcp-ts&utm_medium=docs&utm_campaign=docs_navbar&utm_content=navbar_button"
+      }
+    ],
     "primary": {
       "type": "github",
       "href": "https://github.com/PrefectHQ/fastmcp-ts"
