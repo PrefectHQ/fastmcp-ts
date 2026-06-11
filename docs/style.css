@@ -29,15 +29,6 @@
   );
 }
 
-@keyframes horizon-launch {
-  from {
-    background-position: 0% 0%;
-  }
-  to {
-    background-position: 0% 100%;
-  }
-}
-
 /* Mintlify wraps each navbar link in an <li class="navbar-link"> with its own
    border, background, and padding — that's the stray second outline. */
 li.navbar-link:has(> a[href^="https://prefect.io/horizon"]) {
@@ -70,6 +61,7 @@ a[href^="https://prefect.io/horizon"]::before {
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   pointer-events: none;
+  transition: background-position 1.4s ease;
 }
 
 /* The icon img has white fills, so use the SVG as a mask and let the gradient
@@ -81,9 +73,16 @@ a[href^="https://prefect.io/horizon"] img {
   background-position: 0% 0%;
   -webkit-mask: url("/images/horizon.svg") no-repeat center / contain;
   mask: url("/images/horizon.svg") no-repeat center / contain;
+  transition: background-position 1.4s ease;
 }
 
+/* Launch: glide through one full palindrome cycle — with a repeating 200%-tall
+   background, sliding to 200% lands back on the original view. Because this is
+   a transition rather than an animation, mousing out eases back smoothly from
+   wherever the gradient currently is (the 1.4s base transition above handles
+   the descent). */
 a[href^="https://prefect.io/horizon"]:hover::before,
 a[href^="https://prefect.io/horizon"]:hover img {
-  animation: horizon-launch 2.75s ease-in-out infinite alternate;
+  background-position: 0% 200%;
+  transition: background-position 5.5s ease-in-out;
 }
