@@ -1,4 +1,4 @@
-// Rewrites the "SDK Reference" tab in docs/docs.json from the navigation tree
+// Rewrites the "SDK Reference" dropdown in docs/docs.json from the navigation tree
 // emitted by typedoc (`navigationJson` option). Run via `npm run docs:api`.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -35,9 +35,9 @@ const groups = nav
     pages: [toSlug(mod.path ?? `${mod.title}/index.mdx`), ...toPages(mod.children)],
   }))
 
-const sdkTab = docs.navigation.tabs.find((t) => t.tab === 'SDK Reference')
-if (!sdkTab) throw new Error('No "SDK Reference" tab found in docs/docs.json')
-sdkTab.groups = groups
+const sdkDropdown = docs.navigation.dropdowns.find((d) => d.dropdown === 'SDK Reference')
+if (!sdkDropdown) throw new Error('No "SDK Reference" dropdown found in docs/docs.json')
+sdkDropdown.groups = groups
 
 writeFileSync(docsJsonPath, JSON.stringify(docs, null, 2) + '\n')
-console.log(`SDK Reference tab updated: ${groups.map((g) => g.group).join(', ')}`)
+console.log(`SDK Reference dropdown updated: ${groups.map((g) => g.group).join(', ')}`)

@@ -14,9 +14,10 @@
   },
   "favicon": "/favicon.svg",
   "navigation": {
-    "tabs": [
+    "dropdowns": [
       {
-        "tab": "Documentation",
+        "dropdown": "Documentation",
+        "icon": "book",
         "groups": [
           {
             "group": "Get Started",
@@ -83,7 +84,8 @@
         ]
       },
       {
-        "tab": "SDK Reference",
+        "dropdown": "SDK Reference",
+        "icon": "code",
         "groups": [
           {
             "group": "Server",
