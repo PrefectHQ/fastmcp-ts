@@ -1,0 +1,22 @@
+---
+title: "Middleware"
+description: "Intercept and instrument every request with built-in or custom middleware"
+icon: "layer-group"
+---
+
+Middleware wraps request handling — logging, caching, rate limiting, and anything custom. Register with `server.use(mw)` or via `FastMCPOptions.middleware`:
+
+```typescript
+import { FastMCP, LoggingMiddleware, RateLimitingMiddleware } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+server.use(new LoggingMiddleware())
+server.use(new RateLimitingMiddleware(100, 60_000))   // 100 requests per minute
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Hook levels** — `setup(server)` runs once per server instance (register notification handlers here); `onRequest(ctx, next)` fires for every request without a more specific hook; per-method hooks (`onCallTool`, `onListTools`, `onReadResource`, `onGetPrompt`, …) take precedence over `onRequest`.
+- **Built-ins** — `LoggingMiddleware`, `CachingMiddleware(ttl, keyFn?)`, `RateLimitingMiddleware(limit, windowMs)`, `SizeLimitingMiddleware(maxBytes)`, `ErrorNormalizationMiddleware`, `CancellationMiddleware`.
+- **Error semantics** — a thrown `McpError` from middleware propagates as a protocol error (never converted to a `{ isError: true }` tool result); non-`McpError` from tool handlers becomes a tool execution error.
+- **Writing your own** — implementing the `Middleware` interface, ordering, and composing with auth and transforms.

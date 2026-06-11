@@ -1,0 +1,14 @@
+---
+title: "Transforms"
+description: "View-only projections over the components your server advertises"
+icon: "filter"
+---
+
+Transforms reshape what clients *see* in list responses — renaming, filtering, namespacing — without touching the underlying registrations. Components hidden by a transform are removed from lists but remain callable by their original name or URI. Register with `server.transform(t)` or via `FastMCPOptions.transforms`; transforms apply in registration order.
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **View types** — read-only `ToolView` / `ResourceView` / `PromptView` snapshots passed into transform methods; returning `null` hides a component.
+- **Built-ins** — `renameTool`, `redescribeTool`, `FilterTransform`, `NamespaceTransform(prefix)` (prefixes names but never URIs — prefixing a URI scheme violates RFC 3986), `ResourcesAsTools()`, `PromptsAsTools()`, `VersionFilter(tag)`.
+- **Synthesized tools** — `synthesizeTools(resourceViews, promptViews)` produces new tools from filtered views; synthesized tools run back through the transform chain.
+- **Routing behavior with transforms active** — how `tools/call`, `prompts/get`, and `resources/read` resolve transformed vs. original names.

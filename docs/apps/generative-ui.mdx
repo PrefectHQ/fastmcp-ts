@@ -1,0 +1,22 @@
+---
+title: "Generative UI"
+description: "Let the LLM compose component trees at runtime"
+icon: "wand-magic-sparkles"
+---
+
+The `GenerativeUI` provider lets the model build UI on the fly instead of you authoring every screen:
+
+```typescript
+import { FastMCP, GenerativeUI } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+server.addProvider(new GenerativeUI())
+// registers generate_ui and search_components tools
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **`search_components`** — returns the component catalog so the model can discover what it may build with.
+- **`generate_ui`** — evaluates a model-supplied component expression and returns the rendered tree.
+- **Sandboxing** — expressions run in an isolated VM context containing only the component builders (no Node globals), with a hard timeout.
+- **When to use it** — exploratory and ad-hoc UIs vs. hand-authored entrypoints.

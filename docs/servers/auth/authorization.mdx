@@ -1,0 +1,14 @@
+---
+title: "Authorization"
+description: "Scopes, per-component checks, and combining auth strategies"
+icon: "user-lock"
+---
+
+Verification answers "who is calling?"; authorization answers "what may they do?". FastMCP expresses authorization as checks attached to the server or to individual tools, resources, and prompts.
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **`requireScopes(...scopes)`** — gate components on token scopes; failures surface as `AuthorizationError`.
+- **Per-component `auth` checks** — every `ToolConfig` / `ResourceConfig` / `PromptConfig` accepts an `auth` check; unauthorized components are hidden from list responses for that caller.
+- **`multiAuth`** — combine several verifiers so different token types map to the same identity model.
+- **Caching caveat** — partition `CachingMiddleware` by caller identity (custom `CacheKeyFn`) when responses differ per caller.

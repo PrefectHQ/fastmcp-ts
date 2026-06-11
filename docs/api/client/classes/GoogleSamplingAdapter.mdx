@@ -1,0 +1,55 @@
+---
+title: "GoogleSamplingAdapter"
+---
+
+Defined in: [client/sampling/google.ts:134](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/google.ts#L134)
+
+Implemented by all sampling adapters.
+
+## Implements
+
+- [`SamplingAdapter`](/api/client/interfaces/SamplingAdapter)
+
+## Constructors
+
+### Constructor
+
+```ts
+new GoogleSamplingAdapter(client, options?): GoogleSamplingAdapter;
+```
+
+Defined in: [client/sampling/google.ts:138](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/google.ts#L138)
+
+#### Parameters
+
+##### client
+
+`GoogleGenAI`
+
+##### options?
+
+[`SamplingAdapterOptions`](/api/client/interfaces/SamplingAdapterOptions) & \{
+  `defaultModel?`: `string`;
+\}
+
+#### Returns
+
+`GoogleSamplingAdapter`
+
+## Methods
+
+### asHandler()
+
+```ts
+asHandler(): SamplingHandler;
+```
+
+Defined in: [client/sampling/google.ts:146](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/google.ts#L146)
+
+#### Returns
+
+[`SamplingHandler`](/api/client/type-aliases/SamplingHandler)
+
+#### Implementation of
+
+[`SamplingAdapter`](/api/client/interfaces/SamplingAdapter).[`asHandler`](/api/client/interfaces/SamplingAdapter#ashandler)

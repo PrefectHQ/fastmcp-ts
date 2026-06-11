@@ -1,0 +1,27 @@
+---
+title: "Authentication overview"
+sidebarTitle: "Overview"
+description: "How FastMCP servers verify callers and protect components"
+icon: "shield"
+---
+
+FastMCP authentication is built around a single interface: a `TokenVerifier` that turns a bearer token into a verified `AccessToken`. Pass one via the `auth` option and every HTTP request is verified before it reaches your handlers:
+
+```typescript
+import { FastMCP, jwtVerifier } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'secure-server',
+  auth: jwtVerifier({
+    jwksUri: 'https://auth.example.com/.well-known/jwks.json',
+    issuer: 'https://auth.example.com',
+    audience: 'my-mcp-server',
+  }),
+})
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **The `TokenVerifier` model** — verify a bearer token, produce an `AccessToken` (subject, scopes, claims) available to handlers via `getContext().auth`.
+- **Where auth applies** — HTTP transport request verification; interaction with middleware and mounted children.
+- **Choosing a strategy** — [JWT, introspection, or static tokens](/servers/auth/token-verification) for verification; a [full OAuth provider or proxy](/servers/auth/oauth) when you need the authorization flow; [scopes and per-component checks](/servers/auth/authorization) for fine-grained access.

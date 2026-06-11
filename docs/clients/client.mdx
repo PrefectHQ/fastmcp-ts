@@ -1,0 +1,115 @@
+---
+title: "Client basics"
+description: "Connect to MCP servers, call tools, and manage connection lifecycle"
+icon: "plug"
+---
+
+The `Client` class connects to any MCP server and exposes its tools, resources, and prompts:
+
+```typescript
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('http://localhost:3000')
+
+const tools     = await client.listTools()
+const resources = await client.listResources()
+const prompts   = await client.listPrompts()
+
+const result = await client.callTool('add', { a: 1, b: 2 })
+const config = await client.readResource('config://settings')
+const review = await client.getPrompt('review_code', { code: 'const x = 1' })
+
+await client.close()
+```
+
+`Client.connect()` accepts a URL, a stdio transport, an in-process `FastMCP` instance, or an `mcpServers` config — see [Transports](/clients/transports) for the full set.
+
+## Lifecycle
+
+Connections are **ref-counted**: multiple callers can share one client. Each `connect()` increments the count, each `close()` decrements it; the underlying connection is established on the first connect and torn down when the count reaches zero. `isConnected()` reports whether the underlying connection is live.
+
+```typescript
+const client = new Client('http://localhost:3000')
+await client.connect()   // refCount → 1
+await client.connect()   // refCount → 2
+await client.close()     // refCount → 1, still open
+await client.close()     // refCount → 0, connection closed
+```
+
+The client implements `Symbol.asyncDispose`, so `await using` closes it automatically on scope exit:
+
+```typescript
+await using client = await Client.connect('http://localhost:3000')
+const result = await client.callTool('add', { a: 1, b: 2 })
+// closed automatically here
+```
+
+## Error handling
+
+`callTool()` throws a `ToolCallError` when the server returns `isError: true`. The error carries the server's content blocks on its `content` field:
+
+```typescript
+import { ToolCallError } from '@prefecthq/fastmcp-ts/client'
+
+try {
+  await client.callTool('risky', {})
+} catch (err) {
+  if (err instanceof ToolCallError) {
+    console.error(err.content)   // ContentBlock[] from the server
+  }
+}
+```
+
+Two alternatives when you don't want a throw:
+
+- **`callToolRaw()`** never throws — it returns the full result including `isError`, for when you want to inspect the raw response.
+- **`toResult()`** is a standalone utility that wraps any promise into a discriminated union `{ ok: true, value } | { ok: false, error }` for error-as-value style:
+
+```typescript
+import { toResult } from '@prefecthq/fastmcp-ts/client'
+
+const result = await toResult(client.callTool('add', { a: 1, b: 2 }))
+if (result.ok) console.log(result.value)
+else console.error(result.error)
+```
+
+## Timeouts
+
+`ClientOptions.defaultOptions` accepts per-scope timeout defaults — `tool.timeout`, `resource.timeout`, `prompt.timeout`, and a global `timeout` fallback. Timeouts are in **seconds** in the public API. A per-request `timeout` in the call's options takes precedence:
+
+```typescript
+const client = await Client.connect('http://localhost:3000', {
+  defaultOptions: { timeout: 30, tool: { timeout: 120 } },
+})
+
+await client.callTool('slow', {}, { timeout: 300 })   // overrides for this call
+```
+
+## Narrow interfaces
+
+`Client` implements three segregated interfaces — `IToolsClient`, `IResourcesClient`, and `IPromptsClient` — so functions can declare only the capability they need:
+
+```typescript
+import type { IToolsClient } from '@prefecthq/fastmcp-ts/client'
+
+async function callSomeTool(client: IToolsClient) {
+  return client.callTool('add', { a: 1, b: 2 })
+}
+```
+
+## Going further
+
+<CardGroup cols={2}>
+  <Card title="Transports" icon="route" href="/clients/transports">
+    URLs, stdio subprocesses, and in-process servers.
+  </Card>
+  <Card title="Authentication" icon="key" href="/clients/auth">
+    Bearer tokens, OAuth, and client credentials.
+  </Card>
+  <Card title="Sampling" icon="sparkles" href="/clients/sampling">
+    Forward server sampling requests to Anthropic, OpenAI, or Google.
+  </Card>
+  <Card title="Multi-server" icon="layer-group" href="/clients/multi-server">
+    One client, many servers, automatic namespacing.
+  </Card>
+</CardGroup>

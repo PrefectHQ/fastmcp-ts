@@ -1,0 +1,111 @@
+---
+title: "FileTokenStorage"
+---
+
+Defined in: [client/auth.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/auth.ts#L64)
+
+## Implements
+
+- [`KeyValueStore`](/api/client/type-aliases/KeyValueStore)
+
+## Constructors
+
+### Constructor
+
+```ts
+new FileTokenStorage(path?): FileTokenStorage;
+```
+
+Defined in: [client/auth.ts:67](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/auth.ts#L67)
+
+#### Parameters
+
+##### path?
+
+`string`
+
+#### Returns
+
+`FileTokenStorage`
+
+## Methods
+
+### delete()
+
+```ts
+delete(key): Promise<void>;
+```
+
+Defined in: [client/auth.ts:102](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/auth.ts#L102)
+
+#### Parameters
+
+##### key
+
+`string`
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+```ts
+KeyValueStore.delete
+```
+
+***
+
+### get()
+
+```ts
+get(key): Promise<string | null>;
+```
+
+Defined in: [client/auth.ts:91](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/auth.ts#L91)
+
+#### Parameters
+
+##### key
+
+`string`
+
+#### Returns
+
+`Promise`&lt;`string` \| `null`&gt;
+
+#### Implementation of
+
+```ts
+KeyValueStore.get
+```
+
+***
+
+### set()
+
+```ts
+set(key, value): Promise<void>;
+```
+
+Defined in: [client/auth.ts:96](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/auth.ts#L96)
+
+#### Parameters
+
+##### key
+
+`string`
+
+##### value
+
+`string`
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+```ts
+KeyValueStore.set
+```

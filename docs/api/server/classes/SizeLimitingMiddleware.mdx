@@ -1,0 +1,69 @@
+---
+title: "SizeLimitingMiddleware"
+---
+
+Defined in: [server/middleware.ts:176](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/middleware.ts#L176)
+
+Rejects responses whose JSON serialisation exceeds maxBytes.
+
+## Implements
+
+- [`Middleware`](/api/server/interfaces/Middleware)
+
+## Constructors
+
+### Constructor
+
+```ts
+new SizeLimitingMiddleware(maxBytes): SizeLimitingMiddleware;
+```
+
+Defined in: [server/middleware.ts:177](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/middleware.ts#L177)
+
+#### Parameters
+
+##### maxBytes
+
+`number`
+
+#### Returns
+
+`SizeLimitingMiddleware`
+
+## Methods
+
+### onRequest()
+
+```ts
+onRequest<T, R>(ctx, next): Promise<R>;
+```
+
+Defined in: [server/middleware.ts:179](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/middleware.ts#L179)
+
+#### Type Parameters
+
+##### T
+
+`T`
+
+##### R
+
+`R`
+
+#### Parameters
+
+##### ctx
+
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+
+##### next
+
+[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+
+#### Returns
+
+`Promise`&lt;`R`&gt;
+
+#### Implementation of
+
+[`Middleware`](/api/server/interfaces/Middleware).[`onRequest`](/api/server/interfaces/Middleware#onrequest)

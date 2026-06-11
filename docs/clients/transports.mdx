@@ -1,0 +1,25 @@
+---
+title: "Transports"
+description: "Connect over HTTP, stdio subprocesses, or in-process servers"
+icon: "route"
+---
+
+`Client.connect()` accepts several transport inputs and resolves the right connection automatically:
+
+```typescript
+// HTTP (Streamable HTTP, falling back to SSE)
+const a = await Client.connect('http://localhost:3000')
+
+// stdio subprocess
+import { StdioTransport } from '@prefecthq/fastmcp-ts/client'
+const b = await Client.connect(new StdioTransport('npx', ['tsx', 'server.ts']))
+
+// in-process FastMCP instance — no network, no subprocess
+const c = await Client.connect(server)
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Resolution rules** — string URLs become Streamable HTTP (with SSE fallback on 4xx); `StdioTransport` spawns a subprocess; a live server instance connects via an in-memory transport pair; raw SDK `Transport` objects pass through.
+- **In-process connections** — ideal for tests: full protocol fidelity without process or network overhead.
+- **`mcpServers` configs** — `{ mcpServers: { name: { url } | { command } } }` entries; single-entry configs return a `Client`, multi-entry return a [`MultiServerClient`](/clients/multi-server).

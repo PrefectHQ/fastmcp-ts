@@ -1,0 +1,61 @@
+---
+title: "OAuthProviderOptions"
+---
+
+Defined in: [server/auth/oauth/provider.ts:9](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/oauth/provider.ts#L9)
+
+## Properties
+
+### onAuthorize?
+
+```ts
+optional onAuthorize?: (client, params, res) => Promise<void>;
+```
+
+Defined in: [server/auth/oauth/provider.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/oauth/provider.ts#L17)
+
+Called during the authorization step. Implementations must eventually redirect
+to `params.redirectUri` with a `code` query parameter (and `state` if present).
+
+If omitted, all authorization requests are auto-approved immediately — suitable
+for testing and development only.
+
+#### Parameters
+
+##### client
+
+##### params
+
+`AuthorizationParams`
+
+##### res
+
+`Response`
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### scopes?
+
+```ts
+optional scopes?: string[];
+```
+
+Defined in: [server/auth/oauth/provider.ts:23](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/oauth/provider.ts#L23)
+
+Scopes supported by this server, advertised in OAuth metadata.
+
+***
+
+### tokenTtl?
+
+```ts
+optional tokenTtl?: number;
+```
+
+Defined in: [server/auth/oauth/provider.ts:25](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/oauth/provider.ts#L25)
+
+Access token lifetime in seconds. Default: 3600.

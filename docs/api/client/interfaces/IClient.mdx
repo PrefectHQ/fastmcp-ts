@@ -1,0 +1,437 @@
+---
+title: "IClient"
+---
+
+Defined in: [client/interfaces.ts:52](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L52)
+
+## Extends
+
+- [`IToolsClient`](/api/client/interfaces/IToolsClient).[`IResourcesClient`](/api/client/interfaces/IResourcesClient).[`IPromptsClient`](/api/client/interfaces/IPromptsClient)
+
+## Methods
+
+### \[asyncDispose\]()
+
+```ts
+asyncDispose: Promise<void>;
+```
+
+Defined in: [client/interfaces.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L64)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### callTool()
+
+```ts
+callTool<TData>(
+   name, 
+   args?, 
+   options?): Promise<CallToolResult<TData>>;
+```
+
+Defined in: [client/interfaces.ts:28](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L28)
+
+#### Type Parameters
+
+##### TData
+
+`TData` = `unknown`
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+##### options?
+
+[`CallToolOptions`](/api/client/interfaces/CallToolOptions)
+
+#### Returns
+
+`Promise`&lt;[`CallToolResult`](/api/client/type-aliases/CallToolResult)&lt;`TData`&gt;&gt;
+
+#### Inherited from
+
+[`IToolsClient`](/api/client/interfaces/IToolsClient).[`callTool`](/api/client/interfaces/IToolsClient#calltool)
+
+***
+
+### close()
+
+```ts
+close(): Promise<void>;
+```
+
+Defined in: [client/interfaces.ts:54](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L54)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### complete()
+
+```ts
+complete(
+   ref, 
+   argument, 
+   context?, 
+   options?): Promise<CompletionResult>;
+```
+
+Defined in: [client/interfaces.ts:57](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L57)
+
+#### Parameters
+
+##### ref
+
+  \| \{
+  `name`: `string`;
+  `type`: `"ref/prompt"`;
+\}
+  \| \{
+  `type`: `"ref/resource"`;
+  `uri`: `string`;
+\}
+
+##### argument
+
+###### name
+
+`string`
+
+###### value
+
+`string`
+
+##### context?
+
+###### arguments?
+
+`Record`&lt;`string`, `string`&gt;
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;[`CompletionResult`](/api/client/type-aliases/CompletionResult)&gt;
+
+***
+
+### connect()
+
+```ts
+connect(): Promise<void>;
+```
+
+Defined in: [client/interfaces.ts:53](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L53)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### getPrompt()
+
+```ts
+getPrompt(
+   name, 
+   args?, 
+   options?): Promise<{
+[key: string]: unknown;
+}>;
+```
+
+Defined in: [client/interfaces.ts:45](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L45)
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `string`&gt;
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\[`key`: `string`\]: `unknown`;
+\}&gt;
+
+#### Inherited from
+
+[`IPromptsClient`](/api/client/interfaces/IPromptsClient).[`getPrompt`](/api/client/interfaces/IPromptsClient#getprompt)
+
+***
+
+### isConnected()
+
+```ts
+isConnected(): boolean;
+```
+
+Defined in: [client/interfaces.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L55)
+
+#### Returns
+
+`boolean`
+
+***
+
+### listPrompts()
+
+```ts
+listPrompts(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L44)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Inherited from
+
+[`IPromptsClient`](/api/client/interfaces/IPromptsClient).[`listPrompts`](/api/client/interfaces/IPromptsClient#listprompts)
+
+***
+
+### listResources()
+
+```ts
+listResources(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L36)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Inherited from
+
+[`IResourcesClient`](/api/client/interfaces/IResourcesClient).[`listResources`](/api/client/interfaces/IResourcesClient#listresources)
+
+***
+
+### listResourceTemplates()
+
+```ts
+listResourceTemplates(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L37)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Inherited from
+
+[`IResourcesClient`](/api/client/interfaces/IResourcesClient).[`listResourceTemplates`](/api/client/interfaces/IResourcesClient#listresourcetemplates)
+
+***
+
+### listTools()
+
+```ts
+listTools(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L27)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Inherited from
+
+[`IToolsClient`](/api/client/interfaces/IToolsClient).[`listTools`](/api/client/interfaces/IToolsClient#listtools)
+
+***
+
+### ping()
+
+```ts
+ping(options?): Promise<boolean>;
+```
+
+Defined in: [client/interfaces.ts:56](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L56)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`boolean`&gt;
+
+***
+
+### readResource()
+
+```ts
+readResource(uri, options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L38)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Inherited from
+
+[`IResourcesClient`](/api/client/interfaces/IResourcesClient).[`readResource`](/api/client/interfaces/IResourcesClient#readresource)
+
+***
+
+### setLogLevel()
+
+```ts
+setLogLevel(level, options?): Promise<void>;
+```
+
+Defined in: [client/interfaces.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L63)
+
+#### Parameters
+
+##### level
+
+`LoggingLevel`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### subscribeResource()
+
+```ts
+subscribeResource(
+   uri, 
+   handler, 
+   options?): Promise<void>;
+```
+
+Defined in: [client/interfaces.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L39)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### handler
+
+[`ResourceUpdateHandler`](/api/client/type-aliases/ResourceUpdateHandler)
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Inherited from
+
+[`IResourcesClient`](/api/client/interfaces/IResourcesClient).[`subscribeResource`](/api/client/interfaces/IResourcesClient#subscriberesource)
+
+***
+
+### unsubscribeResource()
+
+```ts
+unsubscribeResource(uri, options?): Promise<void>;
+```
+
+Defined in: [client/interfaces.ts:40](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L40)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Inherited from
+
+[`IResourcesClient`](/api/client/interfaces/IResourcesClient).[`unsubscribeResource`](/api/client/interfaces/IResourcesClient#unsubscriberesource)

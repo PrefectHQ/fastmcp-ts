@@ -1,0 +1,68 @@
+---
+title: "IToolsClient"
+---
+
+Defined in: [client/interfaces.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L26)
+
+## Extended by
+
+- [`IClient`](/api/client/interfaces/IClient)
+
+## Methods
+
+### callTool()
+
+```ts
+callTool<TData>(
+   name, 
+   args?, 
+   options?): Promise<CallToolResult<TData>>;
+```
+
+Defined in: [client/interfaces.ts:28](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L28)
+
+#### Type Parameters
+
+##### TData
+
+`TData` = `unknown`
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+##### options?
+
+[`CallToolOptions`](/api/client/interfaces/CallToolOptions)
+
+#### Returns
+
+`Promise`&lt;[`CallToolResult`](/api/client/type-aliases/CallToolResult)&lt;`TData`&gt;&gt;
+
+***
+
+### listTools()
+
+```ts
+listTools(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L27)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;

@@ -1,0 +1,65 @@
+---
+title: "AccessToken"
+---
+
+Defined in: [server/auth/types.ts:1](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/types.ts#L1)
+
+## Properties
+
+### claims
+
+```ts
+claims: Record<string, unknown>;
+```
+
+Defined in: [server/auth/types.ts:11](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/types.ts#L11)
+
+All claims from the token payload.
+
+***
+
+### clientId?
+
+```ts
+optional clientId?: string;
+```
+
+Defined in: [server/auth/types.ts:5](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/types.ts#L5)
+
+The subject/client identifier from the token.
+
+***
+
+### expiresAt?
+
+```ts
+optional expiresAt?: number;
+```
+
+Defined in: [server/auth/types.ts:9](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/types.ts#L9)
+
+Unix timestamp (seconds) when the token expires.
+
+***
+
+### scopes
+
+```ts
+scopes: string[];
+```
+
+Defined in: [server/auth/types.ts:7](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/types.ts#L7)
+
+Scopes granted to the token.
+
+***
+
+### token
+
+```ts
+token: string;
+```
+
+Defined in: [server/auth/types.ts:3](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/types.ts#L3)
+
+The raw bearer token string.

@@ -1,0 +1,137 @@
+---
+title: "NamespaceTransform"
+---
+
+Defined in: [server/transform.ts:138](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/transform.ts#L138)
+
+Prefix all tool, prompt, and resource names with a string. URIs are left unchanged.
+
+## Implements
+
+- [`Transform`](/api/server/interfaces/Transform)
+
+## Constructors
+
+### Constructor
+
+```ts
+new NamespaceTransform(prefix): NamespaceTransform;
+```
+
+Defined in: [server/transform.ts:139](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/transform.ts#L139)
+
+#### Parameters
+
+##### prefix
+
+`string`
+
+#### Returns
+
+`NamespaceTransform`
+
+## Methods
+
+### transformPrompt()
+
+```ts
+transformPrompt(v): PromptView;
+```
+
+Defined in: [server/transform.ts:150](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/transform.ts#L150)
+
+Transform a prompt view.
+
+#### Parameters
+
+##### v
+
+[`PromptView`](/api/server/interfaces/PromptView)
+
+#### Returns
+
+[`PromptView`](/api/server/interfaces/PromptView)
+
+#### Implementation of
+
+[`Transform`](/api/server/interfaces/Transform).[`transformPrompt`](/api/server/interfaces/Transform#transformprompt)
+
+***
+
+### transformResource()
+
+```ts
+transformResource(v): ResourceView;
+```
+
+Defined in: [server/transform.ts:144](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/transform.ts#L144)
+
+Transform a static resource view.
+
+#### Parameters
+
+##### v
+
+[`ResourceView`](/api/server/interfaces/ResourceView)
+
+#### Returns
+
+[`ResourceView`](/api/server/interfaces/ResourceView)
+
+#### Implementation of
+
+[`Transform`](/api/server/interfaces/Transform).[`transformResource`](/api/server/interfaces/Transform#transformresource)
+
+***
+
+### transformResourceTemplate()
+
+```ts
+transformResourceTemplate(v): ResourceView;
+```
+
+Defined in: [server/transform.ts:147](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/transform.ts#L147)
+
+Transform a URI-template resource view.
+
+#### Parameters
+
+##### v
+
+[`ResourceView`](/api/server/interfaces/ResourceView)
+
+#### Returns
+
+[`ResourceView`](/api/server/interfaces/ResourceView)
+
+#### Implementation of
+
+[`Transform`](/api/server/interfaces/Transform).[`transformResourceTemplate`](/api/server/interfaces/Transform#transformresourcetemplate)
+
+***
+
+### transformTool()
+
+```ts
+transformTool(v): ToolView;
+```
+
+Defined in: [server/transform.ts:141](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/transform.ts#L141)
+
+Transform a tool view before it appears in list responses.
+Return a modified view to rename/redescribe; return null to hide the tool
+from list responses (it remains callable by its original name).
+
+#### Parameters
+
+##### v
+
+[`ToolView`](/api/server/interfaces/ToolView)
+
+#### Returns
+
+[`ToolView`](/api/server/interfaces/ToolView)
+
+#### Implementation of
+
+[`Transform`](/api/server/interfaces/Transform).[`transformTool`](/api/server/interfaces/Transform#transformtool)

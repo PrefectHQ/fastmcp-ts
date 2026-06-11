@@ -1,0 +1,105 @@
+---
+title: "CLI"
+description: "Run, inspect, call, and install MCP servers from the command line"
+icon: "terminal"
+---
+
+Installing `@prefecthq/fastmcp-ts` gives you the `fastmcp` CLI as a fully self-contained binary — all dependencies are bundled, so it works wherever the package is installed:
+
+```bash
+npx fastmcp --help
+```
+
+Every command supports the global flags `--quiet` (suppress human-readable output) and `--json` (machine-readable output).
+
+## Run a server
+
+`fastmcp run` starts a server file directly — TypeScript files run via `tsx` with no build step:
+
+```bash
+fastmcp run server.ts
+fastmcp run server.ts --transport http --port 3000
+fastmcp run server.ts --reload          # restart on file change
+```
+
+## Inspect a server
+
+List a server's tools, resources, and prompts — from a file (run in-process) or a running URL:
+
+```bash
+fastmcp inspect --file server.ts
+fastmcp inspect --url http://localhost:3000
+fastmcp inspect --file server.ts --json
+```
+
+## Call tools and read resources
+
+`fastmcp call` invokes a tool (by name) or reads a resource (by URI). Arguments are passed as `key=value` pairs; non-string values are JSON-parsed:
+
+```bash
+fastmcp call add --file server.ts a=1 b=2
+fastmcp call config://settings --url http://localhost:3000
+```
+
+<Tip>
+For complex nested inputs, prefer `--input-json` over `key=value` pairs.
+</Tip>
+
+If the tool name doesn't match, the CLI suggests the closest registered name (fuzzy matching).
+
+## List components on a running server
+
+```bash
+fastmcp list --url http://localhost:3000
+fastmcp list --url http://localhost:3000 --resources --prompts --json
+```
+
+## Dev inspector
+
+Open the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) UI against a server file, with file-watch reload:
+
+```bash
+fastmcp dev inspector server.ts
+```
+
+## Install into editors and clients
+
+`fastmcp install` writes the server into a client's MCP config. Six targets are supported:
+
+```bash
+fastmcp install claude-code server.ts
+fastmcp install claude-desktop server.ts
+fastmcp install cursor server.ts
+fastmcp install gemini server.ts
+fastmcp install goose server.ts
+fastmcp install mcp-json server.ts      # project-local mcp.json
+```
+
+Pass `--args` (comma-separated) and `--env` (comma-separated `KEY=VALUE` pairs) to configure the server entry. Existing entries trigger an interactive overwrite confirmation.
+
+## Discover configured servers
+
+Scan all known client config locations for MCP servers already configured on this machine:
+
+```bash
+fastmcp discover
+```
+
+## Authentication
+
+Commands that connect to remote servers accept `--auth <token>`, sent as a `Bearer` token:
+
+```bash
+fastmcp list --url https://mcp.example.com --auth $TOKEN
+```
+
+## Pipelines and exit codes
+
+The CLI keeps **stdout clean for machine-readable data** — tables, spinners, and status messages go to stderr. That makes it composable:
+
+```bash
+fastmcp call add --file server.ts a=1 b=2 | jq
+fastmcp inspect --file server.ts --json | jq '.tools[].name'
+```
+
+Exit codes: `0` success, `1` user error, `2` connection error, `3` server error.

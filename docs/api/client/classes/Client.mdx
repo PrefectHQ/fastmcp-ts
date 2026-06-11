@@ -1,0 +1,627 @@
+---
+title: "Client"
+---
+
+Defined in: [client/client.ts:107](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L107)
+
+## Implements
+
+- [`IClient`](/api/client/interfaces/IClient)
+
+## Constructors
+
+### Constructor
+
+```ts
+new Client(input, options?): Client;
+```
+
+Defined in: [client/client.ts:121](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L121)
+
+#### Parameters
+
+##### input
+
+[`ClientTransportInput`](/api/client/type-aliases/ClientTransportInput)
+
+##### options?
+
+[`ClientOptions`](/api/client/interfaces/ClientOptions)
+
+#### Returns
+
+`Client`
+
+## Methods
+
+### \[asyncDispose\]()
+
+```ts
+asyncDispose: Promise<void>;
+```
+
+Defined in: [client/client.ts:243](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L243)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`[asyncDispose]`](/api/client/interfaces/IClient#asyncdispose)
+
+***
+
+### callTool()
+
+```ts
+callTool<TData>(
+   name, 
+   args?, 
+   options?): Promise<CallToolResult<TData>>;
+```
+
+Defined in: [client/client.ts:293](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L293)
+
+#### Type Parameters
+
+##### TData
+
+`TData` = `unknown`
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+##### options?
+
+[`CallToolOptions`](/api/client/interfaces/CallToolOptions)
+
+#### Returns
+
+`Promise`&lt;[`CallToolResult`](/api/client/type-aliases/CallToolResult)&lt;`TData`&gt;&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`callTool`](/api/client/interfaces/IClient#calltool)
+
+***
+
+### callToolRaw()
+
+```ts
+callToolRaw<TData>(
+   name, 
+   args?, 
+   options?): Promise<CallToolResult<TData>>;
+```
+
+Defined in: [client/client.ts:311](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L311)
+
+Returns the full result including isError without throwing.
+
+#### Type Parameters
+
+##### TData
+
+`TData` = `unknown`
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+##### options?
+
+[`CallToolOptions`](/api/client/interfaces/CallToolOptions)
+
+#### Returns
+
+`Promise`&lt;[`CallToolResult`](/api/client/type-aliases/CallToolResult)&lt;`TData`&gt;&gt;
+
+***
+
+### close()
+
+```ts
+close(): Promise<void>;
+```
+
+Defined in: [client/client.ts:234](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L234)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`close`](/api/client/interfaces/IClient#close)
+
+***
+
+### complete()
+
+```ts
+complete(
+   ref, 
+   argument, 
+   context?, 
+   options?): Promise<CompletionResult>;
+```
+
+Defined in: [client/client.ts:417](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L417)
+
+#### Parameters
+
+##### ref
+
+  \| \{
+  `name`: `string`;
+  `type`: `"ref/prompt"`;
+\}
+  \| \{
+  `type`: `"ref/resource"`;
+  `uri`: `string`;
+\}
+
+##### argument
+
+###### name
+
+`string`
+
+###### value
+
+`string`
+
+##### context?
+
+###### arguments?
+
+`Record`&lt;`string`, `string`&gt;
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;[`CompletionResult`](/api/client/type-aliases/CompletionResult)&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`complete`](/api/client/interfaces/IClient#complete)
+
+***
+
+### connect()
+
+```ts
+connect(): Promise<void>;
+```
+
+Defined in: [client/client.ts:142](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L142)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`connect`](/api/client/interfaces/IClient#connect)
+
+***
+
+### getPrompt()
+
+```ts
+getPrompt(
+   name, 
+   args?, 
+   options?): Promise<{
+[key: string]: unknown;
+}>;
+```
+
+Defined in: [client/client.ts:401](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L401)
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `string`&gt;
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\[`key`: `string`\]: `unknown`;
+\}&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`getPrompt`](/api/client/interfaces/IClient#getprompt)
+
+***
+
+### isConnected()
+
+```ts
+isConnected(): boolean;
+```
+
+Defined in: [client/client.ts:247](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L247)
+
+#### Returns
+
+`boolean`
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`isConnected`](/api/client/interfaces/IClient#isconnected)
+
+***
+
+### listPrompts()
+
+```ts
+listPrompts(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/client.ts:393](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L393)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`listPrompts`](/api/client/interfaces/IClient#listprompts)
+
+***
+
+### listResources()
+
+```ts
+listResources(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/client.ts:337](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L337)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`listResources`](/api/client/interfaces/IClient#listresources)
+
+***
+
+### listResourceTemplates()
+
+```ts
+listResourceTemplates(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/client.ts:345](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L345)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`listResourceTemplates`](/api/client/interfaces/IClient#listresourcetemplates)
+
+***
+
+### listTools()
+
+```ts
+listTools(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/client.ts:285](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L285)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`listTools`](/api/client/interfaces/IClient#listtools)
+
+***
+
+### notifyRootsChanged()
+
+```ts
+notifyRootsChanged(): Promise<void>;
+```
+
+Defined in: [client/client.ts:543](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L543)
+
+Notify the connected server that the client's roots list has changed.
+The server should re-issue a roots/list request to get the updated list.
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### ping()
+
+```ts
+ping(options?): Promise<boolean>;
+```
+
+Defined in: [client/client.ts:276](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L276)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`boolean`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`ping`](/api/client/interfaces/IClient#ping)
+
+***
+
+### readResource()
+
+```ts
+readResource(uri, options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/client.ts:353](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L353)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`readResource`](/api/client/interfaces/IClient#readresource)
+
+***
+
+### readResourceRaw()
+
+```ts
+readResourceRaw(uri, options?): Promise<{
+[x: string]: unknown;
+}>;
+```
+
+Defined in: [client/client.ts:362](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L362)
+
+Returns the raw SDK ReadResourceResult without unwrapping.
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\[`x`: `string`\]: `unknown`;
+\}&gt;
+
+***
+
+### setLogLevel()
+
+```ts
+setLogLevel(level, options?): Promise<void>;
+```
+
+Defined in: [client/client.ts:434](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L434)
+
+#### Parameters
+
+##### level
+
+`LoggingLevel`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`setLogLevel`](/api/client/interfaces/IClient#setloglevel)
+
+***
+
+### subscribeResource()
+
+```ts
+subscribeResource(
+   uri, 
+   handler, 
+   options?): Promise<void>;
+```
+
+Defined in: [client/client.ts:369](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L369)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### handler
+
+[`ResourceUpdateHandler`](/api/client/type-aliases/ResourceUpdateHandler)
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`subscribeResource`](/api/client/interfaces/IClient#subscriberesource)
+
+***
+
+### unsubscribeResource()
+
+```ts
+unsubscribeResource(uri, options?): Promise<void>;
+```
+
+Defined in: [client/client.ts:381](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L381)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`unsubscribeResource`](/api/client/interfaces/IClient#unsubscriberesource)
+
+***
+
+### connect()
+
+#### Call Signature
+
+```ts
+static connect(input, options?): Promise<MultiServerClient>;
+```
+
+Defined in: [client/client.ts:252](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L252)
+
+Creates a connected MultiServerClient when given a multi-entry McpConfig.
+
+##### Parameters
+
+###### input
+
+[`McpConfig`](/api/client/type-aliases/McpConfig)
+
+###### options?
+
+[`MultiServerOptions`](/api/client/interfaces/MultiServerOptions)
+
+##### Returns
+
+`Promise`&lt;[`MultiServerClient`](/api/client/classes/MultiServerClient)&gt;
+
+#### Call Signature
+
+```ts
+static connect(input, options?): Promise<Client>;
+```
+
+Defined in: [client/client.ts:254](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L254)
+
+Creates a connected Client for a single-server transport. Use with `await using` for automatic cleanup.
+
+##### Parameters
+
+###### input
+
+[`ClientTransportInput`](/api/client/type-aliases/ClientTransportInput)
+
+###### options?
+
+[`ClientOptions`](/api/client/interfaces/ClientOptions)
+
+##### Returns
+
+`Promise`&lt;`Client`&gt;

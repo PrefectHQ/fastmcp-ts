@@ -1,0 +1,53 @@
+---
+title: "CallToolOptions"
+---
+
+Defined in: [client/interfaces.ts:21](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L21)
+
+## Extends
+
+- [`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+## Properties
+
+### onProgress?
+
+```ts
+optional onProgress?: ProgressHandler;
+```
+
+Defined in: [client/interfaces.ts:23](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L23)
+
+Per-call progress handler, overrides the client-level handler for this call.
+
+***
+
+### signal?
+
+```ts
+optional signal?: AbortSignal;
+```
+
+Defined in: [client/interfaces.ts:18](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L18)
+
+AbortSignal for caller-controlled cancellation.
+
+#### Inherited from
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions).[`signal`](/api/client/interfaces/RequestOptions#signal)
+
+***
+
+### timeout?
+
+```ts
+optional timeout?: number;
+```
+
+Defined in: [client/interfaces.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/interfaces.ts#L16)
+
+Per-request timeout in seconds. Overrides client-level defaultOptions.
+
+#### Inherited from
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions).[`timeout`](/api/client/interfaces/RequestOptions#timeout)

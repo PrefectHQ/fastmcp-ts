@@ -1,0 +1,128 @@
+---
+title: "Quickstart"
+description: "Build, run, and call your first MCP server"
+icon: "rocket"
+---
+
+import Install from '/snippets/install.mdx'
+
+In a few minutes you'll have an MCP server with a tool, a resource, and a prompt — running locally and answering calls from a client.
+
+## Install
+
+<Install />
+
+```bash
+npm install zod
+```
+
+## Create a server
+
+A `FastMCP` server turns plain TypeScript functions into MCP components. Input schemas are inferred from any [Standard Schema](https://standardschema.dev)-compatible library (Zod, Valibot, ArkType, …) and your handler's argument types follow automatically.
+
+Create `server.ts`:
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+import { z } from 'zod'
+
+const server = new FastMCP({ name: 'my-server', version: '1.0.0' })
+
+// A tool: callable by the LLM, arguments validated against the schema
+server.tool(
+  {
+    name: 'add',
+    description: 'Add two numbers',
+    input: z.object({ a: z.number(), b: z.number() }),
+  },
+  ({ a, b }) => a + b
+)
+
+// A static resource: data the client can read by URI
+server.resource(
+  { uri: 'config://settings', description: 'App configuration' },
+  () => JSON.stringify({ theme: 'dark', lang: 'en' })
+)
+
+// A templated resource: `{id}` is extracted and passed to the handler
+server.resource(
+  { uri: 'user://{id}', description: 'User by ID' },
+  ({ id }) => `User #${id}`
+)
+
+// A prompt: a reusable message template with arguments
+server.prompt(
+  {
+    name: 'review_code',
+    description: 'Review code for quality and correctness',
+    arguments: [
+      { name: 'code', required: true },
+      { name: 'language', required: false },
+    ],
+  },
+  ({ code, language }) =>
+    `Review this ${language ?? 'code'} for quality and correctness:\n\n${code}`
+)
+
+await server.run()                              // stdio (default)
+// await server.run({ transport: 'http', port: 3000 })
+```
+
+## Run it
+
+Use the bundled [CLI](/cli) to start the server. It runs TypeScript directly — no build step:
+
+```bash
+# stdio transport (what editors and desktop clients use)
+npx fastmcp run server.ts
+
+# or HTTP, for network access
+npx fastmcp run server.ts --transport http --port 3000
+```
+
+To poke at it interactively, open the MCP Inspector UI with file-watch reload:
+
+```bash
+npx fastmcp dev inspector server.ts
+```
+
+Or inspect its components straight from the terminal:
+
+```bash
+npx fastmcp inspect --file server.ts
+npx fastmcp call add --file server.ts a=1 b=2
+```
+
+## Call it from a client
+
+With the server running over HTTP, connect with the `Client` class:
+
+```typescript client.ts
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+await using client = await Client.connect('http://localhost:3000')
+
+const tools = await client.listTools()
+const result = await client.callTool('add', { a: 1, b: 2 })
+const config = await client.readResource('config://settings')
+const review = await client.getPrompt('review_code', { code: 'const x = 1' })
+
+// client closed automatically on scope exit (`await using`)
+```
+
+## Where to next
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="wrench" href="/servers/tools">
+    Schemas, return-value conversion, and the full tool config surface.
+  </Card>
+  <Card title="Resources" icon="database" href="/servers/resources">
+    Static resources, URI templates, and subscriptions.
+  </Card>
+  <Card title="Clients" icon="plug" href="/clients/client">
+    Lifecycle, error handling, and multi-server connections.
+  </Card>
+  <Card title="CLI" icon="terminal" href="/cli">
+    Every `fastmcp` command, including editor installs.
+  </Card>
+</CardGroup>

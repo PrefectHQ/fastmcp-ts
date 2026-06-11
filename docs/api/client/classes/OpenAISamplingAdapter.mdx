@@ -1,0 +1,55 @@
+---
+title: "OpenAISamplingAdapter"
+---
+
+Defined in: [client/sampling/openai.ts:156](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/openai.ts#L156)
+
+Implemented by all sampling adapters.
+
+## Implements
+
+- [`SamplingAdapter`](/api/client/interfaces/SamplingAdapter)
+
+## Constructors
+
+### Constructor
+
+```ts
+new OpenAISamplingAdapter(client, options?): OpenAISamplingAdapter;
+```
+
+Defined in: [client/sampling/openai.ts:160](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/openai.ts#L160)
+
+#### Parameters
+
+##### client
+
+`OpenAI`
+
+##### options?
+
+[`SamplingAdapterOptions`](/api/client/interfaces/SamplingAdapterOptions) & \{
+  `defaultModel?`: `string`;
+\}
+
+#### Returns
+
+`OpenAISamplingAdapter`
+
+## Methods
+
+### asHandler()
+
+```ts
+asHandler(): SamplingHandler;
+```
+
+Defined in: [client/sampling/openai.ts:168](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/openai.ts#L168)
+
+#### Returns
+
+[`SamplingHandler`](/api/client/type-aliases/SamplingHandler)
+
+#### Implementation of
+
+[`SamplingAdapter`](/api/client/interfaces/SamplingAdapter).[`asHandler`](/api/client/interfaces/SamplingAdapter#ashandler)

@@ -1,0 +1,14 @@
+---
+title: "Token verification"
+description: "Verify bearer tokens with JWKS, introspection, or static tokens"
+icon: "key"
+---
+
+Three built-in verifiers cover the common ways to validate a bearer token, from production JWKS validation to throwaway dev tokens.
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **`jwtVerifier({ jwksUri, issuer, audience })`** — validates JWTs against a JWKS endpoint; issuer/audience checks; claim extraction into `AccessToken`.
+- **`introspectionVerifier`** — defers validation to an OAuth token introspection endpoint for opaque tokens.
+- **`staticTokenVerifier` / `debugTokenVerifier`** — fixed token-to-identity maps for development and tests; never use in production.
+- **Combining strategies** — accept more than one token type with [`multiAuth`](/servers/auth/authorization).

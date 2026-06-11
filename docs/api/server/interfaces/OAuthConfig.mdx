@@ -1,0 +1,42 @@
+---
+title: "OAuthConfig"
+---
+
+Defined in: [server/FastMCP.ts:54](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/FastMCP.ts#L54)
+
+## Properties
+
+### issuerUrl?
+
+```ts
+optional issuerUrl?: URL;
+```
+
+Defined in: [server/FastMCP.ts:61](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/FastMCP.ts#L61)
+
+Issuer URL for the OAuth server (used in metadata endpoints).
+Defaults to the HTTP server's bound address when not specified.
+
+***
+
+### provider
+
+```ts
+provider: OAuthServerProvider;
+```
+
+Defined in: [server/FastMCP.ts:56](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/FastMCP.ts#L56)
+
+OAuth server provider implementing the authorization and token flow.
+
+***
+
+### scopes?
+
+```ts
+optional scopes?: string[];
+```
+
+Defined in: [server/FastMCP.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/FastMCP.ts#L63)
+
+Scopes supported by this server, advertised in OAuth metadata.

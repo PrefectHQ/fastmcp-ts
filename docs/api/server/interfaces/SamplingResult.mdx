@@ -1,0 +1,54 @@
+---
+title: "SamplingResult"
+---
+
+Defined in: [server/context.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L41)
+
+## Properties
+
+### content
+
+```ts
+content: 
+  | {
+  text: string;
+  type: "text";
+}
+  | {
+  data: string;
+  mimeType: string;
+  type: "image";
+};
+```
+
+Defined in: [server/context.ts:43](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L43)
+
+***
+
+### model
+
+```ts
+model: string;
+```
+
+Defined in: [server/context.ts:46](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L46)
+
+***
+
+### role
+
+```ts
+role: "assistant";
+```
+
+Defined in: [server/context.ts:42](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L42)
+
+***
+
+### stopReason?
+
+```ts
+optional stopReason?: string;
+```
+
+Defined in: [server/context.ts:47](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L47)

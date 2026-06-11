@@ -1,0 +1,41 @@
+---
+title: "ResourceAnnotations"
+---
+
+Defined in: [server/resource.ts:4](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L4)
+
+## Properties
+
+### audience?
+
+```ts
+optional audience?: ("user" | "assistant")[];
+```
+
+Defined in: [server/resource.ts:6](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L6)
+
+Intended audience(s) — 'user', 'assistant', or both.
+
+***
+
+### lastModified?
+
+```ts
+optional lastModified?: string;
+```
+
+Defined in: [server/resource.ts:10](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L10)
+
+ISO 8601 timestamp of last modification.
+
+***
+
+### priority?
+
+```ts
+optional priority?: number;
+```
+
+Defined in: [server/resource.ts:8](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L8)
+
+Importance hint from 0 (least) to 1 (most).

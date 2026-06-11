@@ -1,0 +1,146 @@
+---
+title: "ResourceConfig"
+---
+
+Defined in: [server/resource.ts:13](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L13)
+
+## Properties
+
+### annotations?
+
+```ts
+optional annotations?: ResourceAnnotations;
+```
+
+Defined in: [server/resource.ts:29](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L29)
+
+Behavioral hints for clients.
+
+***
+
+### auth?
+
+```ts
+optional auth?: AuthCheck;
+```
+
+Defined in: [server/resource.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L36)
+
+***
+
+### description?
+
+```ts
+optional description?: string;
+```
+
+Defined in: [server/resource.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L20)
+
+***
+
+### disabled?
+
+```ts
+optional disabled?: boolean;
+```
+
+Defined in: [server/resource.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L33)
+
+When true the resource is hidden from list responses and cannot be read.
+
+***
+
+### mimeType?
+
+```ts
+optional mimeType?: string;
+```
+
+Defined in: [server/resource.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L22)
+
+MIME type of the resource content. Defaults to 'text/plain' for strings, 'application/octet-stream' for binary.
+
+***
+
+### name?
+
+```ts
+optional name?: string;
+```
+
+Defined in: [server/resource.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L17)
+
+Programmatic identifier. Defaults to the uri.
+
+***
+
+### size?
+
+```ts
+optional size?: number;
+```
+
+Defined in: [server/resource.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L27)
+
+Size of the resource content in bytes, if known.
+Only meaningful for static resources; ignored for URI templates.
+
+***
+
+### tags?
+
+```ts
+optional tags?: string[];
+```
+
+Defined in: [server/resource.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L35)
+
+Arbitrary tags for server-side filtering.
+
+***
+
+### timeout?
+
+```ts
+optional timeout?: number;
+```
+
+Defined in: [server/resource.ts:31](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L31)
+
+Execution timeout in milliseconds. No timeout by default.
+
+***
+
+### title?
+
+```ts
+optional title?: string;
+```
+
+Defined in: [server/resource.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L19)
+
+Human-readable display name shown in UIs. Defaults to `name`.
+
+***
+
+### ui?
+
+```ts
+optional ui?: ResourceUiMeta;
+```
+
+Defined in: [server/resource.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L38)
+
+Apps extension metadata. Included in _meta.ui in resources/list for UI-capable clients.
+
+***
+
+### uri
+
+```ts
+uri: string;
+```
+
+Defined in: [server/resource.ts:15](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/resource.ts#L15)
+
+Static URI (e.g. `file://readme`) or RFC 6570 template (e.g. `user://{id}`).

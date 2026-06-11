@@ -1,0 +1,54 @@
+---
+title: "Installation"
+description: "Install FastMCP TypeScript and its optional peer dependencies"
+icon: "download"
+---
+
+import Install from '/snippets/install.mdx'
+
+## Requirements
+
+FastMCP TypeScript runs on **Node.js 22 or later**. There is no browser support.
+
+## Install the package
+
+<Install />
+
+The package exposes two subpath entrypoints, so you only pull in what you use:
+
+```typescript
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+import { Client } from '@prefecthq/fastmcp-ts/client'
+```
+
+It also installs the [`fastmcp` CLI](/cli) as a self-contained binary:
+
+```bash
+npx fastmcp --help
+```
+
+## Schema library
+
+Input and output schemas work with any [Standard Schema](https://standardschema.dev)-compatible validation library — Zod, Valibot, ArkType, and others. Most examples in these docs use Zod:
+
+```bash
+npm install zod
+```
+
+## Optional peer dependencies
+
+The client's [sampling adapters](/clients/sampling) forward LLM sampling requests to your AI provider. Each adapter requires its provider SDK, declared as an optional peer dependency — install only the one you use:
+
+| Adapter | Install |
+|---|---|
+| `AnthropicSamplingAdapter` | `npm install @anthropic-ai/sdk` |
+| `OpenAISamplingAdapter` | `npm install openai` |
+| `GoogleSamplingAdapter` | `npm install @google/genai` |
+
+Nothing breaks if these are absent — the adapters import provider types with `import type`, so there is no runtime cost or error unless you actually instantiate one.
+
+## Next steps
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Build and run your first MCP server.
+</Card>

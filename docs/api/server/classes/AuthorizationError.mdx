@@ -1,0 +1,38 @@
+---
+title: "AuthorizationError"
+---
+
+Defined in: [server/auth/types.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/types.ts#L22)
+
+Thrown by authorization checks to produce a 403 response.
+Any other error thrown during verification produces a 401.
+
+## Extends
+
+- `Error`
+
+## Constructors
+
+### Constructor
+
+```ts
+new AuthorizationError(message): AuthorizationError;
+```
+
+Defined in: [server/auth/types.ts:23](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/auth/types.ts#L23)
+
+#### Parameters
+
+##### message
+
+`string`
+
+#### Returns
+
+`AuthorizationError`
+
+#### Overrides
+
+```ts
+Error.constructor
+```

@@ -1,0 +1,20 @@
+---
+title: "Running your server"
+description: "Transports, ports, and environment-driven configuration"
+icon: "play"
+---
+
+A single `server.run()` call starts your server on stdio (the default) or Streamable HTTP:
+
+```typescript
+await server.run()                                  // fully env-driven, stdio default
+await server.run({ transport: 'http' })             // transport fixed; port/host from env
+await server.run({ transport: 'http', port: 3000 }) // fully explicit
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Configuration priority** — code > environment variables > defaults, so a deployed server switches transports with env vars alone: `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`, `MCP_PATH` (plus plain `PORT` as a fallback for Railway/Render/Heroku). Defaults: stdio, port 3000, host `0.0.0.0`, path `/mcp`.
+- **Transports** — `stdio` and `http` (Streamable HTTP). SSE is not supported; Streamable HTTP supersedes it.
+- **Inspecting the bound address** — `server.address` after `run()` resolves (including OS-assigned ports with `port: 0`); `null` for stdio.
+- **Running via the CLI** — `fastmcp run server.ts` and the [`dev inspector`](/cli) loop.

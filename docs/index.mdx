@@ -1,0 +1,61 @@
+---
+title: "Welcome to FastMCP TypeScript"
+sidebarTitle: "Welcome"
+description: "The TypeScript framework for building MCP servers, clients, and apps"
+icon: "hand-wave"
+---
+
+FastMCP TypeScript is the TypeScript framework for building [Model Context Protocol](https://modelcontextprotocol.io) servers, clients, and apps. It is the official TypeScript counterpart to [FastMCP for Python](https://github.com/PrefectHQ/fastmcp) — built and maintained by the same team at [Prefect](https://www.prefect.io).
+
+Built on the official [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk), FastMCP handles the protocol plumbing so you can focus on what your server actually does.
+
+```typescript
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+import { z } from 'zod'
+
+const server = new FastMCP({ name: 'my-server', version: '1.0.0' })
+
+server.tool(
+  {
+    name: 'add',
+    description: 'Add two numbers',
+    input: z.object({ a: z.number(), b: z.number() }),
+  },
+  ({ a, b }) => a + b
+)
+
+await server.run()
+```
+
+## The three pillars
+
+<CardGroup cols={3}>
+  <Card title="Servers" icon="server" href="/servers/tools">
+    Turn TypeScript functions into MCP tools, resources, and prompts — with middleware, auth, composition, and long-running tasks.
+  </Card>
+  <Card title="Clients" icon="plug" href="/clients/client">
+    Connect to one or many MCP servers, call tools, and wire LLM sampling to Anthropic, OpenAI, or Google with one line.
+  </Card>
+  <Card title="Apps" icon="window" href="/apps/overview">
+    Build interactive UIs rendered directly in MCP host conversations using a server-side component library.
+  </Card>
+</CardGroup>
+
+## Get going
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build, run, and call your first MCP server in a few minutes.
+  </Card>
+  <Card title="CLI" icon="terminal" href="/cli">
+    Run, inspect, call, and install servers from the command line with `fastmcp`.
+  </Card>
+</CardGroup>
+
+## Ecosystem
+
+| Package | Role |
+|---|---|
+| [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk) | Official low-level MCP protocol implementation — this library's foundation |
+| [`fastmcp` (PyPI)](https://github.com/PrefectHQ/fastmcp) | The Python original this project models its API after |
+| [`@modelcontextprotocol/ext-apps`](https://github.com/modelcontextprotocol/ext-apps) | Official MCP Apps extension — foundation for the Apps pillar |

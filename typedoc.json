@@ -1,0 +1,22 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/server/index.ts", "src/client/index.ts"],
+  "tsconfig": "tsconfig.typedoc.json",
+  "plugin": ["typedoc-plugin-markdown", "./scripts/typedoc-mintlify.mjs"],
+  "out": "docs/api",
+  "fileExtension": ".mdx",
+  "entryFileName": "index",
+  "readme": "none",
+  "router": "member",
+  "hidePageHeader": true,
+  "hideBreadcrumbs": true,
+  "useCodeBlocks": true,
+  "useHTMLEncodedBrackets": true,
+  "sanitizeComments": true,
+  "expandObjects": true,
+  "navigationJson": "docs/api/navigation.json",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "excludeExternals": true,
+  "cleanOutputDir": true
+}

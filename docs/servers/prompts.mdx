@@ -1,0 +1,71 @@
+---
+title: "Prompts"
+description: "Reusable message templates with validated arguments"
+icon: "message-lines"
+---
+
+Prompts are reusable message templates that clients fetch with `prompts/get`. Register one with `server.prompt(config, handler)`:
+
+```typescript
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.prompt(
+  {
+    name: 'review_code',
+    description: 'Review code for quality and correctness',
+    arguments: [
+      { name: 'code', required: true },
+      { name: 'language', required: false },
+    ],
+  },
+  ({ code, language }) =>
+    `Review this ${language ?? 'code'} for quality and correctness:\n\n${code}`
+)
+```
+
+The handler receives a `Record<string, string>` of the supplied arguments. Required arguments are validated **before** the handler runs — a missing required argument returns `McpError(InvalidParams)` without invoking the handler.
+
+## Return values
+
+| Returned value | Conversion |
+|---|---|
+| `string` | Single user text message |
+| `PromptMessage` | Wrapped in a one-element array |
+| `PromptMessage[]` | Used as-is (multi-turn sequence) |
+| `PromptResult(messages, description?)` | Passed through as-is |
+
+`PromptMessage.content` supports the content types `text`, `image`, `audio`, `resource` (embedded), and `resource_link`.
+
+```typescript
+import { PromptResult } from '@prefecthq/fastmcp-ts/server'
+
+server.prompt(
+  { name: 'pair_review', arguments: [{ name: 'code', required: true }] },
+  ({ code }) =>
+    PromptResult(
+      [
+        { role: 'user', content: { type: 'text', text: `Review:\n${code}` } },
+        { role: 'assistant', content: { type: 'text', text: 'Here is my review:' } },
+      ],
+      'A seeded multi-turn review exchange'
+    )
+)
+```
+
+## Config fields
+
+| Field | Behavior |
+|---|---|
+| `name` | Inferred from `handler.name` when omitted |
+| `title` | Human-readable label for UIs |
+| `description` | Inferred from the name (camelCase → words) when omitted |
+| `arguments` | Array of `{ name, description?, required? }` |
+| `timeout` | Per-call timeout in milliseconds |
+| `disabled` | Hides the prompt and rejects `prompts/get` |
+| `auth` | Per-prompt authorization check |
+
+## Dynamic registration
+
+Prompts can be registered before or after `run()` — adding one to a running server sends `notifications/prompts/list_changed` automatically.

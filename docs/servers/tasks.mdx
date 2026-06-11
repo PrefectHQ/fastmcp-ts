@@ -1,0 +1,24 @@
+---
+title: "Tasks"
+description: "Long-running tools with background execution and client polling"
+icon: "clock"
+---
+
+Tools can opt into MCP task execution ([SEP-1686](https://modelcontextprotocol.io)) for work that outlives a normal request: the server returns a task handle immediately, runs the handler in the background, and the client polls until the result is ready.
+
+```typescript
+server.tool({ name: 'slow', description: 'A long job', task: true }, async () => {
+  await doExpensiveWork()
+  return 'done'
+})
+
+// fine-grained control:
+server.tool({ name: 'slow', task: { mode: 'required', pollInterval: 2000 } }, handler)
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Task modes** — `forbidden` (default: task requests rejected), `optional` (`task: true`: both sync and task execution work), `required` (sync calls rejected; advertised with `execution: { taskSupport: 'required' }`).
+- **Execution flow** — server returns `CreateTaskResult` immediately; client polls `tasks/get` until terminal, then fetches output via `tasks/result`. `ToolConfig.timeout` is intentionally not applied in task mode.
+- **Stores** — `InMemoryTaskStore` is used automatically; supply a custom `TaskStore` via `new FastMCP({ tasks: { store: myStore } })`, or enable the capability globally with `{ tasks: true }`.
+- **Error model** — server-side rejections and failed handlers surface as `{ type: 'error' }` messages in task streams rather than thrown exceptions.

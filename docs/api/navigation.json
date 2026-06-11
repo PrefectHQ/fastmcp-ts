@@ -1,0 +1,1012 @@
+[
+  {
+    "title": "client",
+    "kind": 2,
+    "path": "client/index.mdx",
+    "isDeprecated": false,
+    "children": [
+      {
+        "title": "Classes",
+        "children": [
+          {
+            "title": "AnthropicSamplingAdapter",
+            "kind": 128,
+            "path": "client/classes/AnthropicSamplingAdapter.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "BearerAuth",
+            "kind": 128,
+            "path": "client/classes/BearerAuth.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Client",
+            "kind": 128,
+            "path": "client/classes/Client.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientCredentials",
+            "kind": 128,
+            "path": "client/classes/ClientCredentials.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FileTokenStorage",
+            "kind": 128,
+            "path": "client/classes/FileTokenStorage.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "GenericSamplingAdapter",
+            "kind": 128,
+            "path": "client/classes/GenericSamplingAdapter.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "GoogleSamplingAdapter",
+            "kind": 128,
+            "path": "client/classes/GoogleSamplingAdapter.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "InMemoryStore",
+            "kind": 128,
+            "path": "client/classes/InMemoryStore.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "MultiServerClient",
+            "kind": 128,
+            "path": "client/classes/MultiServerClient.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OAuth",
+            "kind": 128,
+            "path": "client/classes/OAuth.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OpenAISamplingAdapter",
+            "kind": 128,
+            "path": "client/classes/OpenAISamplingAdapter.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "StdioTransport",
+            "kind": 128,
+            "path": "client/classes/StdioTransport.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ToolCallError",
+            "kind": 128,
+            "path": "client/classes/ToolCallError.mdx",
+            "isDeprecated": false
+          }
+        ]
+      },
+      {
+        "title": "Interfaces",
+        "children": [
+          {
+            "title": "CallToolOptions",
+            "kind": 256,
+            "path": "client/interfaces/CallToolOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientCredentialsOptions",
+            "kind": 256,
+            "path": "client/interfaces/ClientCredentialsOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientDefaultOptions",
+            "kind": 256,
+            "path": "client/interfaces/ClientDefaultOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientHandlers",
+            "kind": 256,
+            "path": "client/interfaces/ClientHandlers.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientOptions",
+            "kind": 256,
+            "path": "client/interfaces/ClientOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "GenericCompletionParams",
+            "kind": 256,
+            "path": "client/interfaces/GenericCompletionParams.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "IClient",
+            "kind": 256,
+            "path": "client/interfaces/IClient.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "IPromptsClient",
+            "kind": 256,
+            "path": "client/interfaces/IPromptsClient.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "IResourcesClient",
+            "kind": 256,
+            "path": "client/interfaces/IResourcesClient.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "IToolsClient",
+            "kind": 256,
+            "path": "client/interfaces/IToolsClient.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "McpServerLike",
+            "kind": 256,
+            "path": "client/interfaces/McpServerLike.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "MultiServerOptions",
+            "kind": 256,
+            "path": "client/interfaces/MultiServerOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OAuthOptions",
+            "kind": 256,
+            "path": "client/interfaces/OAuthOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RequestOptions",
+            "kind": 256,
+            "path": "client/interfaces/RequestOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SamplingAdapter",
+            "kind": 256,
+            "path": "client/interfaces/SamplingAdapter.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SamplingAdapterOptions",
+            "kind": 256,
+            "path": "client/interfaces/SamplingAdapterOptions.mdx",
+            "isDeprecated": false
+          }
+        ]
+      },
+      {
+        "title": "Type Aliases",
+        "children": [
+          {
+            "title": "AnySamplingResult",
+            "kind": 2097152,
+            "path": "client/type-aliases/AnySamplingResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CallToolResult",
+            "kind": 2097152,
+            "path": "client/type-aliases/CallToolResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientTransportInput",
+            "kind": 2097152,
+            "path": "client/type-aliases/ClientTransportInput.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CompletionResult",
+            "kind": 2097152,
+            "path": "client/type-aliases/CompletionResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ElicitationHandler",
+            "kind": 2097152,
+            "path": "client/type-aliases/ElicitationHandler.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "GenericCompletionFn",
+            "kind": 2097152,
+            "path": "client/type-aliases/GenericCompletionFn.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "KeyValueStore",
+            "kind": 2097152,
+            "path": "client/type-aliases/KeyValueStore.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ListChangedHandler",
+            "kind": 2097152,
+            "path": "client/type-aliases/ListChangedHandler.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "LogHandler",
+            "kind": 2097152,
+            "path": "client/type-aliases/LogHandler.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "LogMessage",
+            "kind": 2097152,
+            "path": "client/type-aliases/LogMessage.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "McpConfig",
+            "kind": 2097152,
+            "path": "client/type-aliases/McpConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "McpServerEntry",
+            "kind": 2097152,
+            "path": "client/type-aliases/McpServerEntry.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "McpServerValue",
+            "kind": 2097152,
+            "path": "client/type-aliases/McpServerValue.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ModelSelector",
+            "kind": 2097152,
+            "path": "client/type-aliases/ModelSelector.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OAuthToken",
+            "kind": 2097152,
+            "path": "client/type-aliases/OAuthToken.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OnTokenCallback",
+            "kind": 2097152,
+            "path": "client/type-aliases/OnTokenCallback.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ProgressHandler",
+            "kind": 2097152,
+            "path": "client/type-aliases/ProgressHandler.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ResourceUpdateHandler",
+            "kind": 2097152,
+            "path": "client/type-aliases/ResourceUpdateHandler.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Result",
+            "kind": 2097152,
+            "path": "client/type-aliases/Result.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RootInput",
+            "kind": 2097152,
+            "path": "client/type-aliases/RootInput.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RootsValue",
+            "kind": 2097152,
+            "path": "client/type-aliases/RootsValue.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SamplingHandler",
+            "kind": 2097152,
+            "path": "client/type-aliases/SamplingHandler.mdx",
+            "isDeprecated": false
+          }
+        ]
+      },
+      {
+        "title": "Functions",
+        "children": [
+          {
+            "title": "defaultLogHandler",
+            "kind": 64,
+            "path": "client/functions/defaultLogHandler.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "defaultProgressHandler",
+            "kind": 64,
+            "path": "client/functions/defaultProgressHandler.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "toResult",
+            "kind": 64,
+            "path": "client/functions/toResult.mdx",
+            "isDeprecated": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "server",
+    "kind": 2,
+    "path": "server/index.mdx",
+    "isDeprecated": false,
+    "children": [
+      {
+        "title": "Classes",
+        "children": [
+          {
+            "title": "Approval",
+            "kind": 128,
+            "path": "server/classes/Approval.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "AuthorizationError",
+            "kind": 128,
+            "path": "server/classes/AuthorizationError.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CachingMiddleware",
+            "kind": 128,
+            "path": "server/classes/CachingMiddleware.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CancellationMiddleware",
+            "kind": 128,
+            "path": "server/classes/CancellationMiddleware.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Choice",
+            "kind": 128,
+            "path": "server/classes/Choice.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ErrorNormalizationMiddleware",
+            "kind": 128,
+            "path": "server/classes/ErrorNormalizationMiddleware.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FastMCP",
+            "kind": 128,
+            "path": "server/classes/FastMCP.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FastMCPApp",
+            "kind": 128,
+            "path": "server/classes/FastMCPApp.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "File",
+            "kind": 128,
+            "path": "server/classes/File.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FileUpload",
+            "kind": 128,
+            "path": "server/classes/FileUpload.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FilterTransform",
+            "kind": 128,
+            "path": "server/classes/FilterTransform.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FormInput",
+            "kind": 128,
+            "path": "server/classes/FormInput.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "GenerativeUI",
+            "kind": 128,
+            "path": "server/classes/GenerativeUI.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Image",
+            "kind": 128,
+            "path": "server/classes/Image.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "LoggingMiddleware",
+            "kind": 128,
+            "path": "server/classes/LoggingMiddleware.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "NamespaceTransform",
+            "kind": 128,
+            "path": "server/classes/NamespaceTransform.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "PromptResult",
+            "kind": 128,
+            "path": "server/classes/PromptResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "PromptsAsTools",
+            "kind": 128,
+            "path": "server/classes/PromptsAsTools.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RateLimitingMiddleware",
+            "kind": 128,
+            "path": "server/classes/RateLimitingMiddleware.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ResourceResult",
+            "kind": 128,
+            "path": "server/classes/ResourceResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ResourcesAsTools",
+            "kind": 128,
+            "path": "server/classes/ResourcesAsTools.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SizeLimitingMiddleware",
+            "kind": 128,
+            "path": "server/classes/SizeLimitingMiddleware.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ToolResult",
+            "kind": 128,
+            "path": "server/classes/ToolResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "VersionFilter",
+            "kind": 128,
+            "path": "server/classes/VersionFilter.mdx",
+            "isDeprecated": false
+          }
+        ]
+      },
+      {
+        "title": "Interfaces",
+        "children": [
+          {
+            "title": "AccessToken",
+            "kind": 256,
+            "path": "server/interfaces/AccessToken.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "BackendToolConfig",
+            "kind": 256,
+            "path": "server/interfaces/BackendToolConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "BrowserPermissions",
+            "kind": 256,
+            "path": "server/interfaces/BrowserPermissions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CatalogEntry",
+            "kind": 256,
+            "path": "server/interfaces/CatalogEntry.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Component",
+            "kind": 256,
+            "path": "server/interfaces/Component.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CspPolicy",
+            "kind": 256,
+            "path": "server/interfaces/CspPolicy.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ElicitationResult",
+            "kind": 256,
+            "path": "server/interfaces/ElicitationResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ElicitationSchema",
+            "kind": 256,
+            "path": "server/interfaces/ElicitationSchema.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "EntrypointConfig",
+            "kind": 256,
+            "path": "server/interfaces/EntrypointConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FastMCPAppOptions",
+            "kind": 256,
+            "path": "server/interfaces/FastMCPAppOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FastMCPOptions",
+            "kind": 256,
+            "path": "server/interfaces/FastMCPOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FileHandle",
+            "kind": 256,
+            "path": "server/interfaces/FileHandle.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FileStorageAdapter",
+            "kind": 256,
+            "path": "server/interfaces/FileStorageAdapter.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FileUploadOptions",
+            "kind": 256,
+            "path": "server/interfaces/FileUploadOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "FormInputOptions",
+            "kind": 256,
+            "path": "server/interfaces/FormInputOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "IfNode",
+            "kind": 256,
+            "path": "server/interfaces/IfNode.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "McpContext",
+            "kind": 256,
+            "path": "server/interfaces/McpContext.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Middleware",
+            "kind": 256,
+            "path": "server/interfaces/Middleware.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "MiddlewareContext",
+            "kind": 256,
+            "path": "server/interfaces/MiddlewareContext.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OAuthConfig",
+            "kind": 256,
+            "path": "server/interfaces/OAuthConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OAuthProviderOptions",
+            "kind": 256,
+            "path": "server/interfaces/OAuthProviderOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OAuthProxyOptions",
+            "kind": 256,
+            "path": "server/interfaces/OAuthProxyOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "PromptArgument",
+            "kind": 256,
+            "path": "server/interfaces/PromptArgument.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "PromptConfig",
+            "kind": 256,
+            "path": "server/interfaces/PromptConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "PromptMessage",
+            "kind": 256,
+            "path": "server/interfaces/PromptMessage.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "PromptView",
+            "kind": 256,
+            "path": "server/interfaces/PromptView.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ResourceAnnotations",
+            "kind": 256,
+            "path": "server/interfaces/ResourceAnnotations.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ResourceConfig",
+            "kind": 256,
+            "path": "server/interfaces/ResourceConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ResourceUiMeta",
+            "kind": 256,
+            "path": "server/interfaces/ResourceUiMeta.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ResourceView",
+            "kind": 256,
+            "path": "server/interfaces/ResourceView.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Root",
+            "kind": 256,
+            "path": "server/interfaces/Root.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RunOptions",
+            "kind": 256,
+            "path": "server/interfaces/RunOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SamplingMessage",
+            "kind": 256,
+            "path": "server/interfaces/SamplingMessage.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SamplingParams",
+            "kind": 256,
+            "path": "server/interfaces/SamplingParams.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SamplingResult",
+            "kind": 256,
+            "path": "server/interfaces/SamplingResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ServerAddress",
+            "kind": 256,
+            "path": "server/interfaces/ServerAddress.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SynthesizedTool",
+            "kind": 256,
+            "path": "server/interfaces/SynthesizedTool.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "TaskConfig",
+            "kind": 256,
+            "path": "server/interfaces/TaskConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "TokenVerifier",
+            "kind": 256,
+            "path": "server/interfaces/TokenVerifier.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ToolConfig",
+            "kind": 256,
+            "path": "server/interfaces/ToolConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ToolView",
+            "kind": 256,
+            "path": "server/interfaces/ToolView.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Transform",
+            "kind": 256,
+            "path": "server/interfaces/Transform.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "UiToolMeta",
+            "kind": 256,
+            "path": "server/interfaces/UiToolMeta.mdx",
+            "isDeprecated": false
+          }
+        ]
+      },
+      {
+        "title": "Type Aliases",
+        "children": [
+          {
+            "title": "AuthCheck",
+            "kind": 2097152,
+            "path": "server/type-aliases/AuthCheck.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CacheKeyFn",
+            "kind": 2097152,
+            "path": "server/type-aliases/CacheKeyFn.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "LogLevel",
+            "kind": 2097152,
+            "path": "server/type-aliases/LogLevel.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Next",
+            "kind": 2097152,
+            "path": "server/type-aliases/Next.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "PromptContent",
+            "kind": 2097152,
+            "path": "server/type-aliases/PromptContent.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ProxyTransport",
+            "kind": 2097152,
+            "path": "server/type-aliases/ProxyTransport.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "TaskInput",
+            "kind": 2097152,
+            "path": "server/type-aliases/TaskInput.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "TaskMode",
+            "kind": 2097152,
+            "path": "server/type-aliases/TaskMode.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Visibility",
+            "kind": 2097152,
+            "path": "server/type-aliases/Visibility.mdx",
+            "isDeprecated": false
+          }
+        ]
+      },
+      {
+        "title": "Functions",
+        "children": [
+          {
+            "title": "actionRef",
+            "kind": 64,
+            "path": "server/functions/actionRef.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Area",
+            "kind": 64,
+            "path": "server/functions/Area.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Badge",
+            "kind": 64,
+            "path": "server/functions/Badge.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Bar",
+            "kind": 64,
+            "path": "server/functions/Bar.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Button",
+            "kind": 64,
+            "path": "server/functions/Button.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Column",
+            "kind": 64,
+            "path": "server/functions/Column.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "createProxy",
+            "kind": 64,
+            "path": "server/functions/createProxy.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "debugTokenVerifier",
+            "kind": 64,
+            "path": "server/functions/debugTokenVerifier.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ForEach",
+            "kind": 64,
+            "path": "server/functions/ForEach.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Grid",
+            "kind": 64,
+            "path": "server/functions/Grid.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "If",
+            "kind": 64,
+            "path": "server/functions/If.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Input",
+            "kind": 64,
+            "path": "server/functions/Input.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "introspectionVerifier",
+            "kind": 64,
+            "path": "server/functions/introspectionVerifier.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "jwtVerifier",
+            "kind": 64,
+            "path": "server/functions/jwtVerifier.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Line",
+            "kind": 64,
+            "path": "server/functions/Line.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "multiAuth",
+            "kind": 64,
+            "path": "server/functions/multiAuth.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "oauthProvider",
+            "kind": 64,
+            "path": "server/functions/oauthProvider.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "oauthProxy",
+            "kind": 64,
+            "path": "server/functions/oauthProxy.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Pie",
+            "kind": 64,
+            "path": "server/functions/Pie.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "redescribeTool",
+            "kind": 64,
+            "path": "server/functions/redescribeTool.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "renameTool",
+            "kind": 64,
+            "path": "server/functions/renameTool.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "requireScopes",
+            "kind": 64,
+            "path": "server/functions/requireScopes.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "resolveTaskConfig",
+            "kind": 64,
+            "path": "server/functions/resolveTaskConfig.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Row",
+            "kind": 64,
+            "path": "server/functions/Row.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Rx",
+            "kind": 64,
+            "path": "server/functions/Rx.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Select",
+            "kind": 64,
+            "path": "server/functions/Select.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "staticTokenVerifier",
+            "kind": 64,
+            "path": "server/functions/staticTokenVerifier.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Table",
+            "kind": 64,
+            "path": "server/functions/Table.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "Text",
+            "kind": 64,
+            "path": "server/functions/Text.mdx",
+            "isDeprecated": false
+          }
+        ]
+      }
+    ]
+  }
+]

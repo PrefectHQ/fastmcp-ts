@@ -1,0 +1,12 @@
+---
+title: "ModelSelector"
+---
+
+```ts
+type ModelSelector = string | ((prefs) => string);
+```
+
+Defined in: [client/sampling/types.ts:10](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/types.ts#L10)
+
+Resolve a concrete model name from the server's modelPreferences.
+A plain string always uses that model; a function inspects the preferences.

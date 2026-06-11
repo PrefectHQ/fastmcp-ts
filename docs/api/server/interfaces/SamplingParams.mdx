@@ -1,0 +1,100 @@
+---
+title: "SamplingParams"
+---
+
+Defined in: [server/context.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L26)
+
+## Properties
+
+### maxTokens?
+
+```ts
+optional maxTokens?: number;
+```
+
+Defined in: [server/context.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L30)
+
+Maximum tokens to generate. Defaults to 1024.
+
+***
+
+### messages
+
+```ts
+messages: SamplingMessage[];
+```
+
+Defined in: [server/context.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L27)
+
+***
+
+### modelPreferences?
+
+```ts
+optional modelPreferences?: {
+  costPriority?: number;
+  hints?: {
+     name?: string;
+  }[];
+  intelligencePriority?: number;
+  speedPriority?: number;
+};
+```
+
+Defined in: [server/context.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L33)
+
+#### costPriority?
+
+```ts
+optional costPriority?: number;
+```
+
+#### hints?
+
+```ts
+optional hints?: {
+  name?: string;
+}[];
+```
+
+#### intelligencePriority?
+
+```ts
+optional intelligencePriority?: number;
+```
+
+#### speedPriority?
+
+```ts
+optional speedPriority?: number;
+```
+
+***
+
+### stopSequences?
+
+```ts
+optional stopSequences?: string[];
+```
+
+Defined in: [server/context.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L32)
+
+***
+
+### systemPrompt?
+
+```ts
+optional systemPrompt?: string;
+```
+
+Defined in: [server/context.ts:28](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L28)
+
+***
+
+### temperature?
+
+```ts
+optional temperature?: number;
+```
+
+Defined in: [server/context.ts:31](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/server/context.ts#L31)

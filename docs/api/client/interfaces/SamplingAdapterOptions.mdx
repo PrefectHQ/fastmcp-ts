@@ -1,0 +1,29 @@
+---
+title: "SamplingAdapterOptions"
+---
+
+Defined in: [client/sampling/types.ts:15](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/types.ts#L15)
+
+## Properties
+
+### modelSelector?
+
+```ts
+optional modelSelector?: ModelSelector;
+```
+
+Defined in: [client/sampling/types.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/types.ts#L17)
+
+Override or replace the model selection logic.
+
+***
+
+### onToken?
+
+```ts
+optional onToken?: OnTokenCallback;
+```
+
+Defined in: [client/sampling/types.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/sampling/types.ts#L19)
+
+Fired for each streamed text token. Tool-use deltas are not surfaced.

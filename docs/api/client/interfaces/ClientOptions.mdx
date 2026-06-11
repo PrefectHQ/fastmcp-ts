@@ -1,0 +1,69 @@
+---
+title: "ClientOptions"
+---
+
+Defined in: [client/client.ts:75](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L75)
+
+## Properties
+
+### auth?
+
+```ts
+optional auth?: 
+  | string
+  | OAuth
+  | BearerAuth
+  | ClientCredentials;
+```
+
+Defined in: [client/client.ts:80](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L80)
+
+Authentication to attach to HTTP requests.
+A plain string is treated as a Bearer token.
+
+***
+
+### autoInitialize?
+
+```ts
+optional autoInitialize?: boolean;
+```
+
+Defined in: [client/client.ts:92](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L92)
+
+When true (default), the MCP initialize handshake is performed
+automatically inside connect().
+
+***
+
+### defaultOptions?
+
+```ts
+optional defaultOptions?: ClientDefaultOptions;
+```
+
+Defined in: [client/client.ts:93](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L93)
+
+***
+
+### handlers?
+
+```ts
+optional handlers?: ClientHandlers;
+```
+
+Defined in: [client/client.ts:81](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L81)
+
+***
+
+### roots?
+
+```ts
+optional roots?: RootsValue;
+```
+
+Defined in: [client/client.ts:87](https://github.com/PrefectHQ/fastmcp-ts/blob/28d7c34e7077859e2478fbc7e137669d5d5bc2b2/src/client/client.ts#L87)
+
+Filesystem roots to advertise to the server.
+Accepts a static array of strings / Root objects, or an async callback
+invoked on each roots/list request (useful for dynamic root sets).

@@ -1,0 +1,25 @@
+---
+title: "Built-in providers"
+description: "Ready-to-mount interactive primitives: approval, choice, file upload, forms"
+icon: "box-open"
+---
+
+Providers are prepackaged mini-apps you mount onto any server with one line:
+
+```typescript
+import { FastMCP, Approval, Choice, FileUpload, FormInput } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.addProvider(new Approval())    // confirm/deny card
+server.addProvider(new Choice())      // clickable option list
+server.addProvider(new FileUpload())  // drag-and-drop picker
+server.addProvider(new FormInput())   // auto-generated validated form
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **`Approval`** — confirm/deny card whose outcome is injected back into the conversation.
+- **`Choice`** — clickable option list; each option button carries its value as tool arguments.
+- **`FileUpload`** — drag-and-drop file picker; file bytes are stored via a `FileStorageAdapter` and **never pass through the LLM**; handles tracked in session state.
+- **`FormInput`** — renders a validated form from any Standard Schema (Zod, Valibot, ArkType); submissions are validated server-side with the same schema.
