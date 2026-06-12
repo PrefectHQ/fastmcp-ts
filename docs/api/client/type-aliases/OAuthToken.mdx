@@ -1,0 +1,80 @@
+---
+title: "OAuthToken"
+---
+
+```ts
+type OAuthToken = {
+  access_token: string;
+  expires_at?: number;
+  expires_in?: number;
+  refresh_token?: string;
+  scope?: string;
+  token_type?: string;
+};
+```
+
+Defined in: [client/auth.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L19)
+
+## Properties
+
+### access\_token
+
+```ts
+access_token: string;
+```
+
+Defined in: [client/auth.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L20)
+
+***
+
+### expires\_at?
+
+```ts
+optional expires_at?: number;
+```
+
+Defined in: [client/auth.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L24)
+
+Unix timestamp in milliseconds (normalized internally).
+
+***
+
+### expires\_in?
+
+```ts
+optional expires_in?: number;
+```
+
+Defined in: [client/auth.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L26)
+
+Seconds until expiry — used to compute expires_at on receipt.
+
+***
+
+### refresh\_token?
+
+```ts
+optional refresh_token?: string;
+```
+
+Defined in: [client/auth.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L22)
+
+***
+
+### scope?
+
+```ts
+optional scope?: string;
+```
+
+Defined in: [client/auth.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L27)
+
+***
+
+### token\_type?
+
+```ts
+optional token_type?: string;
+```
+
+Defined in: [client/auth.ts:21](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L21)

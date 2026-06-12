@@ -1,0 +1,134 @@
+---
+title: "IResourcesClient"
+---
+
+Defined in: [client/interfaces.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L35)
+
+## Extended by
+
+- [`IClient`](/api/client/interfaces/IClient)
+
+## Methods
+
+### listResources()
+
+```ts
+listResources(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L36)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+***
+
+### listResourceTemplates()
+
+```ts
+listResourceTemplates(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L37)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+***
+
+### readResource()
+
+```ts
+readResource(uri, options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L38)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+***
+
+### subscribeResource()
+
+```ts
+subscribeResource(
+   uri, 
+   handler, 
+   options?): Promise<void>;
+```
+
+Defined in: [client/interfaces.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L39)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### handler
+
+[`ResourceUpdateHandler`](/api/client/type-aliases/ResourceUpdateHandler)
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### unsubscribeResource()
+
+```ts
+unsubscribeResource(uri, options?): Promise<void>;
+```
+
+Defined in: [client/interfaces.ts:40](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L40)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;

@@ -1,0 +1,26 @@
+---
+title: "Apps overview"
+sidebarTitle: "Overview"
+description: "Interactive UIs rendered directly in MCP host conversations"
+icon: "window"
+---
+
+Apps are FastMCP's third pillar: server-side UI built on the official MCP Apps extension (`io.modelcontextprotocol/ui`). A `FastMCPApp` registers tools whose results render as interactive components inside the host conversation — with full graceful degradation in clients that don't support UI.
+
+```typescript
+import { FastMCPApp, Column, Text } from '@prefecthq/fastmcp-ts/server'
+
+const app = new FastMCPApp({ name: 'search-app', version: '1.0.0' })
+
+app.entrypoint(
+  { name: 'search', description: 'Search the product catalog' },
+  () => Column({}, [Text('Product Search')])
+)
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Entrypoints vs. backend tools** — `entrypoint()` registers a tool visible to the LLM, auto-linked to a `ui://` resource; `backendTool()` registers a tool callable only from within the rendered UI (`visibility: ['app']`).
+- **Capability negotiation** — the UI extension is advertised only when UI components exist; clients that haven't negotiated it get a plain-text fallback instead of structured UI content.
+- **Visibility model** — `ToolConfig.ui.visibility` (`['model']`, `['app']`, or both) controls what the LLM sees in `tools/list`.
+- **Mounting apps** — `server.addProvider(app)` / `parent.mount(app.server)`; mount-prefix-aware action references via `actionRef`.

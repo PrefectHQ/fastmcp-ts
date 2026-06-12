@@ -1,0 +1,330 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "almond",
+  "name": "FastMCP TS",
+  "description": "The TypeScript framework for building MCP servers, clients, and apps.",
+  "colors": {
+    "primary": "#FE9655",
+    "light": "#FFB283",
+    "dark": "#E0762F"
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "dropdowns": [
+      {
+        "dropdown": "Documentation",
+        "icon": "book",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "index",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Servers",
+            "pages": [
+              "servers/tools",
+              "servers/resources",
+              "servers/prompts",
+              "servers/context",
+              "servers/running"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "servers/auth/overview",
+              "servers/auth/token-verification",
+              "servers/auth/oauth",
+              "servers/auth/authorization"
+            ]
+          },
+          {
+            "group": "Advanced Servers",
+            "pages": [
+              "servers/middleware",
+              "servers/transforms",
+              "servers/composition",
+              "servers/tasks"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              "apps/overview",
+              "apps/components",
+              "apps/providers",
+              "apps/generative-ui"
+            ]
+          },
+          {
+            "group": "Clients",
+            "pages": [
+              "clients/client",
+              "clients/transports",
+              "clients/auth",
+              "clients/sampling",
+              "clients/handlers",
+              "clients/multi-server"
+            ]
+          },
+          {
+            "group": "More",
+            "pages": [
+              "cli"
+            ]
+          }
+        ]
+      },
+      {
+        "dropdown": "SDK Reference",
+        "icon": "code",
+        "groups": [
+          {
+            "group": "Server",
+            "pages": [
+              "api/server/index",
+              {
+                "group": "Classes",
+                "pages": [
+                  "api/server/classes/Approval",
+                  "api/server/classes/AuthorizationError",
+                  "api/server/classes/CachingMiddleware",
+                  "api/server/classes/CancellationMiddleware",
+                  "api/server/classes/Choice",
+                  "api/server/classes/ErrorNormalizationMiddleware",
+                  "api/server/classes/FastMCP",
+                  "api/server/classes/FastMCPApp",
+                  "api/server/classes/File",
+                  "api/server/classes/FileUpload",
+                  "api/server/classes/FilterTransform",
+                  "api/server/classes/FormInput",
+                  "api/server/classes/GenerativeUI",
+                  "api/server/classes/Image",
+                  "api/server/classes/LoggingMiddleware",
+                  "api/server/classes/NamespaceTransform",
+                  "api/server/classes/PromptResult",
+                  "api/server/classes/PromptsAsTools",
+                  "api/server/classes/RateLimitingMiddleware",
+                  "api/server/classes/ResourceResult",
+                  "api/server/classes/ResourcesAsTools",
+                  "api/server/classes/SizeLimitingMiddleware",
+                  "api/server/classes/ToolResult",
+                  "api/server/classes/VersionFilter"
+                ]
+              },
+              {
+                "group": "Interfaces",
+                "pages": [
+                  "api/server/interfaces/AccessToken",
+                  "api/server/interfaces/BackendToolConfig",
+                  "api/server/interfaces/BrowserPermissions",
+                  "api/server/interfaces/CatalogEntry",
+                  "api/server/interfaces/Component",
+                  "api/server/interfaces/CspPolicy",
+                  "api/server/interfaces/ElicitationResult",
+                  "api/server/interfaces/ElicitationSchema",
+                  "api/server/interfaces/EntrypointConfig",
+                  "api/server/interfaces/FastMCPAppOptions",
+                  "api/server/interfaces/FastMCPOptions",
+                  "api/server/interfaces/FileHandle",
+                  "api/server/interfaces/FileStorageAdapter",
+                  "api/server/interfaces/FileUploadOptions",
+                  "api/server/interfaces/FormInputOptions",
+                  "api/server/interfaces/IfNode",
+                  "api/server/interfaces/McpContext",
+                  "api/server/interfaces/Middleware",
+                  "api/server/interfaces/MiddlewareContext",
+                  "api/server/interfaces/OAuthConfig",
+                  "api/server/interfaces/OAuthProviderOptions",
+                  "api/server/interfaces/OAuthProxyOptions",
+                  "api/server/interfaces/PromptArgument",
+                  "api/server/interfaces/PromptConfig",
+                  "api/server/interfaces/PromptMessage",
+                  "api/server/interfaces/PromptView",
+                  "api/server/interfaces/ResourceAnnotations",
+                  "api/server/interfaces/ResourceConfig",
+                  "api/server/interfaces/ResourceUiMeta",
+                  "api/server/interfaces/ResourceView",
+                  "api/server/interfaces/Root",
+                  "api/server/interfaces/RunOptions",
+                  "api/server/interfaces/SamplingMessage",
+                  "api/server/interfaces/SamplingParams",
+                  "api/server/interfaces/SamplingResult",
+                  "api/server/interfaces/ServerAddress",
+                  "api/server/interfaces/SynthesizedTool",
+                  "api/server/interfaces/TokenVerifier",
+                  "api/server/interfaces/ToolConfig",
+                  "api/server/interfaces/ToolView",
+                  "api/server/interfaces/Transform",
+                  "api/server/interfaces/UiToolMeta"
+                ]
+              },
+              {
+                "group": "Type Aliases",
+                "pages": [
+                  "api/server/type-aliases/AuthCheck",
+                  "api/server/type-aliases/CacheKeyFn",
+                  "api/server/type-aliases/LogLevel",
+                  "api/server/type-aliases/Next",
+                  "api/server/type-aliases/PromptContent",
+                  "api/server/type-aliases/ProxyTransport",
+                  "api/server/type-aliases/Visibility"
+                ]
+              },
+              {
+                "group": "Functions",
+                "pages": [
+                  "api/server/functions/actionRef",
+                  "api/server/functions/Area",
+                  "api/server/functions/Badge",
+                  "api/server/functions/Bar",
+                  "api/server/functions/Button",
+                  "api/server/functions/Column",
+                  "api/server/functions/createProxy",
+                  "api/server/functions/debugTokenVerifier",
+                  "api/server/functions/ForEach",
+                  "api/server/functions/Grid",
+                  "api/server/functions/If",
+                  "api/server/functions/Input",
+                  "api/server/functions/introspectionVerifier",
+                  "api/server/functions/jwtVerifier",
+                  "api/server/functions/Line",
+                  "api/server/functions/multiAuth",
+                  "api/server/functions/oauthProvider",
+                  "api/server/functions/oauthProxy",
+                  "api/server/functions/Pie",
+                  "api/server/functions/redescribeTool",
+                  "api/server/functions/renameTool",
+                  "api/server/functions/requireScopes",
+                  "api/server/functions/Row",
+                  "api/server/functions/Rx",
+                  "api/server/functions/Select",
+                  "api/server/functions/staticTokenVerifier",
+                  "api/server/functions/Table",
+                  "api/server/functions/Text"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Client",
+            "pages": [
+              "api/client/index",
+              {
+                "group": "Classes",
+                "pages": [
+                  "api/client/classes/AnthropicSamplingAdapter",
+                  "api/client/classes/BearerAuth",
+                  "api/client/classes/Client",
+                  "api/client/classes/ClientCredentials",
+                  "api/client/classes/FileTokenStorage",
+                  "api/client/classes/GenericSamplingAdapter",
+                  "api/client/classes/GoogleSamplingAdapter",
+                  "api/client/classes/InMemoryStore",
+                  "api/client/classes/MultiServerClient",
+                  "api/client/classes/OAuth",
+                  "api/client/classes/OpenAISamplingAdapter",
+                  "api/client/classes/StdioTransport",
+                  "api/client/classes/ToolCallError"
+                ]
+              },
+              {
+                "group": "Interfaces",
+                "pages": [
+                  "api/client/interfaces/CallToolOptions",
+                  "api/client/interfaces/ClientCredentialsOptions",
+                  "api/client/interfaces/ClientDefaultOptions",
+                  "api/client/interfaces/ClientHandlers",
+                  "api/client/interfaces/ClientOptions",
+                  "api/client/interfaces/GenericCompletionParams",
+                  "api/client/interfaces/IClient",
+                  "api/client/interfaces/IPromptsClient",
+                  "api/client/interfaces/IResourcesClient",
+                  "api/client/interfaces/IToolsClient",
+                  "api/client/interfaces/McpServerLike",
+                  "api/client/interfaces/MultiServerOptions",
+                  "api/client/interfaces/OAuthOptions",
+                  "api/client/interfaces/RequestOptions",
+                  "api/client/interfaces/SamplingAdapter",
+                  "api/client/interfaces/SamplingAdapterOptions"
+                ]
+              },
+              {
+                "group": "Type Aliases",
+                "pages": [
+                  "api/client/type-aliases/AnySamplingResult",
+                  "api/client/type-aliases/CallToolResult",
+                  "api/client/type-aliases/ClientTransportInput",
+                  "api/client/type-aliases/CompletionResult",
+                  "api/client/type-aliases/ElicitationHandler",
+                  "api/client/type-aliases/GenericCompletionFn",
+                  "api/client/type-aliases/KeyValueStore",
+                  "api/client/type-aliases/ListChangedHandler",
+                  "api/client/type-aliases/LogHandler",
+                  "api/client/type-aliases/LogMessage",
+                  "api/client/type-aliases/McpConfig",
+                  "api/client/type-aliases/McpServerEntry",
+                  "api/client/type-aliases/McpServerValue",
+                  "api/client/type-aliases/ModelSelector",
+                  "api/client/type-aliases/OAuthToken",
+                  "api/client/type-aliases/OnTokenCallback",
+                  "api/client/type-aliases/ProgressHandler",
+                  "api/client/type-aliases/ResourceUpdateHandler",
+                  "api/client/type-aliases/Result",
+                  "api/client/type-aliases/RootInput",
+                  "api/client/type-aliases/RootsValue",
+                  "api/client/type-aliases/SamplingHandler"
+                ]
+              },
+              {
+                "group": "Functions",
+                "pages": [
+                  "api/client/functions/defaultLogHandler",
+                  "api/client/functions/defaultProgressHandler",
+                  "api/client/functions/toResult"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Prefect Horizon",
+        "icon": "/images/horizon.svg",
+        "href": "https://prefect.io/horizon?utm_source=fastmcp-ts&utm_medium=docs&utm_campaign=docs_navbar&utm_content=navbar_button"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/PrefectHQ/fastmcp-ts"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/PrefectHQ/fastmcp-ts",
+      "website": "https://www.prefect.io"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "cursor",
+      "mcp"
+    ]
+  }
+}

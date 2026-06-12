@@ -1,0 +1,102 @@
+---
+title: "OAuthOptions"
+---
+
+Defined in: [client/auth.ts:114](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L114)
+
+## Properties
+
+### callbackPort?
+
+```ts
+optional callbackPort?: number;
+```
+
+Defined in: [client/auth.ts:130](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L130)
+
+Port for the local OAuth callback server. Default: 8765.
+The port must be consistent across calls because it is registered as the
+redirect_uri during Dynamic Client Registration.
+
+***
+
+### clientId?
+
+```ts
+optional clientId?: string;
+```
+
+Defined in: [client/auth.ts:116](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L116)
+
+Pre-registered client ID. When set, Dynamic Client Registration is skipped.
+
+***
+
+### clientName?
+
+```ts
+optional clientName?: string;
+```
+
+Defined in: [client/auth.ts:122](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L122)
+
+Client name used in Dynamic Client Registration. Default: "FastMCP Client".
+
+***
+
+### clientSecret?
+
+```ts
+optional clientSecret?: string;
+```
+
+Defined in: [client/auth.ts:118](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L118)
+
+Pre-registered client secret.
+
+***
+
+### onRedirect?
+
+```ts
+optional onRedirect?: (url) => void | Promise<void>;
+```
+
+Defined in: [client/auth.ts:135](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L135)
+
+Override how the authorization URL is opened. When not provided the
+system browser is launched. Inject a no-op or mock here for testing.
+
+#### Parameters
+
+##### url
+
+`URL`
+
+#### Returns
+
+`void` \| `Promise`&lt;`void`&gt;
+
+***
+
+### scopes?
+
+```ts
+optional scopes?: string | string[];
+```
+
+Defined in: [client/auth.ts:120](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L120)
+
+Requested OAuth scopes (space-separated string or array).
+
+***
+
+### store?
+
+```ts
+optional store?: KeyValueStore;
+```
+
+Defined in: [client/auth.ts:124](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/auth.ts#L124)
+
+Persistent key-value store for tokens, client info, and discovery state. Default: in-memory.

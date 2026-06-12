@@ -1,0 +1,26 @@
+---
+title: "oauthProxy"
+---
+
+```ts
+function oauthProxy(options): OAuthServerProvider;
+```
+
+Defined in: [server/auth/oauth/proxy.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/auth/oauth/proxy.ts#L33)
+
+Creates an OAuth provider that proxies to an existing upstream OAuth server using
+pre-registered credentials.
+
+MCP clients interact with this proxy using Dynamic Client Registration. The proxy
+presents a DCR-compliant interface while internally using its own fixed credentials
+(`upstreamCredentials`) when communicating with the upstream authorization server.
+
+## Parameters
+
+### options
+
+[`OAuthProxyOptions`](/api/server/interfaces/OAuthProxyOptions)
+
+## Returns
+
+`OAuthServerProvider`

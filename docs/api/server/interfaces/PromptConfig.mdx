@@ -1,0 +1,99 @@
+---
+title: "PromptConfig"
+---
+
+Defined in: [server/prompt.ts:10](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L10)
+
+## Properties
+
+### arguments?
+
+```ts
+optional arguments?: PromptArgument[];
+```
+
+Defined in: [server/prompt.ts:18](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L18)
+
+Declared arguments. Advertised to clients in prompts/list.
+
+***
+
+### auth?
+
+```ts
+optional auth?: AuthCheck;
+```
+
+Defined in: [server/prompt.ts:25](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L25)
+
+***
+
+### description?
+
+```ts
+optional description?: string;
+```
+
+Defined in: [server/prompt.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L16)
+
+Description shown to clients and LLMs. Inferred from name when omitted.
+
+***
+
+### disabled?
+
+```ts
+optional disabled?: boolean;
+```
+
+Defined in: [server/prompt.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L20)
+
+When true the prompt is hidden from list responses and cannot be invoked.
+
+***
+
+### name?
+
+```ts
+optional name?: string;
+```
+
+Defined in: [server/prompt.ts:12](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L12)
+
+Unique prompt identifier. Inferred from the handler function name when omitted.
+
+***
+
+### tags?
+
+```ts
+optional tags?: string[];
+```
+
+Defined in: [server/prompt.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L24)
+
+Arbitrary tags for server-side filtering and transforms.
+
+***
+
+### timeout?
+
+```ts
+optional timeout?: number;
+```
+
+Defined in: [server/prompt.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L22)
+
+Execution timeout in milliseconds. No timeout by default.
+
+***
+
+### title?
+
+```ts
+optional title?: string;
+```
+
+Defined in: [server/prompt.ts:14](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/prompt.ts#L14)
+
+Human-readable display name shown in UIs.

@@ -1,0 +1,55 @@
+---
+title: "AnthropicSamplingAdapter"
+---
+
+Defined in: [client/sampling/anthropic.ts:123](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/sampling/anthropic.ts#L123)
+
+Implemented by all sampling adapters.
+
+## Implements
+
+- [`SamplingAdapter`](/api/client/interfaces/SamplingAdapter)
+
+## Constructors
+
+### Constructor
+
+```ts
+new AnthropicSamplingAdapter(client, options?): AnthropicSamplingAdapter;
+```
+
+Defined in: [client/sampling/anthropic.ts:127](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/sampling/anthropic.ts#L127)
+
+#### Parameters
+
+##### client
+
+`Anthropic`
+
+##### options?
+
+[`SamplingAdapterOptions`](/api/client/interfaces/SamplingAdapterOptions) & \{
+  `defaultModel?`: `string`;
+\}
+
+#### Returns
+
+`AnthropicSamplingAdapter`
+
+## Methods
+
+### asHandler()
+
+```ts
+asHandler(): SamplingHandler;
+```
+
+Defined in: [client/sampling/anthropic.ts:135](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/sampling/anthropic.ts#L135)
+
+#### Returns
+
+[`SamplingHandler`](/api/client/type-aliases/SamplingHandler)
+
+#### Implementation of
+
+[`SamplingAdapter`](/api/client/interfaces/SamplingAdapter).[`asHandler`](/api/client/interfaces/SamplingAdapter#ashandler)

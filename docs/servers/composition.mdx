@@ -1,0 +1,25 @@
+---
+title: "Composition"
+description: "Mount child servers and proxy remote ones into a single gateway"
+icon: "diagram-project"
+---
+
+Compose servers from smaller ones: `mount()` mirrors an in-process child into a parent, and `createProxy()` wraps a remote MCP server as a mountable `FastMCP` instance.
+
+```typescript
+import { FastMCP, createProxy } from '@prefecthq/fastmcp-ts/server'
+
+const weather = new FastMCP({ name: 'weather' })
+const maps = await createProxy({ type: 'http', url: 'http://maps-service/mcp' })
+
+const gateway = new FastMCP({ name: 'gateway' })
+gateway.mount(weather, 'weather')   // → weather_forecast
+gateway.mount(maps, 'maps')         // → maps_<tool_name>
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Mounting semantics** — live mirroring (components registered on the child after `mount()` appear in the parent immediately, with `list_changed` notifications); prefixing renames tools/prompts to `${prefix}_${name}` but **never alters resource URIs**; mounting cascades through grandparent chains.
+- **Why it composes cleanly** — mounted components land in the parent's own registries, so transforms, middleware, and auth apply to them identically.
+- **Proxying** — `createProxy({ type: 'stdio' | 'http', ... })` returns a plain `FastMCP` that forwards all calls verbatim; closing the parent closes the proxied connection.
+- **Choosing between mount and proxy** — in-process vs. remote, and combining both behind one gateway.

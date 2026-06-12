@@ -1,0 +1,34 @@
+---
+title: "CacheKeyFn"
+---
+
+```ts
+type CacheKeyFn = (ctx) => string;
+```
+
+Defined in: [server/middleware.ts:123](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L123)
+
+Custom cache key function. Receives the full middleware context so callers can
+incorporate auth identity or any other dimension into the key.
+
+**Required when using per-component auth checks.** The default key is
+`"method:JSON(params)"`, which contains no auth information. If auth-filtered
+list results (tools, resources, prompts) are cached with the default key, one
+session's filtered results can be served to a session with different permissions.
+Pass a `keyFn` that includes the caller identity, e.g.:
+
+```ts
+new CachingMiddleware(60_000, (ctx) =>
+  `${ctx.method}:${ctx.mcpContext.auth?.clientId ?? ''}:${JSON.stringify(ctx.request)}`
+)
+```
+
+## Parameters
+
+### ctx
+
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
+
+## Returns
+
+`string`

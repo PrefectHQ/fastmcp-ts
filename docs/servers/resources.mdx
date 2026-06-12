@@ -1,0 +1,83 @@
+---
+title: "Resources"
+description: "Expose data to clients via static URIs and RFC 6570 URI templates"
+icon: "database"
+---
+
+Resources expose data that clients read by URI. Register one with `server.resource(config, handler)` — FastMCP auto-detects whether the URI is static or a template by checking for `{` in the URI string, so there's no separate method to learn:
+
+```typescript
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+// Static resource
+server.resource(
+  { uri: 'config://settings', description: 'App configuration' },
+  () => JSON.stringify({ theme: 'dark', lang: 'en' })
+)
+
+// URI template — extracted params are passed to the handler
+server.resource(
+  { uri: 'user://{id}', description: 'User by ID' },
+  ({ id }) => `User #${id}`
+)
+```
+
+Static resources are served via `resources/list` + `resources/read`. Templates appear in `resources/templates/list` and are matched at read time using RFC 6570 parameter extraction.
+
+## Template parameter styles
+
+Three styles are supported:
+
+| Style | Example | Matches |
+|---|---|---|
+| Simple | `user://{id}` | A single path segment |
+| Wildcard | `files://{path*}` | Multiple segments |
+| Query | `search://items{?q,lang}` | Query-string parameters |
+
+## Return values
+
+Handler output is converted to an MCP `ReadResourceResult` automatically:
+
+| Returned value | Conversion |
+|---|---|
+| `string` | Text content (`mimeType` defaults to `text/plain`) |
+| `Buffer` / `Uint8Array` | Base64 blob content (`mimeType` defaults to `application/octet-stream`) |
+| Plain object / array | JSON-serialized text content (`mimeType` forced to `application/json`) |
+| `null` / `undefined` | Empty text content |
+| `ResourceResult(contents)` | Passed through as-is |
+
+`ResourceResult` is the escape hatch for full control over the contents array.
+
+## Config fields
+
+| Field | Behavior |
+|---|---|
+| `uri` | Required. Static URI or RFC 6570 template |
+| `name`, `title`, `description` | Display metadata, forwarded in list responses |
+| `mimeType` | Overrides the inferred MIME type |
+| `size` | Size hint in bytes (static resources only — omitted from template listings, since it's unknown for parameterized URIs) |
+| `annotations` | `audience`, `priority`, `lastModified` — forwarded verbatim |
+| `timeout` | Per-read timeout in milliseconds |
+| `disabled` | Hides the resource and rejects reads |
+| `tags` | Used by [transforms](/servers/transforms) |
+| `auth` | Per-resource authorization check |
+
+## Subscriptions
+
+Clients can subscribe to a resource and be notified when it changes. On the client side:
+
+```typescript
+await client.subscribeResource('config://settings', (uri) => {
+  console.log(`${uri} changed — re-read it`)
+})
+
+await client.unsubscribeResource('config://settings')
+```
+
+The handler fires whenever the server sends `notifications/resources/updated` for that URI.
+
+## Dynamic registration
+
+Like tools, resources can be registered before or after `run()` — adding one to a running server sends `notifications/resources/list_changed` automatically.

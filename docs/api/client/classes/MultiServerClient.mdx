@@ -1,0 +1,550 @@
+---
+title: "MultiServerClient"
+---
+
+Defined in: [client/multi-server.ts:48](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L48)
+
+## Implements
+
+- [`IClient`](/api/client/interfaces/IClient)
+
+## Constructors
+
+### Constructor
+
+```ts
+new MultiServerClient(config, options?): MultiServerClient;
+```
+
+Defined in: [client/multi-server.ts:67](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L67)
+
+#### Parameters
+
+##### config
+
+[`McpConfig`](/api/client/type-aliases/McpConfig)
+
+##### options?
+
+[`MultiServerOptions`](/api/client/interfaces/MultiServerOptions)
+
+#### Returns
+
+`MultiServerClient`
+
+## Methods
+
+### \[asyncDispose\]()
+
+```ts
+asyncDispose: Promise<void>;
+```
+
+Defined in: [client/multi-server.ts:137](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L137)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`[asyncDispose]`](/api/client/interfaces/IClient#asyncdispose)
+
+***
+
+### callTool()
+
+```ts
+callTool<TData>(
+   name, 
+   args?, 
+   options?): Promise<CallToolResult<TData>>;
+```
+
+Defined in: [client/multi-server.ts:186](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L186)
+
+#### Type Parameters
+
+##### TData
+
+`TData` = `unknown`
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+##### options?
+
+[`CallToolOptions`](/api/client/interfaces/CallToolOptions)
+
+#### Returns
+
+`Promise`&lt;[`CallToolResult`](/api/client/type-aliases/CallToolResult)&lt;`TData`&gt;&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`callTool`](/api/client/interfaces/IClient#calltool)
+
+***
+
+### callToolRaw()
+
+```ts
+callToolRaw<TData>(
+   name, 
+   args?, 
+   options?): Promise<CallToolResult<TData>>;
+```
+
+Defined in: [client/multi-server.ts:203](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L203)
+
+#### Type Parameters
+
+##### TData
+
+`TData` = `unknown`
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+##### options?
+
+[`CallToolOptions`](/api/client/interfaces/CallToolOptions)
+
+#### Returns
+
+`Promise`&lt;[`CallToolResult`](/api/client/type-aliases/CallToolResult)&lt;`TData`&gt;&gt;
+
+***
+
+### close()
+
+```ts
+close(): Promise<void>;
+```
+
+Defined in: [client/multi-server.ts:129](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L129)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`close`](/api/client/interfaces/IClient#close)
+
+***
+
+### complete()
+
+```ts
+complete(
+   ref, 
+   argument, 
+   context?, 
+   options?): Promise<CompletionResult>;
+```
+
+Defined in: [client/multi-server.ts:396](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L396)
+
+#### Parameters
+
+##### ref
+
+  \| \{
+  `name`: `string`;
+  `type`: `"ref/prompt"`;
+\}
+  \| \{
+  `type`: `"ref/resource"`;
+  `uri`: `string`;
+\}
+
+##### argument
+
+###### name
+
+`string`
+
+###### value
+
+`string`
+
+##### context?
+
+###### arguments?
+
+`Record`&lt;`string`, `string`&gt;
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;[`CompletionResult`](/api/client/type-aliases/CompletionResult)&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`complete`](/api/client/interfaces/IClient#complete)
+
+***
+
+### connect()
+
+```ts
+connect(): Promise<void>;
+```
+
+Defined in: [client/multi-server.ts:83](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L83)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`connect`](/api/client/interfaces/IClient#connect)
+
+***
+
+### getPrompt()
+
+```ts
+getPrompt(
+   name, 
+   args?, 
+   options?): Promise<{
+[key: string]: unknown;
+}>;
+```
+
+Defined in: [client/multi-server.ts:323](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L323)
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `string`&gt;
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\[`key`: `string`\]: `unknown`;
+\}&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`getPrompt`](/api/client/interfaces/IClient#getprompt)
+
+***
+
+### isConnected()
+
+```ts
+isConnected(): boolean;
+```
+
+Defined in: [client/multi-server.ts:141](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L141)
+
+#### Returns
+
+`boolean`
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`isConnected`](/api/client/interfaces/IClient#isconnected)
+
+***
+
+### listPrompts()
+
+```ts
+listPrompts(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/multi-server.ts:309](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L309)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`listPrompts`](/api/client/interfaces/IClient#listprompts)
+
+***
+
+### listResources()
+
+```ts
+listResources(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/multi-server.ts:231](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L231)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`listResources`](/api/client/interfaces/IClient#listresources)
+
+***
+
+### listResourceTemplates()
+
+```ts
+listResourceTemplates(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/multi-server.ts:252](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L252)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`listResourceTemplates`](/api/client/interfaces/IClient#listresourcetemplates)
+
+***
+
+### listTools()
+
+```ts
+listTools(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/multi-server.ts:172](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L172)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`listTools`](/api/client/interfaces/IClient#listtools)
+
+***
+
+### ping()
+
+```ts
+ping(options?): Promise<boolean>;
+```
+
+Defined in: [client/multi-server.ts:158](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L158)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`boolean`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`ping`](/api/client/interfaces/IClient#ping)
+
+***
+
+### readResource()
+
+```ts
+readResource(uri, options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/multi-server.ts:273](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L273)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`readResource`](/api/client/interfaces/IClient#readresource)
+
+***
+
+### setLogLevel()
+
+```ts
+setLogLevel(level, options?): Promise<void>;
+```
+
+Defined in: [client/multi-server.ts:443](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L443)
+
+#### Parameters
+
+##### level
+
+`LoggingLevel`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`setLogLevel`](/api/client/interfaces/IClient#setloglevel)
+
+***
+
+### subscribeResource()
+
+```ts
+subscribeResource(
+   uri, 
+   handler, 
+   options?): Promise<void>;
+```
+
+Defined in: [client/multi-server.ts:341](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L341)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### handler
+
+[`ResourceUpdateHandler`](/api/client/type-aliases/ResourceUpdateHandler)
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`subscribeResource`](/api/client/interfaces/IClient#subscriberesource)
+
+***
+
+### unsubscribeResource()
+
+```ts
+unsubscribeResource(uri, options?): Promise<void>;
+```
+
+Defined in: [client/multi-server.ts:371](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L371)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+[`IClient`](/api/client/interfaces/IClient).[`unsubscribeResource`](/api/client/interfaces/IClient#unsubscriberesource)
+
+***
+
+### connect()
+
+```ts
+static connect(config, options?): Promise<MultiServerClient>;
+```
+
+Defined in: [client/multi-server.ts:145](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/multi-server.ts#L145)
+
+#### Parameters
+
+##### config
+
+[`McpConfig`](/api/client/type-aliases/McpConfig)
+
+##### options?
+
+[`MultiServerOptions`](/api/client/interfaces/MultiServerOptions)
+
+#### Returns
+
+`Promise`&lt;`MultiServerClient`&gt;

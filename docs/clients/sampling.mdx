@@ -1,0 +1,25 @@
+---
+title: "Sampling adapters"
+description: "Forward server sampling requests to Anthropic, OpenAI, or Google"
+icon: "sparkles"
+---
+
+When a server calls `ctx.sample()`, the request lands on your client. Sampling adapters answer it with a real LLM in one line:
+
+```typescript
+import { Client, AnthropicSamplingAdapter } from '@prefecthq/fastmcp-ts/client'
+import Anthropic from '@anthropic-ai/sdk'
+
+const client = await Client.connect('http://localhost:3000', {
+  handlers: {
+    sampling: (params) => new AnthropicSamplingAdapter(new Anthropic()).handleSampling(params),
+  },
+})
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **The adapters** — `AnthropicSamplingAdapter`, `OpenAISamplingAdapter`, `GoogleSamplingAdapter`, and `GenericSamplingAdapter` for any custom completion function. Each translates MCP sampling params to its provider's API, including tool-use round-trips.
+- **Peer dependencies** — provider SDKs are optional peers ([install only what you use](/installation#optional-peer-dependencies)).
+- **Options** — `modelSelector` (static model name or a function of the server's model preferences) and `onToken` streaming callbacks.
+- **Capability advertisement** — providing `handlers.sampling` makes the client advertise the `sampling` capability automatically.

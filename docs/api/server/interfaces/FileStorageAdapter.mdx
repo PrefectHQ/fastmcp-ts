@@ -1,0 +1,69 @@
+---
+title: "FileStorageAdapter"
+---
+
+Defined in: [server/apps/providers/FileUpload.ts:15](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/providers/FileUpload.ts#L15)
+
+## Methods
+
+### delete()
+
+```ts
+delete(handle): void;
+```
+
+Defined in: [server/apps/providers/FileUpload.ts:18](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/providers/FileUpload.ts#L18)
+
+#### Parameters
+
+##### handle
+
+`string`
+
+#### Returns
+
+`void`
+
+***
+
+### load()
+
+```ts
+load(handle): FileHandle | undefined;
+```
+
+Defined in: [server/apps/providers/FileUpload.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/providers/FileUpload.ts#L17)
+
+#### Parameters
+
+##### handle
+
+`string`
+
+#### Returns
+
+[`FileHandle`](/api/server/interfaces/FileHandle) \| `undefined`
+
+***
+
+### save()
+
+```ts
+save(handle, file): void;
+```
+
+Defined in: [server/apps/providers/FileUpload.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/providers/FileUpload.ts#L16)
+
+#### Parameters
+
+##### handle
+
+`string`
+
+##### file
+
+[`FileHandle`](/api/server/interfaces/FileHandle)
+
+#### Returns
+
+`void`

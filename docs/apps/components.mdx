@@ -1,0 +1,26 @@
+---
+title: "Components"
+description: "The server-side component library for building app UIs"
+icon: "puzzle-piece"
+---
+
+App UIs are pure JSON-serializable component trees built from plain-function builders — no JSX, no client bundle:
+
+```typescript
+import { Column, Row, Text, Input, Button } from '@prefecthq/fastmcp-ts/server'
+
+Column({}, [
+  Text('Product Search'),
+  Row({}, [
+    Input({ name: 'query', placeholder: 'Search products…' }),
+    Button({ label: 'Search', actionRef: 'run_search' }),
+  ]),
+])
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Builder catalog** — layout (`Column`, `Row`, `Grid`), display (`Text`, `Badge`, `Table`, charts: `Bar`, `Line`, `Area`, `Pie`), input (`Input`, `Select`, `Button`), and control flow (`If`/`.elif()`/`.else()`, `ForEach`, `Rx`).
+- **Actions** — `Button({ actionRef })` invokes backend tools; `actionRef()` resolves mount-prefixed names at execution time so apps work when mounted under a prefix.
+- **Component model** — every builder returns `{ type, props?, children? }`; trees are plain data, easy to test and snapshot.
+- **Conditional rendering** — the `If` chaining API and how branches serialize.

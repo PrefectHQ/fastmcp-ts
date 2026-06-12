@@ -1,0 +1,107 @@
+---
+title: "ErrorNormalizationMiddleware"
+---
+
+Defined in: [server/middleware.ts:203](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L203)
+
+Normalises errors thrown by handlers to proper MCP shapes:
+- tools/call plain errors → \{ isError: true, content: [...] \}  (per MCP spec)
+- tools/call McpError     → re-thrown as a protocol-level error
+- all other methods       → McpError(InternalError, message)
+
+Re-throwing McpError from onCallTool ensures that middleware-level errors
+(e.g. from RateLimitingMiddleware or SizeLimitingMiddleware stacked before
+this middleware) always propagate as protocol errors and are never silently
+converted to isError:true tool responses.
+
+## Implements
+
+- [`Middleware`](/api/server/interfaces/Middleware)
+
+## Constructors
+
+### Constructor
+
+```ts
+new ErrorNormalizationMiddleware(): ErrorNormalizationMiddleware;
+```
+
+#### Returns
+
+`ErrorNormalizationMiddleware`
+
+## Methods
+
+### onCallTool()
+
+```ts
+onCallTool<T, R>(ctx, next): Promise<R>;
+```
+
+Defined in: [server/middleware.ts:204](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L204)
+
+#### Type Parameters
+
+##### T
+
+`T`
+
+##### R
+
+`R`
+
+#### Parameters
+
+##### ctx
+
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+
+##### next
+
+[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+
+#### Returns
+
+`Promise`&lt;`R`&gt;
+
+#### Implementation of
+
+[`Middleware`](/api/server/interfaces/Middleware).[`onCallTool`](/api/server/interfaces/Middleware#oncalltool)
+
+***
+
+### onRequest()
+
+```ts
+onRequest<T, R>(ctx, next): Promise<R>;
+```
+
+Defined in: [server/middleware.ts:216](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L216)
+
+#### Type Parameters
+
+##### T
+
+`T`
+
+##### R
+
+`R`
+
+#### Parameters
+
+##### ctx
+
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+
+##### next
+
+[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+
+#### Returns
+
+`Promise`&lt;`R`&gt;
+
+#### Implementation of
+
+[`Middleware`](/api/server/interfaces/Middleware).[`onRequest`](/api/server/interfaces/Middleware#onrequest)

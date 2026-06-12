@@ -1,0 +1,66 @@
+---
+title: "IPromptsClient"
+---
+
+Defined in: [client/interfaces.ts:43](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L43)
+
+## Extended by
+
+- [`IClient`](/api/client/interfaces/IClient)
+
+## Methods
+
+### getPrompt()
+
+```ts
+getPrompt(
+   name, 
+   args?, 
+   options?): Promise<{
+[key: string]: unknown;
+}>;
+```
+
+Defined in: [client/interfaces.ts:45](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L45)
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args?
+
+`Record`&lt;`string`, `string`&gt;
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\[`key`: `string`\]: `unknown`;
+\}&gt;
+
+***
+
+### listPrompts()
+
+```ts
+listPrompts(options?): Promise<{
+}[]>;
+```
+
+Defined in: [client/interfaces.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L44)
+
+#### Parameters
+
+##### options?
+
+[`RequestOptions`](/api/client/interfaces/RequestOptions)
+
+#### Returns
+
+`Promise`&lt;\{
+\}[]&gt;

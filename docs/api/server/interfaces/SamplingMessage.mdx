@@ -1,0 +1,34 @@
+---
+title: "SamplingMessage"
+---
+
+Defined in: [server/context.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L19)
+
+## Properties
+
+### content
+
+```ts
+content: 
+  | {
+  text: string;
+  type: "text";
+}
+  | {
+  data: string;
+  mimeType: string;
+  type: "image";
+};
+```
+
+Defined in: [server/context.ts:21](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L21)
+
+***
+
+### role
+
+```ts
+role: "user" | "assistant";
+```
+
+Defined in: [server/context.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L20)

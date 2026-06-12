@@ -1,0 +1,88 @@
+/* Prefect Horizon navbar button — targeted by href so it survives Mintlify
+   markup changes. The brand gradient (dark #06000E compressed at the top)
+   paints the pill outline and the icon; the label stays regular docs text.
+   On hover the gradient drifts vertically, horizon-from-a-launching-rocket
+   style. */
+
+:root {
+  /* Palindromic version of the brand gradient: the top half (0–50%) is the
+     gradient itself, the bottom half mirrors it back. With a 200%-tall
+     background the resting window shows exactly the brand gradient, and
+     animating background-position slides through the mirror with no seam. */
+  --horizon-gradient-tall: linear-gradient(
+    to bottom,
+    #06000e 0%,
+    #2084ab 5%,
+    #47b6e3 12%,
+    #8adeff 19%,
+    #facd96 27%,
+    #feb255 34%,
+    #fe9655 41%,
+    #ff4bbd 50%,
+    #fe9655 59%,
+    #feb255 66%,
+    #facd96 73%,
+    #8adeff 81%,
+    #47b6e3 88%,
+    #2084ab 95%,
+    #06000e 100%
+  );
+}
+
+/* Mintlify wraps each navbar link in an <li class="navbar-link"> with its own
+   border, background, and padding — that's the stray second outline. */
+li.navbar-link:has(> a[href^="https://prefect.io/horizon"]) {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin-right: 0.5rem;
+}
+
+a[href^="https://prefect.io/horizon"] {
+  position: relative;
+  padding: 0.375rem 0.875rem;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+
+/* Gradient ring: pseudo-element painted with the gradient, masked down to a
+   1.5px border via mask-composite. */
+a[href^="https://prefect.io/horizon"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  padding: 1.5px;
+  background-image: var(--horizon-gradient-tall);
+  background-size: 100% 200%;
+  background-position: 0% 0%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  transition: background-position 1.4s ease;
+}
+
+/* The icon img has white fills, so use the SVG as a mask and let the gradient
+   show through; object-position shoves the actual bitmap out of view. */
+a[href^="https://prefect.io/horizon"] img {
+  object-position: -9999px 0;
+  background-image: var(--horizon-gradient-tall) !important;
+  background-size: 100% 200%;
+  background-position: 0% 0%;
+  -webkit-mask: url("/images/horizon.svg") no-repeat center / contain;
+  mask: url("/images/horizon.svg") no-repeat center / contain;
+  transition: background-position 1.4s ease;
+}
+
+/* Launch: glide through one full palindrome cycle — with a repeating 200%-tall
+   background, sliding to 200% lands back on the original view. Because this is
+   a transition rather than an animation, mousing out eases back smoothly from
+   wherever the gradient currently is (the 1.4s base transition above handles
+   the descent). */
+a[href^="https://prefect.io/horizon"]:hover::before,
+a[href^="https://prefect.io/horizon"]:hover img {
+  background-position: 0% 200%;
+  transition: background-position 5.5s ease-in-out;
+}

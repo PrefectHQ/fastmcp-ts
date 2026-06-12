@@ -1,0 +1,73 @@
+---
+title: "RateLimitingMiddleware"
+---
+
+Defined in: [server/middleware.ts:149](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L149)
+
+Fixed-window counter rate limiter. Resets to full capacity after every windowMs interval.
+
+## Implements
+
+- [`Middleware`](/api/server/interfaces/Middleware)
+
+## Constructors
+
+### Constructor
+
+```ts
+new RateLimitingMiddleware(limit, windowMs?): RateLimitingMiddleware;
+```
+
+Defined in: [server/middleware.ts:153](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L153)
+
+#### Parameters
+
+##### limit
+
+`number`
+
+##### windowMs?
+
+`number` = `60_000`
+
+#### Returns
+
+`RateLimitingMiddleware`
+
+## Methods
+
+### onRequest()
+
+```ts
+onRequest<T, R>(ctx, next): Promise<R>;
+```
+
+Defined in: [server/middleware.ts:161](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L161)
+
+#### Type Parameters
+
+##### T
+
+`T`
+
+##### R
+
+`R`
+
+#### Parameters
+
+##### ctx
+
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+
+##### next
+
+[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+
+#### Returns
+
+`Promise`&lt;`R`&gt;
+
+#### Implementation of
+
+[`Middleware`](/api/server/interfaces/Middleware).[`onRequest`](/api/server/interfaces/Middleware#onrequest)

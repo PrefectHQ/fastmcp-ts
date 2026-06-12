@@ -1,0 +1,28 @@
+---
+title: "Multi-server"
+description: "One client, many servers, automatic namespacing"
+icon: "layer-group"
+---
+
+Pass an `mcpServers` config with multiple entries and `Client.connect()` returns a `MultiServerClient` — every server's tools, resources, and prompts behind one interface, namespaced by server name:
+
+```typescript
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect({
+  mcpServers: {
+    weather: { url: 'http://localhost:3001' },
+    maps:    { command: 'npx', args: ['maps-mcp'] },
+  },
+})
+
+// tool names become weather_forecast, maps_geocode, …
+const forecast = await client.callTool('weather_forecast', { city: 'New York' })
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Namespacing rules** — tools and prompts become `${serverName}_${name}`; resource display names are prefixed but **URIs are never altered**.
+- **Routing** — namespaced calls dispatch to exactly one server; resource reads route by a URI-to-server map built from listings, with a fallback scan.
+- **Per-server auth and shared handlers** — each entry accepts its own `auth`; `log`/`sampling`/`elicitation` handlers are registered on every sub-client.
+- **Connect semantics** — parallel connect and close; if any server fails to connect, successful connections are torn down and the error is re-thrown (no partial state).

@@ -1,0 +1,23 @@
+---
+title: "Client authentication"
+sidebarTitle: "Authentication"
+description: "Bearer tokens, OAuth, and client credentials"
+icon: "key"
+---
+
+Clients authenticate to protected servers with one of three strategies, passed via the `auth` option:
+
+```typescript
+import { Client, BearerAuth } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('https://mcp.example.com', {
+  auth: new BearerAuth(process.env.MCP_TOKEN!),
+})
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **`BearerAuth`** — injects a static `Authorization: Bearer <token>` header into every request.
+- **`OAuth`** — wraps the transport's fetch to attach the current token, refreshing automatically when near expiry; concurrent refreshes are coalesced into a single request.
+- **`ClientCredentials`** — machine-to-machine token acquisition via the client credentials grant.
+- **Token storage** — `InMemoryStore` and `FileTokenStorage` for persisting tokens across runs; per-server auth in [multi-server configs](/clients/multi-server).

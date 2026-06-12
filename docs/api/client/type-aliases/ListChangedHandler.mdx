@@ -1,0 +1,70 @@
+---
+title: "ListChangedHandler"
+---
+
+```ts
+type ListChangedHandler<T> = {
+  autoRefresh?: boolean;
+  debounceMs?: number;
+  onChanged: (error, items) => void | Promise<void>;
+};
+```
+
+Defined in: [client/handlers.ts:40](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/handlers.ts#L40)
+
+Config for receiving server-initiated list-change notifications.
+Set debounceMs: 0 in tests for instant delivery.
+
+## Type Parameters
+
+### T
+
+`T`
+
+## Properties
+
+### autoRefresh?
+
+```ts
+optional autoRefresh?: boolean;
+```
+
+Defined in: [client/handlers.ts:43](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/handlers.ts#L43)
+
+Whether to auto-fetch the updated list before calling onChanged. Default: true.
+
+***
+
+### debounceMs?
+
+```ts
+optional debounceMs?: number;
+```
+
+Defined in: [client/handlers.ts:45](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/handlers.ts#L45)
+
+Debounce window in ms. Default: 300. Set to 0 to disable.
+
+***
+
+### onChanged
+
+```ts
+onChanged: (error, items) => void | Promise<void>;
+```
+
+Defined in: [client/handlers.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/handlers.ts#L41)
+
+#### Parameters
+
+##### error
+
+`Error` \| `null`
+
+##### items
+
+`T`[] \| `null`
+
+#### Returns
+
+`void` \| `Promise`&lt;`void`&gt;

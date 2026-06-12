@@ -1,0 +1,27 @@
+---
+title: "Result"
+---
+
+```ts
+type Result<T, E> = 
+  | {
+  ok: true;
+  value: T;
+}
+  | {
+  error: E;
+  ok: false;
+};
+```
+
+Defined in: [client/utils.ts:1](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/utils.ts#L1)
+
+## Type Parameters
+
+### T
+
+`T`
+
+### E
+
+`E` = `Error`

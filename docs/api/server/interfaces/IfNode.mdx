@@ -1,0 +1,130 @@
+---
+title: "IfNode"
+---
+
+Defined in: [server/apps/components.ts:13](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/components.ts#L13)
+
+## Extends
+
+- [`Component`](/api/server/interfaces/Component)
+
+## Properties
+
+### branches
+
+```ts
+branches: {
+  condition: string;
+  node: Component;
+}[];
+```
+
+Defined in: [server/apps/components.ts:15](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/components.ts#L15)
+
+#### condition
+
+```ts
+condition: string;
+```
+
+#### node
+
+```ts
+node: Component;
+```
+
+***
+
+### children?
+
+```ts
+optional children?: Component[];
+```
+
+Defined in: [server/apps/components.ts:8](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/components.ts#L8)
+
+#### Inherited from
+
+[`Component`](/api/server/interfaces/Component).[`children`](/api/server/interfaces/Component#children)
+
+***
+
+### fallback?
+
+```ts
+optional fallback?: Component;
+```
+
+Defined in: [server/apps/components.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/components.ts#L16)
+
+***
+
+### props?
+
+```ts
+optional props?: Record<string, unknown>;
+```
+
+Defined in: [server/apps/components.ts:7](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/components.ts#L7)
+
+#### Inherited from
+
+[`Component`](/api/server/interfaces/Component).[`props`](/api/server/interfaces/Component#props)
+
+***
+
+### type
+
+```ts
+type: "if";
+```
+
+Defined in: [server/apps/components.ts:14](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/components.ts#L14)
+
+#### Overrides
+
+[`Component`](/api/server/interfaces/Component).[`type`](/api/server/interfaces/Component#type)
+
+## Methods
+
+### elif()
+
+```ts
+elif(condition, node): IfNode;
+```
+
+Defined in: [server/apps/components.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/components.ts#L17)
+
+#### Parameters
+
+##### condition
+
+`string`
+
+##### node
+
+[`Component`](/api/server/interfaces/Component)
+
+#### Returns
+
+`IfNode`
+
+***
+
+### else()
+
+```ts
+else(node): Component;
+```
+
+Defined in: [server/apps/components.ts:18](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/components.ts#L18)
+
+#### Parameters
+
+##### node
+
+[`Component`](/api/server/interfaces/Component)
+
+#### Returns
+
+[`Component`](/api/server/interfaces/Component)

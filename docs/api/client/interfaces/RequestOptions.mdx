@@ -1,0 +1,33 @@
+---
+title: "RequestOptions"
+---
+
+Defined in: [client/interfaces.ts:14](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L14)
+
+## Extended by
+
+- [`CallToolOptions`](/api/client/interfaces/CallToolOptions)
+
+## Properties
+
+### signal?
+
+```ts
+optional signal?: AbortSignal;
+```
+
+Defined in: [client/interfaces.ts:18](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L18)
+
+AbortSignal for caller-controlled cancellation.
+
+***
+
+### timeout?
+
+```ts
+optional timeout?: number;
+```
+
+Defined in: [client/interfaces.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/interfaces.ts#L16)
+
+Per-request timeout in seconds. Overrides client-level defaultOptions.

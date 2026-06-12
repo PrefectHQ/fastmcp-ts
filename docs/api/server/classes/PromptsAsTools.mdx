@@ -1,0 +1,54 @@
+---
+title: "PromptsAsTools"
+---
+
+Defined in: [server/transform.ts:170](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/transform.ts#L170)
+
+Expose registered prompts as a `list_prompts` tool.
+
+## Implements
+
+- [`Transform`](/api/server/interfaces/Transform)
+
+## Constructors
+
+### Constructor
+
+```ts
+new PromptsAsTools(): PromptsAsTools;
+```
+
+#### Returns
+
+`PromptsAsTools`
+
+## Methods
+
+### synthesizeTools()
+
+```ts
+synthesizeTools(_resources, prompts): SynthesizedTool[];
+```
+
+Defined in: [server/transform.ts:171](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/transform.ts#L171)
+
+Synthesize additional tools derived from the current resource and prompt lists.
+Called at request time so the snapshot is always fresh.
+
+#### Parameters
+
+##### \_resources
+
+[`ResourceView`](/api/server/interfaces/ResourceView)[]
+
+##### prompts
+
+[`PromptView`](/api/server/interfaces/PromptView)[]
+
+#### Returns
+
+[`SynthesizedTool`](/api/server/interfaces/SynthesizedTool)[]
+
+#### Implementation of
+
+[`Transform`](/api/server/interfaces/Transform).[`synthesizeTools`](/api/server/interfaces/Transform#synthesizetools)

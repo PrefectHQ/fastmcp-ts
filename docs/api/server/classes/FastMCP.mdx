@@ -1,0 +1,532 @@
+---
+title: "FastMCP"
+---
+
+Defined in: [server/FastMCP.ts:209](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L209)
+
+## Constructors
+
+### Constructor
+
+```ts
+new FastMCP(options): FastMCP;
+```
+
+Defined in: [server/FastMCP.ts:237](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L237)
+
+#### Parameters
+
+##### options
+
+[`FastMCPOptions`](/api/server/interfaces/FastMCPOptions)
+
+#### Returns
+
+`FastMCP`
+
+## Properties
+
+### name
+
+```ts
+readonly name: string;
+```
+
+Defined in: [server/FastMCP.ts:210](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L210)
+
+***
+
+### version
+
+```ts
+readonly version: string;
+```
+
+Defined in: [server/FastMCP.ts:211](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L211)
+
+## Accessors
+
+### address
+
+#### Get Signature
+
+```ts
+get address(): ServerAddress | null;
+```
+
+Defined in: [server/FastMCP.ts:1262](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1262)
+
+The bound address after run() resolves for the http transport. Null for stdio or before run().
+
+##### Returns
+
+[`ServerAddress`](/api/server/interfaces/ServerAddress) \| `null`
+
+## Methods
+
+### \_addCloseCallback()
+
+```ts
+_addCloseCallback(cb): void;
+```
+
+Defined in: [server/FastMCP.ts:1095](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1095)
+
+Register a callback invoked when this server is closed — used by proxy connections.
+
+#### Parameters
+
+##### cb
+
+() => `Promise`&lt;`void`&gt;
+
+#### Returns
+
+`void`
+
+***
+
+### \_dispatchPrompt()
+
+```ts
+_dispatchPrompt(
+   name, 
+   args, 
+   ctx): Promise<{
+  description?: string;
+  messages: PromptMessage[];
+}>;
+```
+
+Defined in: [server/FastMCP.ts:979](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L979)
+
+Dispatch a prompt render through this server's middleware chain using an inherited context.
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### args
+
+`Record`&lt;`string`, `string`&gt;
+
+##### ctx
+
+[`McpContext`](/api/server/interfaces/McpContext)
+
+#### Returns
+
+`Promise`&lt;\{
+  `description?`: `string`;
+  `messages`: [`PromptMessage`](/api/server/interfaces/PromptMessage)[];
+\}&gt;
+
+***
+
+### \_dispatchResource()
+
+```ts
+_dispatchResource(
+   uri, 
+   params, 
+   ctx): Promise<unknown>;
+```
+
+Defined in: [server/FastMCP.ts:941](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L941)
+
+Run a resource read through this server's middleware chain using an inherited context.
+Returns the raw handler result so the parent can apply convertResourceResult with the
+actual requested URI (important for template resources).
+
+#### Parameters
+
+##### uri
+
+`string`
+
+##### params
+
+`Record`&lt;`string`, `string`&gt; \| `undefined`
+
+##### ctx
+
+[`McpContext`](/api/server/interfaces/McpContext)
+
+#### Returns
+
+`Promise`&lt;`unknown`&gt;
+
+***
+
+### \_dispatchTool()
+
+```ts
+_dispatchTool(
+   name, 
+   rawArgs, 
+   ctx): Promise<{
+[key: string]: unknown;
+}>;
+```
+
+Defined in: [server/FastMCP.ts:889](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L889)
+
+Dispatch a tool call through this server's middleware chain using an inherited context.
+Used by parent servers to honour child-level middleware when routing mounted tool calls.
+
+#### Parameters
+
+##### name
+
+`string`
+
+##### rawArgs
+
+`unknown`
+
+##### ctx
+
+[`McpContext`](/api/server/interfaces/McpContext)
+
+#### Returns
+
+`Promise`&lt;\{
+\[`key`: `string`\]: `unknown`;
+\}&gt;
+
+***
+
+### \_removePrompt()
+
+```ts
+_removePrompt(name): boolean;
+```
+
+Defined in: [server/FastMCP.ts:872](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L872)
+
+#### Parameters
+
+##### name
+
+`string`
+
+#### Returns
+
+`boolean`
+
+***
+
+### \_removeResource()
+
+```ts
+_removeResource(uri): boolean;
+```
+
+Defined in: [server/FastMCP.ts:858](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L858)
+
+#### Parameters
+
+##### uri
+
+`string`
+
+#### Returns
+
+`boolean`
+
+***
+
+### \_removeTool()
+
+```ts
+_removeTool(name): boolean;
+```
+
+Defined in: [server/FastMCP.ts:851](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L851)
+
+#### Parameters
+
+##### name
+
+`string`
+
+#### Returns
+
+`boolean`
+
+***
+
+### addProvider()
+
+```ts
+addProvider(provider): this;
+```
+
+Defined in: [server/FastMCP.ts:1104](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1104)
+
+Register a provider (FastMCPApp or FastMCP) on this server.
+All tools, resources, and prompts from the provider are mounted without a prefix.
+For FastMCPApp, pass provider.server; for FastMCP, pass directly.
+
+#### Parameters
+
+##### provider
+
+  \| `FastMCP`
+  \| \{
+  `server`: `FastMCP`;
+\}
+
+#### Returns
+
+`this`
+
+***
+
+### close()
+
+```ts
+close(): Promise<void>;
+```
+
+Defined in: [server/FastMCP.ts:1478](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1478)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### connect()
+
+```ts
+connect(transport): Promise<void>;
+```
+
+Defined in: [server/FastMCP.ts:1266](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1266)
+
+#### Parameters
+
+##### transport
+
+`Transport`
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### getContext()
+
+```ts
+getContext(): McpContext;
+```
+
+Defined in: [server/FastMCP.ts:1255](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1255)
+
+#### Returns
+
+[`McpContext`](/api/server/interfaces/McpContext)
+
+***
+
+### mount()
+
+```ts
+mount(child, prefix?): this;
+```
+
+Defined in: [server/FastMCP.ts:1071](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1071)
+
+Mount a child server onto this server. All tools, resources, and prompts from the child become accessible via this server. Pass a prefix to namespace names and prevent collisions.
+
+#### Parameters
+
+##### child
+
+`FastMCP`
+
+##### prefix?
+
+`string`
+
+#### Returns
+
+`this`
+
+***
+
+### prompt()
+
+```ts
+prompt(config, handler): void;
+```
+
+Defined in: [server/FastMCP.ts:829](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L829)
+
+#### Parameters
+
+##### config
+
+[`PromptConfig`](/api/server/interfaces/PromptConfig)
+
+##### handler
+
+(`args?`) => `unknown`
+
+#### Returns
+
+`void`
+
+***
+
+### resource()
+
+```ts
+resource(config, handler): void;
+```
+
+Defined in: [server/FastMCP.ts:840](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L840)
+
+#### Parameters
+
+##### config
+
+[`ResourceConfig`](/api/server/interfaces/ResourceConfig)
+
+##### handler
+
+(`params?`) => `unknown`
+
+#### Returns
+
+`void`
+
+***
+
+### run()
+
+```ts
+run(options?): Promise<void>;
+```
+
+Defined in: [server/FastMCP.ts:1272](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1272)
+
+#### Parameters
+
+##### options?
+
+[`RunOptions`](/api/server/interfaces/RunOptions)
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
+### tool()
+
+#### Call Signature
+
+```ts
+tool<S>(config, handler): void;
+```
+
+Defined in: [server/FastMCP.ts:814](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L814)
+
+##### Type Parameters
+
+###### S
+
+`S` *extends* `StandardSchemaV1`&lt;`unknown`, `unknown`&gt;
+
+##### Parameters
+
+###### config
+
+`Omit`&lt;[`ToolConfig`](/api/server/interfaces/ToolConfig), `"input"`&gt; & \{
+  `input`: `S`;
+\}
+
+###### handler
+
+(`args`) => `unknown`
+
+##### Returns
+
+`void`
+
+#### Call Signature
+
+```ts
+tool(config, handler): void;
+```
+
+Defined in: [server/FastMCP.ts:819](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L819)
+
+##### Parameters
+
+###### config
+
+[`ToolConfig`](/api/server/interfaces/ToolConfig)
+
+###### handler
+
+(`args`) => `unknown`
+
+##### Returns
+
+`void`
+
+***
+
+### transform()
+
+```ts
+transform(t): this;
+```
+
+Defined in: [server/FastMCP.ts:880](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L880)
+
+Add a transform to the pipeline. Applied to list responses in registration order.
+
+#### Parameters
+
+##### t
+
+[`Transform`](/api/server/interfaces/Transform)
+
+#### Returns
+
+`this`
+
+***
+
+### use()
+
+```ts
+use(mw): this;
+```
+
+Defined in: [server/FastMCP.ts:1249](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L1249)
+
+Add a middleware to the pipeline.
+
+Can be called at any point before the first request arrives. `setup()` is
+called immediately on the primary server so that notification handlers and
+other server-level side-effects are active before `connect()` / `run()` is
+called. HTTP sessions created after `use()` will also have `setup()` called
+via `_makeServer()`.
+
+#### Parameters
+
+##### mw
+
+[`Middleware`](/api/server/interfaces/Middleware)
+
+#### Returns
+
+`this`

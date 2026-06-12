@@ -1,0 +1,30 @@
+---
+title: "createProxy"
+---
+
+```ts
+function createProxy(config, name?): Promise<FastMCP>;
+```
+
+Defined in: [server/proxy.ts:294](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/proxy.ts#L294)
+
+Create a FastMCP instance that proxies all requests to a remote MCP server.
+The returned instance can be mounted onto a parent server via `parent.mount(proxy)`.
+
+Component lists (tools, resources, prompts) are kept in sync via:
+ - Change notifications from the backend (immediate resync)
+ - TTL-based lazy resync on each list request (configurable via `cacheTtl`, default 30 s)
+
+## Parameters
+
+### config
+
+[`ProxyTransport`](/api/server/type-aliases/ProxyTransport)
+
+### name?
+
+`string`
+
+## Returns
+
+`Promise`&lt;[`FastMCP`](/api/server/classes/FastMCP)&gt;

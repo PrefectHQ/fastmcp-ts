@@ -1,0 +1,42 @@
+---
+title: "ElicitationSchema"
+---
+
+Defined in: [server/context.ts:54](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L54)
+
+Flat JSON Schema object describing fields to collect from the user.
+Only primitive property types (string, number, boolean) are allowed per the MCP spec.
+
+## Properties
+
+### properties
+
+```ts
+properties: Record<string, {
+  description?: string;
+  title?: string;
+  type: "string" | "number" | "boolean";
+}>;
+```
+
+Defined in: [server/context.ts:56](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L56)
+
+***
+
+### required?
+
+```ts
+optional required?: string[];
+```
+
+Defined in: [server/context.ts:60](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L60)
+
+***
+
+### type
+
+```ts
+type: "object";
+```
+
+Defined in: [server/context.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L55)

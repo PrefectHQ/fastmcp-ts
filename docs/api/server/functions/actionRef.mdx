@@ -1,0 +1,25 @@
+---
+title: "actionRef"
+---
+
+```ts
+function actionRef(name): string;
+```
+
+Defined in: [server/apps/actionRef.ts:10](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/apps/actionRef.ts#L10)
+
+Resolve a logical tool name to its current external name inside a request
+handler, accounting for any mount prefix applied by a parent server.
+
+Use this in providers that are built on bare FastMCP (not FastMCPApp) to
+produce mount-prefix–aware action strings for Button components.
+
+## Parameters
+
+### name
+
+`string`
+
+## Returns
+
+`string`

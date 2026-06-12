@@ -1,0 +1,67 @@
+---
+title: "GenericSamplingAdapter"
+---
+
+Defined in: [client/sampling/generic.ts:52](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/sampling/generic.ts#L52)
+
+Contribution template. Wraps any async function into a SamplingHandler.
+
+The adapter resolves the model from modelPreferences, defaults maxTokens,
+and threads onToken through. Message format conversion, tool translation,
+and streaming are the caller's responsibility.
+
+Example:
+```ts
+const adapter = new GenericSamplingAdapter(async ({ model, messages }) => {
+  const text = await myLlm.complete(model, messages)
+  return { role: 'assistant', content: { type: 'text', text }, model, stopReason: 'endTurn' }
+})
+```
+
+## Implements
+
+- [`SamplingAdapter`](/api/client/interfaces/SamplingAdapter)
+
+## Constructors
+
+### Constructor
+
+```ts
+new GenericSamplingAdapter(fn, options?): GenericSamplingAdapter;
+```
+
+Defined in: [client/sampling/generic.ts:56](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/sampling/generic.ts#L56)
+
+#### Parameters
+
+##### fn
+
+[`GenericCompletionFn`](/api/client/type-aliases/GenericCompletionFn)
+
+##### options?
+
+[`SamplingAdapterOptions`](/api/client/interfaces/SamplingAdapterOptions) & \{
+  `defaultModel?`: `string`;
+\}
+
+#### Returns
+
+`GenericSamplingAdapter`
+
+## Methods
+
+### asHandler()
+
+```ts
+asHandler(): SamplingHandler;
+```
+
+Defined in: [client/sampling/generic.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/sampling/generic.ts#L64)
+
+#### Returns
+
+[`SamplingHandler`](/api/client/type-aliases/SamplingHandler)
+
+#### Implementation of
+
+[`SamplingAdapter`](/api/client/interfaces/SamplingAdapter).[`asHandler`](/api/client/interfaces/SamplingAdapter#ashandler)

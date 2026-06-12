@@ -1,0 +1,89 @@
+---
+title: "OAuthProxyOptions"
+---
+
+Defined in: [server/auth/oauth/proxy.ts:6](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/auth/oauth/proxy.ts#L6)
+
+## Properties
+
+### endpoints
+
+```ts
+endpoints: {
+  authorizationUrl: string;
+  revocationUrl?: string;
+  tokenUrl: string;
+};
+```
+
+Defined in: [server/auth/oauth/proxy.ts:13](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/auth/oauth/proxy.ts#L13)
+
+Upstream OAuth server endpoint URLs.
+
+#### authorizationUrl
+
+```ts
+authorizationUrl: string;
+```
+
+#### revocationUrl?
+
+```ts
+optional revocationUrl?: string;
+```
+
+#### tokenUrl
+
+```ts
+tokenUrl: string;
+```
+
+***
+
+### upstreamCredentials
+
+```ts
+upstreamCredentials: {
+  clientId: string;
+  clientSecret?: string;
+};
+```
+
+Defined in: [server/auth/oauth/proxy.ts:8](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/auth/oauth/proxy.ts#L8)
+
+Pre-registered credentials this proxy uses when talking to the upstream server.
+
+#### clientId
+
+```ts
+clientId: string;
+```
+
+#### clientSecret?
+
+```ts
+optional clientSecret?: string;
+```
+
+***
+
+### verifyAccessToken
+
+```ts
+verifyAccessToken: (token) => Promise<AuthInfo>;
+```
+
+Defined in: [server/auth/oauth/proxy.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/auth/oauth/proxy.ts#L22)
+
+Verifies an access token issued by the upstream and returns information about it.
+Called for every MCP request to validate the bearer token.
+
+#### Parameters
+
+##### token
+
+`string`
+
+#### Returns
+
+`Promise`&lt;`AuthInfo`&gt;

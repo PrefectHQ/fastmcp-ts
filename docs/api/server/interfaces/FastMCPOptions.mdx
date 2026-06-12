@@ -1,0 +1,109 @@
+---
+title: "FastMCPOptions"
+---
+
+Defined in: [server/FastMCP.ts:62](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L62)
+
+## Properties
+
+### auth?
+
+```ts
+optional auth?: TokenVerifier;
+```
+
+Defined in: [server/FastMCP.ts:66](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L66)
+
+Simple bearer-token verifier for non-OAuth auth scenarios.
+
+***
+
+### middleware?
+
+```ts
+optional middleware?: Middleware[];
+```
+
+Defined in: [server/FastMCP.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L76)
+
+Middleware applied to every request in registration order.
+
+***
+
+### name
+
+```ts
+name: string;
+```
+
+Defined in: [server/FastMCP.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L63)
+
+***
+
+### oauth?
+
+```ts
+optional oauth?: OAuthConfig;
+```
+
+Defined in: [server/FastMCP.ts:68](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L68)
+
+Full OAuth 2.1 server with Dynamic Client Registration support.
+
+***
+
+### promptsPageSize?
+
+```ts
+optional promptsPageSize?: number;
+```
+
+Defined in: [server/FastMCP.ts:74](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L74)
+
+Maximum number of prompts returned per prompts/list page. Default: 50.
+
+***
+
+### resourcesPageSize?
+
+```ts
+optional resourcesPageSize?: number;
+```
+
+Defined in: [server/FastMCP.ts:72](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L72)
+
+Maximum number of resources (or templates) returned per page. Default: 50.
+
+***
+
+### toolsPageSize?
+
+```ts
+optional toolsPageSize?: number;
+```
+
+Defined in: [server/FastMCP.ts:70](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L70)
+
+Maximum number of tools returned per listTools page. Default: 50.
+
+***
+
+### transforms?
+
+```ts
+optional transforms?: Transform[];
+```
+
+Defined in: [server/FastMCP.ts:78](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L78)
+
+Transforms applied to component list responses in registration order.
+
+***
+
+### version?
+
+```ts
+optional version?: string;
+```
+
+Defined in: [server/FastMCP.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/FastMCP.ts#L64)

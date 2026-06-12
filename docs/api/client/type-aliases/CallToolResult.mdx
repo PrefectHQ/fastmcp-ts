@@ -1,0 +1,52 @@
+---
+title: "CallToolResult"
+---
+
+```ts
+type CallToolResult<TData> = {
+  content: ContentBlock[];
+  isError: boolean;
+  structuredContent: TData | null;
+};
+```
+
+Defined in: [client/results.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/results.ts#L36)
+
+The SDK's CallToolResult with a typed generic for structuredContent.
+Use TData to get typed access to structured tool output.
+
+## Type Parameters
+
+### TData
+
+`TData` = `unknown`
+
+## Properties
+
+### content
+
+```ts
+content: ContentBlock[];
+```
+
+Defined in: [client/results.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/results.ts#L37)
+
+***
+
+### isError
+
+```ts
+isError: boolean;
+```
+
+Defined in: [client/results.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/results.ts#L39)
+
+***
+
+### structuredContent
+
+```ts
+structuredContent: TData | null;
+```
+
+Defined in: [client/results.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/results.ts#L38)

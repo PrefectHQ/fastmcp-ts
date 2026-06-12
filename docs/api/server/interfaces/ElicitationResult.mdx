@@ -1,0 +1,29 @@
+---
+title: "ElicitationResult"
+---
+
+Defined in: [server/context.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L63)
+
+## Properties
+
+### action
+
+```ts
+action: "accept" | "decline" | "cancel";
+```
+
+Defined in: [server/context.ts:65](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L65)
+
+How the user responded to the elicitation.
+
+***
+
+### content?
+
+```ts
+optional content?: Record<string, string | number | boolean>;
+```
+
+Defined in: [server/context.ts:67](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/context.ts#L67)
+
+Submitted form values. Present only when action is 'accept'.

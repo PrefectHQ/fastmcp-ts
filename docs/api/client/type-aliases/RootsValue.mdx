@@ -1,0 +1,17 @@
+---
+title: "RootsValue"
+---
+
+```ts
+type RootsValue = 
+  | RootInput[]
+  | (() => 
+  | RootInput[]
+  | Promise<RootInput[]>);
+```
+
+Defined in: [client/client.ts:73](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/client/client.ts#L73)
+
+Static list of roots, or an async callback invoked on each roots/list request.
+URI strings are normalised to file:// URIs automatically; relative paths are
+resolved against process.cwd().

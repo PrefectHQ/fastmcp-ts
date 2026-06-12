@@ -1,0 +1,24 @@
+---
+title: "Handlers"
+description: "React to server logs, progress, elicitation, and list changes"
+icon: "bell"
+---
+
+Servers push more than tool results: logs, progress updates, elicitation requests, and change notifications. Wire up handlers when connecting:
+
+```typescript
+const client = await Client.connect('http://localhost:3000', {
+  handlers: {
+    log: ({ level, data }) => console.error(`[server:${level}]`, data),
+    progress: ({ progress, total, message }) => render(progress, total, message),
+    onToolsListChanged: { onChanged: (tools) => refresh(tools) },
+  },
+})
+```
+
+<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+
+- **Notification handlers** — `log` (every server log message), `progress` (global default, overridable per call via `onProgress`), and the three `on*ListChanged` handlers with auto-refresh and debouncing.
+- **Request handlers** — `sampling` and `elicitation` answer server-initiated requests; providing them advertises the corresponding capability.
+- **Roots** — static `string[]`/`Root[]` or an async callback for dynamic roots; `notifyRootsChanged()` for pushing updates.
+- **Log level control and completion** — `setLogLevel(level)` to filter server logs; `complete(ref, argument)` for prompt/resource argument autocompletion.
