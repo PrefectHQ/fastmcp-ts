@@ -1,25 +1,78 @@
 ---
 title: "Sampling adapters"
-description: "Forward server sampling requests to Anthropic, OpenAI, or Google"
+description: "Answer server sampling requests with Anthropic, OpenAI, or Google"
 icon: "sparkles"
 ---
 
-When a server calls `ctx.sample()`, the request lands on your client. Sampling adapters answer it with a real LLM in one line:
+Sampling is how a server borrows the client's LLM. When a tool calls [`ctx.sample()`](/servers/context#sampling-and-elicitation), it asks the connected client to run an inference and return the result — the server never holds an API key or talks to a provider itself. The client answers that request, and a sampling adapter is what turns the answer into a real model call. The adapter sits between MCP's provider-neutral request format and a specific provider's SDK, translating the messages, tools, and options in both directions.
+
+## How sampling works
+
+A server-initiated sampling request lands on the client as a [handler](/clients/handlers). You provide that handler, and providing it is also what advertises the `sampling` capability to the server — a server only calls `ctx.sample()` when it sees the client supports it, so a client with no sampling handler simply never receives the request. An adapter's `asHandler()` produces exactly the handler the client expects, so wiring one in is a single line:
 
 ```typescript
 import { Client, AnthropicSamplingAdapter } from '@prefecthq/fastmcp-ts/client'
 import Anthropic from '@anthropic-ai/sdk'
 
-const client = await Client.connect('http://localhost:3000', {
-  handlers: {
-    sampling: (params) => new AnthropicSamplingAdapter(new Anthropic()).handleSampling(params),
-  },
+const adapter = new AnthropicSamplingAdapter(new Anthropic())
+
+const client = await Client.connect('https://mcp.example.com', {
+  handlers: { sampling: adapter.asHandler() },
 })
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+From there it is automatic. Every `ctx.sample()` on the server flows to the adapter, which converts the request to an Anthropic message call, runs it, and converts the response back into MCP's shape — including tool-use round-trips, so a server that asks the model to call tools during sampling works without extra wiring.
 
-- **The adapters** — `AnthropicSamplingAdapter`, `OpenAISamplingAdapter`, `GoogleSamplingAdapter`, and `GenericSamplingAdapter` for any custom completion function. Each translates MCP sampling params to its provider's API, including tool-use round-trips.
-- **Peer dependencies** — provider SDKs are optional peers ([install only what you use](/installation#optional-peer-dependencies)).
-- **Options** — `modelSelector` (static model name or a function of the server's model preferences) and `onToken` streaming callbacks.
-- **Capability advertisement** — providing `handlers.sampling` makes the client advertise the `sampling` capability automatically.
+## Provider adapters
+
+The three built-in adapters cover the major providers, and each owns the quirks of its SDK so you do not have to. They take a constructed provider client and expose the same `asHandler()` method, so switching providers is switching the adapter.
+
+```typescript
+import {
+  AnthropicSamplingAdapter,
+  OpenAISamplingAdapter,
+  GoogleSamplingAdapter,
+} from '@prefecthq/fastmcp-ts/client'
+import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
+import { GoogleGenAI } from '@google/genai'
+
+const anthropic = new AnthropicSamplingAdapter(new Anthropic())
+const openai = new OpenAISamplingAdapter(new OpenAI())
+const google = new GoogleSamplingAdapter(new GoogleGenAI())
+```
+
+The provider SDKs are [optional peer dependencies](/installation#optional-peer-dependencies) — install only the one you use. The adapters import their SDK types with `import type`, so a missing peer never causes a runtime error in a client that doesn't reach for it.
+
+When you need a provider these don't cover — a self-hosted model, a gateway, or a custom completion service — `GenericSamplingAdapter` wraps any async completion function. It handles model resolution and the `maxTokens` default for you and leaves the message format to your function, so anything you can call asynchronously can answer sampling requests.
+
+```typescript
+import { GenericSamplingAdapter } from '@prefecthq/fastmcp-ts/client'
+
+const adapter = new GenericSamplingAdapter(async (request) => {
+  // call any model service and return its completion
+  return myModelService.complete(request)
+})
+
+const client = await Client.connect('https://mcp.example.com', {
+  handlers: { sampling: adapter.asHandler() },
+})
+```
+
+## Streaming and model selection
+
+Every adapter accepts two shared options. `onToken` fires for each text delta as the provider streams its response, which lets you surface partial output — a live cursor, a progress display — while the inference is still running. The full result is still returned when the call completes; the callback is purely for observing the stream as it arrives.
+
+```typescript
+const adapter = new AnthropicSamplingAdapter(new Anthropic(), {
+  onToken: (token) => process.stderr.write(token),
+})
+```
+
+The server can express a preference for which model to use through MCP's model preferences, and `modelSelector` decides how to honor it. Pass a string to pin every sampling call to one model regardless of what the server asks for, or pass a function that receives the server's preferences and returns the model name — the way to map abstract hints like cost or intelligence onto the concrete models a provider offers. Without a selector, each adapter falls back to a sensible default for its provider.
+
+```typescript
+const adapter = new AnthropicSamplingAdapter(new Anthropic(), {
+  modelSelector: (prefs) => (prefs?.speedPriority ? 'claude-haiku-4-5' : 'claude-opus-4-5'),
+})
+```

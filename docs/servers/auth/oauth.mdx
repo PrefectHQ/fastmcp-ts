@@ -4,11 +4,73 @@ description: "Act as an OAuth provider or proxy an upstream identity provider"
 icon: "id-badge"
 ---
 
-When clients need to *obtain* tokens — not just present them — your server participates in the OAuth flow. FastMCP ships two arrangements: a built-in provider and a proxy in front of an upstream identity provider.
+The [verifiers](/servers/auth/token-verification) handle the common case: clients already hold tokens, and your server checks them. OAuth is the other half — when clients arrive holding *nothing* and need your server to run the flow that gets them a token. An MCP client that has never seen your server cannot guess where to authenticate or how to register; OAuth is the standard handshake that answers those questions, and FastMCP can play the server side of it for you.
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+This is a different option from a verifier. A `TokenVerifier` goes in `auth` and only checks tokens. An OAuth arrangement goes in `oauth` and additionally serves the discovery metadata, client-registration, authorization, and token endpoints that let a client obtain a token in the first place — then verifies the tokens it issued. You reach for it when your clients are general MCP clients (an assistant, an IDE) that must discover and complete auth on their own, rather than services you handed a token to out of band.
 
-- **`oauthProvider`** — serve the OAuth endpoints yourself; client registration, grants, and token issuance.
-- **`oauthProxy`** — front an existing identity provider (Auth0, Okta, etc.) while exposing MCP-compliant metadata.
-- **Protected resource metadata** — what FastMCP advertises so MCP clients can discover how to authenticate.
-- **Pairing with client-side auth** — the [client `OAuth` strategy](/clients/auth) that completes the flow.
+FastMCP offers two arrangements, and the choice turns on a single question: do you want to own the user accounts, or does someone else already? Run your own provider when this server is the source of identity. Run a proxy when an existing identity provider — Auth0, Okta, your company SSO — already holds the accounts and you only need to put an MCP-shaped front on it.
+
+## oauthProvider
+
+`oauthProvider` makes FastMCP the authorization server itself. It implements OAuth 2.1 with Dynamic Client Registration, so an MCP client can register, run the authorization-code flow, and receive tokens that the same server then verifies — a complete loop with no external dependency. You pass the resulting provider to the `oauth.provider` option.
+
+```typescript server.ts
+import { FastMCP, oauthProvider } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'oauth-server',
+  oauth: {
+    provider: oauthProvider({
+      scopes: ['read', 'write'],
+      tokenTtl: 3600,
+    }),
+    issuerUrl: new URL('https://mcp.example.com'),
+  },
+})
+```
+
+Out of the box the provider holds all of its state — registered clients, authorization codes, issued tokens — in memory, and auto-approves every authorization request. That makes it ready to run for development, testing, and demos with zero setup. To make real access decisions you supply an `onAuthorize` callback: it receives the requesting client and the authorization parameters, and is responsible for authenticating the user and redirecting back with a code. That callback is where you would check a session, present a consent screen, or look the user up in your own store. The `scopes` you declare are advertised in the server's metadata and constrain what a token can be granted; `tokenTtl` sets the access-token lifetime in seconds, defaulting to one hour.
+
+Because state lives in memory, restarting the process invalidates every issued token. That is fine for development and for deployments where clients re-authenticate freely; when you need tokens to survive restarts you provide your own `OAuthServerProvider` implementation backed by persistent storage and pass it the same way.
+
+## oauthProxy
+
+When an upstream identity provider already owns your users, standing up a second source of identity is the wrong move. `oauthProxy` puts an MCP-compliant face on the provider you already run. MCP clients register and authenticate against your server using Dynamic Client Registration, while the proxy quietly forwards the real authorization and token exchanges to the upstream using one set of pre-registered credentials. Your clients never need to be registered with the upstream individually, and the upstream never needs to learn about MCP.
+
+```typescript server.ts
+import { FastMCP, oauthProxy } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'proxied-server',
+  oauth: {
+    provider: oauthProxy({
+      upstreamCredentials: {
+        clientId: process.env.UPSTREAM_CLIENT_ID!,
+        clientSecret: process.env.UPSTREAM_CLIENT_SECRET!,
+      },
+      endpoints: {
+        authorizationUrl: 'https://auth0.example.com/authorize',
+        tokenUrl: 'https://auth0.example.com/oauth/token',
+        revocationUrl: 'https://auth0.example.com/oauth/revoke',
+      },
+      verifyAccessToken: async (token) => {
+        // Validate the upstream's token and return its AuthInfo
+        return { token, clientId: 'upstream-user', scopes: ['read'] }
+      },
+    }),
+    issuerUrl: new URL('https://mcp.example.com'),
+  },
+})
+```
+
+The proxy delegates the flow, but it cannot delegate verification — you still have to tell it how to validate a token the upstream issued. That is the `verifyAccessToken` callback, called on every MCP request to turn the upstream's bearer token into the identity FastMCP uses. PKCE is passed through and validated by the upstream rather than locally, since the upstream is the party that issued the challenge. Supplying a `revocationUrl` lets clients revoke tokens through the proxy, forwarded to the upstream per [RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009).
+
+## Protected resource metadata
+
+OAuth only works because a client that knows nothing can *discover* everything it needs. When you configure `oauth`, FastMCP mounts the standard metadata endpoints alongside your MCP endpoint: the authorization-server metadata that advertises where to register, authorize, and exchange tokens, and the supported scopes you declared. An MCP client following the spec reads this metadata, learns how to authenticate, and completes the flow without anything hardcoded.
+
+The `issuerUrl` is the identity in that metadata, so it must be the public URL clients actually reach the server at. Omit it and FastMCP infers it from the bound address — convenient locally, where it resolves even when you let the OS pick a port, but set it explicitly in production so the advertised issuer matches what is behind your load balancer or proxy.
+
+## Client pairing
+
+A server running OAuth is only half of the exchange; something has to be the client. For testing the flow end to end, or for service-to-service calls where a FastMCP client consumes a protected server, the [client-side `OAuth` strategy](/clients/auth) completes the loop — it discovers your metadata, registers, runs the authorization-code flow, and refreshes tokens automatically as they near expiry. The server arrangements here and the client strategy there are the two ends of the same handshake.

@@ -1,27 +1,114 @@
 ---
 title: "Context"
-description: "Logging, progress, sampling, elicitation, and session state from inside handlers"
+description: "The handler's back-channel to the client: logging, progress, sampling, elicitation, roots, and session state"
 icon: "circle-nodes"
 ---
 
-Handlers access request-scoped capabilities through an ambient context — no prop-drilling. Call `server.getContext()` anywhere in the call tree during a live request:
+A handler runs in the middle of a live request, and sometimes it needs to talk back to the client that made it — to report progress on slow work, to ask the client's LLM a question, to collect input, or to remember something for the next request in the session. The context is that back-channel. It is a request-scoped handle to the client, available to any tool, resource, or prompt handler, exposing everything a handler can send or ask during the request it's serving.
 
-```typescript
+## Reaching the context
+
+You reach the context by calling `server.getContext()` inside a handler. It is ambient: FastMCP stashes the context for the current request in an `AsyncLocalStorage`, so `getContext()` finds it anywhere in the call tree — a helper three functions deep gets the same context as the handler, with nothing threaded through the arguments. There is no prop-drilling and no `ctx` parameter to pass around.
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+import { z } from 'zod'
+
+const server = new FastMCP({ name: 'my-server' })
+
 server.tool({ name: 'summarize', input: z.object({ text: z.string() }) }, async ({ text }) => {
   const ctx = server.getContext()
-  await ctx.info('Sending document to LLM')
-  await ctx.reportProgress(0, 1, 'Sampling…')
-  const { content } = await ctx.sample({
-    messages: [{ role: 'user', content: { type: 'text', text: `Summarize:\n${text}` } }],
-    maxTokens: 512,
-  })
-  return content.text
+  await ctx.info('Summarizing document')
+  return summarize(text)
 })
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+Because the context belongs to a request, `getContext()` throws when there is no live request — at module load, in a background timer, or anywhere outside a handler's execution. That is by design: the methods below have no meaning without a client on the other end. If you need to do work after a request finishes, capture what you need from the context while the handler is still running.
 
-- **How context works** — ambient via `AsyncLocalStorage`; `getContext()` throws outside a live request handler; available in tool, resource, and prompt handlers.
-- **Logging and progress** — `log(level, message)` plus RFC 5424 shorthands (`debug`/`info`/`warning`/`error`/…); `reportProgress(progress, total?, message?)` (a no-op when the request carries no progress token).
-- **Client round-trips** — `sample(params)` for LLM inference, `elicit(message, schema)` for user input forms, `listRoots()` — each throws if the client lacks the corresponding capability.
-- **Per-session state** — `getState`/`setState`/`deleteState`, scoped per HTTP session (one shared map for stdio); plus `auth` and `requestId` fields.
+The context also carries two read-only fields about the request itself: `auth`, the verified `AccessToken` for the caller when [authentication](/servers/auth/overview) is configured, and `requestId`, the MCP request ID from the incoming message.
+
+## Logging
+
+A handler logs to the client with `ctx.log(level, message)`, where the level is one of the RFC 5424 severities. The client decides what to do with each log — surface it, file it, or drop it below its configured level — so logging is how a handler narrates its work without deciding how that narration is presented.
+
+```typescript server.ts
+server.tool({ name: 'sync' }, async () => {
+  const ctx = server.getContext()
+  await ctx.log('info', 'Starting sync')
+  await ctx.info('Shorthand for the same thing')
+  return runSync()
+})
+```
+
+Each severity has a shorthand so you rarely write the level string: `debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert`, and `emergency` each send a log at their level. All of them, and `log` itself, take an optional logger name as a final argument when you want to tag where a message came from.
+
+## Progress
+
+Long-running work reports progress with `ctx.reportProgress(progress, total?, message?)`, which sends `notifications/progress` to the client so a UI can show a bar or a count. Call it as the work advances; the client correlates the updates and renders them.
+
+```typescript server.ts
+server.tool({ name: 'process', input: z.object({ items: z.array(z.string()) }) }, async ({ items }) => {
+  const ctx = server.getContext()
+  for (let i = 0; i < items.length; i++) {
+    await handle(items[i])
+    await ctx.reportProgress(i + 1, items.length, `Processed ${i + 1} of ${items.length}`)
+  }
+  return 'done'
+})
+```
+
+Progress is meaningful only when the client asked for it. A client opts in by attaching a progress token to its request; without one, `reportProgress` is a no-op. You don't have to check — call it unconditionally and it simply does nothing when no one is listening, so the same handler works whether or not the caller wants updates.
+
+## Sampling and elicitation
+
+The context lets a handler turn the request around and ask the *client* to do something. Sampling asks the client to run LLM inference on the server's behalf: the handler calls `ctx.sample(params)` and the client answers with a completion from a real model. This is how a server uses the model without holding API keys of its own — the client owns the LLM, the server borrows it through the context.
+
+```typescript server.ts
+server.tool({ name: 'draft', input: z.object({ topic: z.string() }) }, async ({ topic }) => {
+  const ctx = server.getContext()
+  const result = await ctx.sample({
+    messages: [{ role: 'user', content: { type: 'text', text: `Write a haiku about ${topic}` } }],
+    maxTokens: 128,
+  })
+  return result.content.text
+})
+```
+
+Elicitation asks the client to collect input from the user. The handler calls `ctx.elicit(message, schema)` with a prompt and a Standard Schema describing the shape of the answer; the client renders a form, validates against the schema, and returns the result. Use it when a handler discovers mid-execution that it needs something only the user can provide.
+
+```typescript server.ts
+server.tool({ name: 'deploy' }, async () => {
+  const ctx = server.getContext()
+  const { confirmed } = await ctx.elicit('Deploy to production?', z.object({ confirmed: z.boolean() }))
+  return confirmed ? deploy() : 'cancelled'
+})
+```
+
+Both calls depend on the client advertising the matching capability during connection. A handler that calls `ctx.sample()` against a client without the `sampling` capability throws, and likewise `ctx.elicit()` throws without `elicitation`. These are negotiated features, not guarantees — write handlers that degrade or report clearly when a client can't answer. The client side of both is covered in [client sampling](/clients/sampling) and [handlers](/clients/handlers).
+
+## Roots
+
+Roots are the filesystem locations a client has declared it's willing to expose — the directories a server may operate within. A handler reads them with `ctx.listRoots()`, which returns the client's declared roots so the server can scope its work to paths the user has sanctioned. Like sampling and elicitation, it depends on the client advertising the `roots` capability and throws otherwise.
+
+```typescript server.ts
+server.tool({ name: 'scan' }, async () => {
+  const ctx = server.getContext()
+  const roots = await ctx.listRoots()
+  return roots.map((r) => r.uri)
+})
+```
+
+## Session state
+
+A single client connection may make many requests, and session state is how a handler remembers something across them. The context exposes `getState(key)`, `setState(key, value)`, and `deleteState(key)`, backed by a key-value store that lives as long as the connection. Write a value in one request and read it back in the next, without a database.
+
+```typescript server.ts
+server.tool({ name: 'increment' }, () => {
+  const ctx = server.getContext()
+  const count = ((ctx.getState('count') as number) ?? 0) + 1
+  ctx.setState('count', count)
+  return count
+})
+```
+
+State is scoped to one connection, not shared across them. Each HTTP session gets its own isolated map, so two clients never see each other's state. The stdio transport serves one client for the life of the process, so it uses a single shared map for that lifetime. Either way, the boundary is the connection — state is per-caller, and it disappears when the caller disconnects.

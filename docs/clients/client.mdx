@@ -22,7 +22,9 @@ const review = await client.getPrompt('review_code', { code: 'const x = 1' })
 await client.close()
 ```
 
-`Client.connect()` accepts a URL, a stdio transport, an in-process `FastMCP` instance, or an `mcpServers` config — see [Transports](/clients/transports) for the full set.
+A client mirrors a server. The server registers tools, resources, and prompts; the client consumes those same three primitives — it calls tools, reads resources, and fetches prompts. The argument to `Client.connect()` is wherever the server lives: a URL, a stdio subprocess, an in-process `FastMCP` instance, or an [`mcpServers` config](/clients/transports#transport-inputs). The client detects the right transport from what you pass, so the rest of the API is identical no matter where the server runs.
+
+The relationship runs both ways. Beyond consuming primitives, a client also *answers* requests the server initiates: when a tool calls `ctx.sample()` the client performs the inference, and when it calls `ctx.elicit()` the client collects input. You wire those responses with [handlers](/clients/handlers), and a [sampling adapter](/clients/sampling) connects the sampling request to a real LLM. Connecting to a protected server adds [authentication](/clients/auth); connecting to several at once gives you a [multi-server client](/clients/multi-server).
 
 ## Lifecycle
 
@@ -60,10 +62,7 @@ try {
 }
 ```
 
-Two alternatives when you don't want a throw:
-
-- **`callToolRaw()`** never throws — it returns the full result including `isError`, for when you want to inspect the raw response.
-- **`toResult()`** is a standalone utility that wraps any promise into a discriminated union `{ ok: true, value } | { ok: false, error }` for error-as-value style:
+When you would rather inspect the failure than catch it, `callToolRaw()` returns the full result including `isError` and never throws. For an error-as-value style across any call, the standalone `toResult()` utility wraps a promise into a discriminated union — `{ ok: true, value }` on success, `{ ok: false, error }` on failure:
 
 ```typescript
 import { toResult } from '@prefecthq/fastmcp-ts/client'
@@ -96,20 +95,3 @@ async function callSomeTool(client: IToolsClient) {
   return client.callTool('add', { a: 1, b: 2 })
 }
 ```
-
-## Going further
-
-<CardGroup cols={2}>
-  <Card title="Transports" icon="route" href="/clients/transports">
-    URLs, stdio subprocesses, and in-process servers.
-  </Card>
-  <Card title="Authentication" icon="key" href="/clients/auth">
-    Bearer tokens, OAuth, and client credentials.
-  </Card>
-  <Card title="Sampling" icon="sparkles" href="/clients/sampling">
-    Forward server sampling requests to Anthropic, OpenAI, or Google.
-  </Card>
-  <Card title="Multi-server" icon="layer-group" href="/clients/multi-server">
-    One client, many servers, automatic namespacing.
-  </Card>
-</CardGroup>

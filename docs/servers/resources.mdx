@@ -1,44 +1,62 @@
 ---
 title: "Resources"
-description: "Expose data to clients via static URIs and RFC 6570 URI templates"
+description: "Read-only data addressed by URI, with static URIs and RFC 6570 templates"
 icon: "database"
 ---
 
-Resources expose data that clients read by URI. Register one with `server.resource(config, handler)` — FastMCP auto-detects whether the URI is static or a template by checking for `{` in the URI string, so there's no separate method to learn:
+Resources are the data primitive: read-only values the client fetches by URI. Where a tool runs code and a prompt seeds a conversation, a resource answers a read — the client asks for a URI and your handler returns what lives there. A resource is addressed rather than called, which is why it carries a URI instead of an input schema, and why a single registration can serve either one fixed address or a whole family of them through a template.
 
-```typescript
+## Registration
+
+You register a resource with `server.resource(config, handler)` — the same config-first shape as every other primitive. FastMCP decides whether you've registered a static resource or a template by looking for a `{` in the URI string, so there is no separate method to learn. A plain URI is a static resource; a URI with a `{param}` placeholder is a template, and the extracted parameters are passed to your handler as an object.
+
+```typescript server.ts
 import { FastMCP } from '@prefecthq/fastmcp-ts/server'
 
 const server = new FastMCP({ name: 'my-server' })
 
-// Static resource
+// Static resource — one fixed address
 server.resource(
   { uri: 'config://settings', description: 'App configuration' },
-  () => JSON.stringify({ theme: 'dark', lang: 'en' })
+  () => JSON.stringify({ theme: 'dark', lang: 'en' }),
 )
 
-// URI template — extracted params are passed to the handler
+// Template — one registration serves every matching URI
 server.resource(
   { uri: 'user://{id}', description: 'User by ID' },
-  ({ id }) => `User #${id}`
+  ({ id }) => `User #${id}`,
 )
 ```
 
-Static resources are served via `resources/list` + `resources/read`. Templates appear in `resources/templates/list` and are matched at read time using RFC 6570 parameter extraction.
+The two kinds surface differently to clients. Static resources appear in `resources/list` and are fetched with `resources/read`. Templates appear in `resources/templates/list` so a client knows the address *shape* it can fill in, and each concrete read is matched back to your template at request time using RFC 6570 extraction.
 
-## Template parameter styles
+## URI templates
 
-Three styles are supported:
+A template lets one handler serve an open-ended set of addresses, and the placeholder style controls how much of the URI each parameter captures. The default captures a single path segment, which suits identifiers; a wildcard captures many segments, which suits file paths; and a query style captures query-string parameters, which suits search and filtering. Choose the style that matches the shape of the data you're addressing.
 
-| Style | Example | Matches |
+| Style | Example | Captures |
 |---|---|---|
 | Simple | `user://{id}` | A single path segment |
-| Wildcard | `files://{path*}` | Multiple segments |
+| Wildcard | `files://{path*}` | Multiple path segments |
 | Query | `search://items{?q,lang}` | Query-string parameters |
+
+```typescript server.ts
+// Wildcard — {path*} captures "docs/guide/intro.md" whole
+server.resource(
+  { uri: 'files://{path*}', description: 'Read a file by path' },
+  ({ path }) => readFileSync(path, 'utf8'),
+)
+
+// Query — {?q,lang} captures ?q=mcp&lang=en
+server.resource(
+  { uri: 'search://items{?q,lang}', description: 'Search items' },
+  ({ q, lang }) => runSearch(q, lang ?? 'en'),
+)
+```
 
 ## Return values
 
-Handler output is converted to an MCP `ReadResourceResult` automatically:
+Your handler returns a plain value and FastMCP converts it into an MCP `ReadResourceResult`. The conversion mirrors the tool conversion but is tuned for data: strings become text, raw bytes become a base64 blob, and structured values become JSON. The MIME type is inferred from the return type, and you override it with the `mimeType` config field when the default is wrong.
 
 | Returned value | Conversion |
 |---|---|
@@ -48,27 +66,23 @@ Handler output is converted to an MCP `ReadResourceResult` automatically:
 | `null` / `undefined` | Empty text content |
 | `ResourceResult(contents)` | Passed through as-is |
 
-`ResourceResult` is the escape hatch for full control over the contents array.
+When you need full control over the contents array — multiple parts, custom MIME types per part, or hand-built MCP output — return a `ResourceResult`. It bypasses conversion so what you construct is exactly what the client receives.
 
-## Config fields
+```typescript server.ts
+import { ResourceResult } from '@prefecthq/fastmcp-ts/server'
 
-| Field | Behavior |
-|---|---|
-| `uri` | Required. Static URI or RFC 6570 template |
-| `name`, `title`, `description` | Display metadata, forwarded in list responses |
-| `mimeType` | Overrides the inferred MIME type |
-| `size` | Size hint in bytes (static resources only — omitted from template listings, since it's unknown for parameterized URIs) |
-| `annotations` | `audience`, `priority`, `lastModified` — forwarded verbatim |
-| `timeout` | Per-read timeout in milliseconds |
-| `disabled` | Hides the resource and rejects reads |
-| `tags` | Used by [transforms](/servers/transforms) |
-| `auth` | Per-resource authorization check |
+server.resource({ uri: 'bundle://manifest' }, () => {
+  return ResourceResult([
+    { uri: 'bundle://manifest', mimeType: 'application/json', text: '{"v":1}' },
+  ])
+})
+```
 
 ## Subscriptions
 
-Clients can subscribe to a resource and be notified when it changes. On the client side:
+A resource's value can change after a client has read it, and subscriptions let the client find out instead of polling. The client subscribes to a URI and the server notifies it when that resource updates; the client then re-reads at its own pace. Subscription is a client-side action against a server that supports it, so the API lives on the [client](/clients/client).
 
-```typescript
+```typescript client.ts
 await client.subscribeResource('config://settings', (uri) => {
   console.log(`${uri} changed — re-read it`)
 })
@@ -76,8 +90,30 @@ await client.subscribeResource('config://settings', (uri) => {
 await client.unsubscribeResource('config://settings')
 ```
 
-The handler fires whenever the server sends `notifications/resources/updated` for that URI.
+The handler you pass fires whenever the server sends `notifications/resources/updated` for that URI. The notification carries only the URI, not the new value, which keeps updates cheap — the client reads the fresh data only when it's ready to use it.
+
+## Configuration
+
+Beyond `uri` and the display metadata, the config object accepts these fields. Each is optional and each shapes how the resource is advertised or read.
+
+| Field | Behavior |
+|---|---|
+| `uri` | Required; a static URI or an RFC 6570 template |
+| `name`, `title`, `description` | Display metadata, forwarded verbatim in list responses |
+| `mimeType` | Overrides the inferred MIME type |
+| `size` | Size hint in bytes; static resources only, since the size of a parameterized URI is unknown, so it is omitted from template listings |
+| `annotations` | `audience`, `priority`, and `lastModified`, forwarded verbatim to clients |
+| `timeout` | Per-read timeout in milliseconds; a handler that exceeds it propagates as an error to the client |
+| `disabled` | When `true`, hides the resource from listings and rejects reads |
+| `tags` | Free-form strings read by [transforms](/servers/transforms) |
+| `auth` | Per-resource authorization check — see [Authorization](/servers/auth/authorization) |
 
 ## Dynamic registration
 
-Like tools, resources can be registered before or after `run()` — adding one to a running server sends `notifications/resources/list_changed` automatically.
+You can register a resource before or after `server.run()`. Adding one to a running server sends `notifications/resources/list_changed` to connected clients automatically, exactly as adding a tool sends the tools notification — the registration system is uniform across the three primitives.
+
+```typescript server.ts
+// Later, while the server is already running
+server.resource({ uri: 'status://current' }, () => 'ok')
+// connected clients receive resources/list_changed
+```

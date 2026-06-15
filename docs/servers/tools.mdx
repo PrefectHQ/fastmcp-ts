@@ -1,12 +1,16 @@
 ---
 title: "Tools"
-description: "Turn TypeScript functions into MCP tools with schema validation and automatic result conversion"
+description: "Functions the model calls, with validated inputs and automatic result conversion"
 icon: "wrench"
 ---
 
-Tools are functions the LLM can call. Register one with `server.tool(config, handler)` — config and handler are separate arguments, which gives TypeScript left-to-right generic inference: the schema type is resolved from the config before the handler's argument types are checked.
+Tools are the action primitive: functions the model calls to do things. Where a resource is data the client reads and a prompt is a template the client fetches, a tool *runs* — it takes validated arguments, executes your code, and returns a value the model can act on. FastMCP validates the inputs before your handler sees them and converts the return value into MCP content afterward, so a tool handler is just an ordinary function in the middle.
 
-```typescript
+## Registration
+
+You register a tool with `server.tool(config, handler)`. The config object comes first and the handler second, and that order is deliberate: TypeScript resolves generics left to right, so the schema declared in the config determines the argument types in the handler. Declare `input` as a [Standard Schema](https://standardschema.dev) and the handler's parameter is typed for you — there is nothing extra to annotate.
+
+```typescript server.ts
 import { FastMCP } from '@prefecthq/fastmcp-ts/server'
 import { z } from 'zod'
 
@@ -18,13 +22,24 @@ server.tool(
     description: 'Add two numbers',
     input: z.object({ a: z.number(), b: z.number() }),
   },
-  ({ a, b }) => a + b   // a and b are typed as number
+  ({ a, b }) => a + b, // a and b are typed as number
 )
+```
+
+Both `name` and `description` are optional. When you omit `name`, FastMCP uses the handler function's own `.name`. When you omit `description`, it derives one from the resolved name by splitting camelCase into words (`getWeather` becomes `"get weather"`). A named function expression therefore registers a fully described tool with no redundant strings.
+
+```typescript server.ts
+server.tool({ input: z.object({ city: z.string() }) }, async function getWeather({ city }) {
+  return fetchWeather(city)
+})
+// name: "getWeather", description: "get weather"
 ```
 
 ## Schemas
 
-FastMCP accepts any [Standard Schema](https://standardschema.dev)-compatible validator — Zod, Valibot, ArkType, and others all work through the same `input` field:
+A tool carries two independent schema layers, and keeping them straight is the key to understanding tool validation. One layer *validates* arguments at runtime; the other *advertises* the tool's shape to clients. They usually agree, and FastMCP keeps them in sync for you, but they are separate concerns.
+
+The `input` and `output` fields are Standard Schema validators. Standard Schema is the shared interface implemented by Zod, Valibot, ArkType, and others, so the same `input` field accepts any of them without locking you to one library.
 
 <CodeGroup>
 
@@ -33,7 +48,7 @@ import { z } from 'zod'
 
 server.tool(
   { name: 'greet', input: z.object({ name: z.string() }) },
-  ({ name }) => `Hello, ${name}!`
+  ({ name }) => `Hello, ${name}!`,
 )
 ```
 
@@ -42,7 +57,7 @@ import * as v from 'valibot'
 
 server.tool(
   { name: 'greet', input: v.object({ name: v.string() }) },
-  ({ name }) => `Hello, ${name}!`
+  ({ name }) => `Hello, ${name}!`,
 )
 ```
 
@@ -51,47 +66,35 @@ import { type } from 'arktype'
 
 server.tool(
   { name: 'greet', input: type({ name: 'string' }) },
-  ({ name }) => `Hello, ${name}!`
+  ({ name }) => `Hello, ${name}!`,
 )
 ```
 
 </CodeGroup>
 
-### Validation vs. advertisement
+The `inputSchema` and `outputSchema` fields are explicit JSON Schema objects, the form MCP uses to describe a tool to clients in `tools/list`. You rarely set them. When omitted, FastMCP generates them from your `input`/`output` validators, using Zod v4's `z.toJSONSchema()` for Zod schemas. If a validator can't be translated to JSON Schema, FastMCP falls back to `{ type: 'object' }` and warns on the console — the tool still works, but clients see an untyped shape. Provide an explicit `inputSchema` only when you deliberately want to advertise something different from what you validate.
 
-Tool config has two orthogonal schema layers:
-
-- **`input` / `output`** — Standard Schema validators used for **runtime validation**.
-- **`inputSchema` / `outputSchema`** — explicit **JSON Schema** objects advertised to clients in `tools/list`. If omitted, FastMCP auto-generates JSON Schema from `input`/`output` (via Zod v4's `z.toJSONSchema()` for Zod schemas). When auto-generation can't produce a real schema, it falls back to `{ type: 'object' }` and emits a `console.warn`.
-
-You rarely need `inputSchema` — provide it only when you want to advertise something different from what you validate.
-
-### Validation semantics
-
-- **Input**: when `input` is provided, client-supplied arguments are validated *before* the handler runs. A failure throws `McpError(InvalidParams)` — a protocol-level error meaning the client sent bad arguments. The handler is never invoked.
-- **Output**: when `output` is provided, the handler's raw return value is validated before result conversion. The output schema describes your handler's contract (primitives, objects, and arrays are all valid), not the MCP content shape. A failure returns `isError: true` — a tool execution error, not a protocol error, because the client's input was valid.
+Validation runs at two moments with two different meanings. Input validation happens *before* your handler runs: client-supplied arguments are checked against `input`, and a failure throws `McpError(InvalidParams)` — a protocol-level error that says the client sent bad arguments. The handler is never invoked. Output validation happens *after* your handler returns: the raw return value is checked against `output` before conversion. The output schema describes your handler's contract — primitives, objects, and arrays are all valid return types — not the MCP content shape. A failure here returns `isError: true`, a tool execution error rather than a protocol error, because the client's input was valid and the fault is server-side.
 
 ## Return values
 
-Handlers return plain values; FastMCP converts them to MCP content automatically:
+Your handler returns a plain value and FastMCP converts it to MCP content. This is the magic conversion: you write `return a + b`, not `return { content: [{ type: 'text', text: String(a + b) }] }`. The conversion is driven by the runtime type of what you return.
 
 | Returned value | Conversion |
 |---|---|
 | `string` | Text content block |
 | `number`, `boolean` | Stringified text content block |
 | `undefined` / `void` | Empty result |
-| Plain object | JSON text content block + `structuredContent` |
+| Plain object | JSON text content block plus `structuredContent` |
 | Array | JSON text content block (no `structuredContent` — the MCP spec requires it to be an object) |
 | `Image(buffer, mimeType)` | Image content block |
 | `File(buffer, name, mimeType)` | Binary blob content block |
 | `ToolResult(...)` | Passed through as-is |
 
-Binary data (`Buffer`, `Uint8Array`) always requires an explicit `Image` or `File` wrapper — a MIME type can't be inferred from raw bytes.
+Raw bytes are the one case the conversion can't guess: a `Buffer` or `Uint8Array` carries no MIME type, so you wrap it in `Image` or `File` to declare what it is. Returning an image is then a single line.
 
-`ToolResult` is the escape hatch for full control: multiple content blocks, suppressing `structuredContent`, or constructing raw MCP output.
-
-```typescript
-import { Image, ToolResult } from '@prefecthq/fastmcp-ts/server'
+```typescript server.ts
+import { Image } from '@prefecthq/fastmcp-ts/server'
 
 server.tool({ name: 'chart', description: 'Render a chart' }, async () => {
   const png = await renderChart()
@@ -99,35 +102,48 @@ server.tool({ name: 'chart', description: 'Render a chart' }, async () => {
 })
 ```
 
-## Name and description inference
+When you need full control over the result — multiple content blocks, suppressing `structuredContent`, or hand-building raw MCP output — return a `ToolResult`. It is the escape hatch the table's last row points to, and it bypasses conversion entirely so what you construct is what the client receives.
 
-Both `name` and `description` are optional. When `name` is omitted, the handler function's `.name` is used. When `description` is omitted, it is derived from the resolved name by converting camelCase to words (`getWeather` → `"get weather"`).
+```typescript server.ts
+import { ToolResult } from '@prefecthq/fastmcp-ts/server'
 
-```typescript
-server.tool({ input: z.object({ city: z.string() }) }, async function getWeather({ city }) {
-  return fetchWeather(city)
+server.tool({ name: 'report' }, async () => {
+  return ToolResult({
+    content: [
+      { type: 'text', text: 'Summary' },
+      { type: 'text', text: 'Details' },
+    ],
+  })
 })
-// → name: "getWeather", description: "get weather"
 ```
-
-## Other config fields
-
-| Field | Behavior |
-|---|---|
-| `title` | Human-readable label for UIs; takes precedence over `name` for display and is passed through in `tools/list` |
-| `timeout` | Per-call timeout in milliseconds; a timed-out handler propagates as an error to the client |
-| `disabled` | When `true`, the tool is completely inaccessible — hidden from `tools/list` and rejected with `InvalidParams` on call. Clients cannot distinguish it from a non-existent tool |
-| `tags` | Free-form strings used by [transforms](/servers/transforms) like `VersionFilter` |
-| `auth` | Per-tool authorization check — see [Authorization](/servers/auth/authorization) |
-| `task` | Opt into long-running task execution — see [Tasks](/servers/tasks) |
 
 ## Errors
 
-Two distinct error channels:
+A tool can fail in two ways, and FastMCP routes them to two different channels so the model and the protocol each learn what they need to.
 
-- **Tool execution errors** — a thrown non-`McpError` from your handler is caught and returned as `{ isError: true }` with the message as content. The protocol call itself succeeds.
-- **Protocol errors** — a thrown `McpError` (from input validation, middleware like rate limiting, or your own code) propagates as a JSON-RPC error.
+When your handler throws an ordinary error — anything that is not an `McpError` — FastMCP catches it and returns `{ isError: true }` with the message as content. The protocol call itself succeeds; the model receives the error as a tool result and can react to it, retry, or report it. This is the right channel for "the operation failed": a missing record, a downstream timeout, a refused request.
+
+When the failure is protocol-level, throw an `McpError`. Input validation throws `McpError(InvalidParams)`; middleware such as rate limiting throws its own `McpError`; you can throw one directly when the client has violated the contract. An `McpError` propagates as a JSON-RPC error rather than a tool result, signalling that the request was malformed rather than that the work failed.
+
+## Configuration
+
+Beyond `name`, `description`, and the schema fields, the config object accepts these fields. Each is optional and each changes how the tool is advertised or executed.
+
+| Field | Behavior |
+|---|---|
+| `title` | Human-readable label for UIs; takes precedence over `name` for display and is forwarded in `tools/list` |
+| `timeout` | Per-call timeout in milliseconds; a handler that exceeds it propagates as an error to the client |
+| `disabled` | When `true`, the tool is completely inaccessible — hidden from `tools/list` and rejected with `InvalidParams` on call, so clients can't distinguish it from a tool that was never registered |
+| `tags` | Free-form strings read by [transforms](/servers/transforms) such as `VersionFilter` |
+| `auth` | Per-tool authorization check — see [Authorization](/servers/auth/authorization) |
+| `task` | Opt the tool into long-running [task](/servers/tasks) execution |
 
 ## Dynamic registration
 
-Tools can be registered before or after `run()`. Adding a tool to a running server automatically sends `notifications/tools/list_changed` to connected clients.
+You can register a tool before or after `server.run()`. Adding one to a running server is a live operation: FastMCP sends `notifications/tools/list_changed` to every connected client so they re-fetch the list and discover the new tool. The same holds for resources and prompts — the registration system is uniform across all three primitives.
+
+```typescript server.ts
+// Later, while the server is already running
+server.tool({ name: 'newCapability' }, () => 'available now')
+// connected clients receive tools/list_changed
+```

@@ -5,22 +5,86 @@ description: "Interactive UIs rendered directly in MCP host conversations"
 icon: "window"
 ---
 
-Apps are FastMCP's third pillar: server-side UI built on the official MCP Apps extension (`io.modelcontextprotocol/ui`). A `FastMCPApp` registers tools whose results render as interactive components inside the host conversation — with full graceful degradation in clients that don't support UI.
+A FastMCP server exposes tools, resources, and prompts to a model. Apps add a UI layer on top of that same server: a tool can be an *entrypoint* that, when the model calls it, renders an interactive screen directly in the host conversation instead of returning only text. The screen is a plain JSON component tree — a description of layout, text, inputs, and buttons — that a UI-capable host paints into the chat. Buttons on that screen call back into tools on your server, so the rendered UI is a live front-end for your server's capabilities, not a static card.
 
-```typescript
+Nothing about the underlying server changes. An entrypoint is an ordinary tool with a `ui` field; the components it returns are ordinary return values. This is why apps compose with everything else: a tool that renders UI is still a tool, so it still validates input, still reaches the client through context, and can still be mounted, transformed, or guarded by auth like any other.
+
+You build apps with `FastMCPApp`, a thin wrapper around `FastMCP` that adds the two registration helpers apps need. Everything you already know about `FastMCP` applies — the wrapper only gives you a cleaner way to declare which tools render UI and which exist purely to back it.
+
+```typescript app.ts
 import { FastMCPApp, Column, Text } from '@prefecthq/fastmcp-ts/server'
 
 const app = new FastMCPApp({ name: 'search-app', version: '1.0.0' })
 
 app.entrypoint(
   { name: 'search', description: 'Search the product catalog' },
-  () => Column({}, [Text('Product Search')])
+  () => Column({}, [Text('Product Search')]),
 )
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+## Entrypoints and backend tools
 
-- **Entrypoints vs. backend tools** — `entrypoint()` registers a tool visible to the LLM, auto-linked to a `ui://` resource; `backendTool()` registers a tool callable only from within the rendered UI (`visibility: ['app']`).
-- **Capability negotiation** — the UI extension is advertised only when UI components exist; clients that haven't negotiated it get a plain-text fallback instead of structured UI content.
-- **Visibility model** — `ToolConfig.ui.visibility` (`['model']`, `['app']`, or both) controls what the LLM sees in `tools/list`.
-- **Mounting apps** — `server.addProvider(app)` / `parent.mount(app.server)`; mount-prefix-aware action references via `actionRef`.
+An app is built from two kinds of tools, and the distinction is about who is allowed to call them.
+
+An **entrypoint** is the door into a screen. It is visible to both the model and the app, so the model can decide to open it and the rendered UI can re-invoke it. `app.entrypoint(config, handler)` registers a tool with this dual visibility and, at the same time, registers a stub resource at `ui://${name}` so the host has somewhere to read the UI bundle from. The handler returns a component tree, which becomes the screen.
+
+A **backend tool** is the wiring behind the screen. When a button submits a form or confirms an action, that click needs to land on a tool — but it would be noise for the model to see that tool in `tools/list`, because the model never calls it directly. `app.backendTool(config, handler)` registers a tool that the app can call but the model cannot, by giving it app-only visibility. If you do want the model to reach a backend tool as well, pass `visibility: ['model', 'app']` to expose it to both.
+
+```typescript app.ts
+import { FastMCPApp, Column, Text, Button } from '@prefecthq/fastmcp-ts/server'
+import { z } from 'zod'
+
+const app = new FastMCPApp({ name: 'orders', version: '1.0.0' })
+
+app.entrypoint(
+  { name: 'order_panel', description: 'Manage an order' },
+  () => Column({}, [
+    Text('Order #1024'),
+    Button({ label: 'Cancel order', actionRef: 'cancel_order' }),
+  ]),
+)
+
+app.backendTool(
+  { name: 'cancel_order', input: z.object({}) },
+  async () => 'Order cancelled',
+)
+```
+
+The `actionRef` on the button names the backend tool the click should call. It is resolved at render time so that the reference still points at the right tool even when the app is mounted under a prefix — see [Components](/apps/components) for how actions are wired and [Built-in providers](/apps/providers) for prepackaged versions of this entrypoint-plus-backend pattern.
+
+## Visibility
+
+Visibility is the single control that decides whether a tool is exposed to the model, to the app, or to both. It lives on the tool's `ui` config as a `visibility` array, and the entrypoint and backend-tool helpers are just convenient defaults over it: `['model', 'app']` for an entrypoint, `['app']` for a backend tool.
+
+The model only ever sees tools whose visibility includes `'model'`. `listTools` filters out everything else, so an app-only backend tool is genuinely invisible to the LLM — it cannot call it, suggest it, or reason about it. For tools that the model can see, a UI-capable client also receives a `_meta.ui` block carrying the `resourceUri` and `visibility`, which is how the host knows to render a screen rather than display text.
+
+```typescript app.ts
+import { FastMCP, Column, Text } from '@prefecthq/fastmcp-ts/server'
+import { z } from 'zod'
+
+const server = new FastMCP({ name: 'dashboard', version: '1.0.0' })
+
+// Model-visible and app-visible: the model can open it, the UI can re-render it.
+server.tool(
+  { name: 'dashboard', input: z.object({}), ui: { visibility: ['model', 'app'] } },
+  () => Column({}, [Text('Welcome')]),
+)
+```
+
+You rarely set `visibility` by hand once you are using `FastMCPApp`, because the helpers encode the right default for each role. Reach for the raw field when a plain `FastMCP` tool needs UI behavior, or when a backend tool also has a legitimate reason to be model-callable.
+
+## Capability negotiation
+
+Apps are an MCP extension, advertised under the key `io.modelcontextprotocol/ui` during the `initialize` handshake. A server only advertises it when it actually has UI to render — when at least one tool carries a `ui` field or at least one resource is served under a `ui://` URI. So a server with no apps looks exactly like any other server, and adding an app is what turns the extension on.
+
+Clients that negotiate the extension get the full experience: `_meta.ui` on tool responses, the UI resource, the rendered screen. Clients that do not — a terminal client, a logging pipeline, a model host without UI support — should still be able to use your tools. When such a client calls a UI tool and the handler returns a structured-content response, the framework strips the UI payload and substitutes a plain text content block reading `[UI not available in this client]`. The call still succeeds; it simply degrades to text. This is what lets you ship one server that renders rich UI where it can and stays usable everywhere else, with no branching in your handler.
+
+## Choosing an approach
+
+There are three ways to put UI in front of a model, and they trade authoring effort against flexibility. Pick by how stable and how varied your screens are.
+
+When your screens are **stable and known ahead of time** — a search panel, an order view, a settings page — author them directly as entrypoints returning [components](/apps/components). You write the layout once, in TypeScript, and you get full control over every element. This is the happy path, and most apps live here.
+
+When a screen follows a **common interaction pattern** — ask the user to approve something, pick from a list, upload a file, fill in a form — reach for a [provider](/apps/providers) instead of hand-building it. Providers are prepackaged mini-apps that register the entrypoint and its backing tools for you, so a confirm/deny dialog or a validated form is one `addProvider` call rather than a screen you assemble and maintain.
+
+When the screens are **exploratory and composed at runtime** — where you cannot know in advance what the user will want to see — let the model build the UI itself with [generative UI](/apps/generative-ui). The model discovers the component catalog and assembles a tree on the fly, which the server renders inside a sandbox. This is the most flexible route and the one to use sparingly: you trade the determinism of authored screens for the ability to render things you never wrote.

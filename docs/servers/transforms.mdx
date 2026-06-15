@@ -4,11 +4,66 @@ description: "View-only projections over the components your server advertises"
 icon: "filter"
 ---
 
-Transforms reshape what clients *see* in list responses — renaming, filtering, namespacing — without touching the underlying registrations. Components hidden by a transform are removed from lists but remain callable by their original name or URI. Register with `server.transform(t)` or via `FastMCPOptions.transforms`; transforms apply in registration order.
+A server often needs to present a different face to different clients without maintaining a different server for each. One audience should see a curated subset; another needs friendlier names; a third expects everything under a version prefix. Transforms let you reshape what clients *see* in list responses — renaming, redescribing, filtering, namespacing — while the underlying registrations stay exactly as you wrote them. A transform is a projection over the registry, not an edit to it, so it changes the view and nothing else.
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+That distinction has a concrete payoff: hiding is not removing. A component a transform drops from a list is gone from `tools/list`, `resources/list`, or `prompts/list`, but it remains fully callable by its original name or URI. You can present a clean public surface and still call the hidden internals yourself. You register transforms fluently with `server.transform(t)`, or all at once through `FastMCPOptions.transforms`, and they apply in registration order.
 
-- **View types** — read-only `ToolView` / `ResourceView` / `PromptView` snapshots passed into transform methods; returning `null` hides a component.
-- **Built-ins** — `renameTool`, `redescribeTool`, `FilterTransform`, `NamespaceTransform(prefix)` (prefixes names but never URIs — prefixing a URI scheme violates RFC 3986), `ResourcesAsTools()`, `PromptsAsTools()`, `VersionFilter(tag)`.
-- **Synthesized tools** — `synthesizeTools(resourceViews, promptViews)` produces new tools from filtered views; synthesized tools run back through the transform chain.
-- **Routing behavior with transforms active** — how `tools/call`, `prompts/get`, and `resources/read` resolve transformed vs. original names.
+```typescript
+import { FastMCP, FilterTransform, NamespaceTransform } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.transform(new FilterTransform({ tools: (t) => !t.tags.includes('internal') }))
+server.transform(new NamespaceTransform('v1'))
+```
+
+## View projections
+
+A transform operates on read-only *views* of your components — lightweight snapshots of the fields that show up in a list response. Each primitive has its own view type, and a transform method receives the current view and returns the view it wants clients to see, or `null` to hide the component. Because the input is a snapshot rather than the live registration, a transform cannot accidentally mutate your server; it can only describe a projection.
+
+| View | Fields you can read and rewrite |
+|---|---|
+| `ToolView` | `name`, `title?`, `description`, `tags` |
+| `ResourceView` | `uri`, `name`, `tags`, `mimeType?`, `title?` |
+| `PromptView` | `name`, `description`, `tags` |
+
+Returning `null` from a view method hides that component from the list. It stays callable by its original identifier — the projection governs visibility, not reachability.
+
+## Built-in transforms
+
+The built-ins cover the common projections, so most servers compose them rather than write their own. Reach for `renameTool` or `redescribeTool` when a tool's registered name or description is right for your code but wrong for the model — a single, surgical rewrite. Reach for `FilterTransform` to carve a subset out of a larger registry by predicate, the workhorse for tailoring a public surface. Reach for `NamespaceTransform` when you want every advertised name to carry a prefix, and `VersionFilter` when you tag components by version and want to expose one version at a time.
+
+| Transform | What it projects |
+|---|---|
+| `renameTool(original, new)` | Shows a tool under a new name; the original name still routes at call time |
+| `redescribeTool(name, desc)` | Replaces a tool's description in list responses |
+| `FilterTransform({ tools?, resources?, resourceTemplates?, prompts? })` | Hides components whose predicate returns `false`; `resourceTemplates` falls back to the `resources` predicate when omitted |
+| `NamespaceTransform(prefix)` | Prefixes every advertised `name` — tools, resources, and prompts |
+| `VersionFilter(tag)` | Shows only components whose `tags` contain `tag`; untagged components are always hidden |
+| `ResourcesAsTools()` | Synthesizes a tool that lists visible resources |
+| `PromptsAsTools()` | Synthesizes a tool that lists visible prompts |
+
+### The URI invariant
+
+`NamespaceTransform` prefixes every advertised *name*, but it never touches resource *URIs*, and that asymmetry is deliberate. A resource URI is an identifier under [RFC 3986](https://datatracker.ietf.org/doc/html/rfc3986), and its scheme — the part before the `://` — is structurally significant. Rewriting `data://reports/q1` to `v1_data://reports/q1` produces a string that is no longer a valid URI: `v1_data` is not a registered scheme, and clients that parse the URI to dereference it will fail. A display name is a human-facing label and is free to change; a URI is the address the client reads by, and changing it would break dereferencing. So namespacing prefixes the name a client sees in a list and leaves the URI alone — the client reads the resource by its original, valid URI, and routing matches it there.
+
+## Resources and prompts as tools
+
+Some clients consume tools fluently but have no first-class handling for resources or prompts. `ResourcesAsTools()` and `PromptsAsTools()` bridge that gap by *synthesizing* a tool — a `list_resources` or `list_prompts` tool that returns the currently visible resource or prompt views as its result. The model can then discover and reach that data through the one primitive it understands.
+
+Synthesis happens after filtering and runs through the transform chain itself, which keeps the synthesized tools consistent with everything else. The views handed to synthesis are already filtered for visibility and auth, so a synthesized listing never exposes a component the caller couldn't otherwise see. And because the synthesized tool is then transformed like any other, a `NamespaceTransform('v1')` registered alongside renames it to `v1_list_resources`, and a `FilterTransform` can hide it — the synthesized tool obeys the same projection rules as a registered one.
+
+```typescript
+import { FastMCP, ResourcesAsTools } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.resource({ uri: 'memo://readme', name: 'readme' }, () => 'Hello!')
+server.transform(new ResourcesAsTools())   // adds a callable list_resources tool
+```
+
+## Routing
+
+When transforms are active, what a client sees in a list and how a call resolves are two separate questions, and routing answers the second so that hidden-but-callable actually works. A call resolves against the underlying registry, not the projected view, which is what lets you invoke a hidden component by its original identifier.
+
+For a tool call, FastMCP checks synthesized tools by name first, then scans registered tools through the `transformTool` chain looking for a name match — so a renamed tool resolves under its new name — and finally falls back to a direct registry lookup by original name, which is how a hidden tool stays reachable. Prompt resolution scans the transformed prompts first, then falls back to the registry the same way. Resource reads try a direct URI match, then a direct template match, then scan statics and templates through their transform chains for a URI match. In every case the projection decides visibility and the registry decides reachability, so renaming, namespacing, and filtering never strand a component you still need to call.

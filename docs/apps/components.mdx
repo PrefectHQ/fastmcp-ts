@@ -4,9 +4,11 @@ description: "The server-side component library for building app UIs"
 icon: "puzzle-piece"
 ---
 
-App UIs are pure JSON-serializable component trees built from plain-function builders — no JSX, no client bundle:
+A screen in a FastMCP app is a tree of components, and that tree is plain data. Every builder — `Column`, `Text`, `Button`, and the rest — is an ordinary function that returns a JSON-serializable object of the shape `{ type, props?, children? }`. There is no JSX, no React, and no client bundle to ship; you describe the UI as a value and the host renders it.
 
-```typescript
+Building UI as data rather than as code is what makes apps easy to reason about. A screen is just the return value of a tool handler, so you can construct it conditionally, build it from a loop, return it from a pure function, and assert on it in a test with a plain equality check. The component library is a vocabulary for describing screens, and the host on the other end is responsible for turning that description into pixels.
+
+```typescript app.ts
 import { Column, Row, Text, Input, Button } from '@prefecthq/fastmcp-ts/server'
 
 Column({}, [
@@ -18,9 +20,78 @@ Column({}, [
 ])
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+## The component model
 
-- **Builder catalog** — layout (`Column`, `Row`, `Grid`), display (`Text`, `Badge`, `Table`, charts: `Bar`, `Line`, `Area`, `Pie`), input (`Input`, `Select`, `Button`), and control flow (`If`/`.elif()`/`.else()`, `ForEach`, `Rx`).
-- **Actions** — `Button({ actionRef })` invokes backend tools; `actionRef()` resolves mount-prefixed names at execution time so apps work when mounted under a prefix.
-- **Component model** — every builder returns `{ type, props?, children? }`; trees are plain data, easy to test and snapshot.
-- **Conditional rendering** — the `If` chaining API and how branches serialize.
+Each builder takes a `props` object and, where it makes sense, a list of child components, and returns the node describing it. Because the result is just an object, the tree composes by ordinary function composition — a `Column` holds the array a `Row` returns, which holds the `Input` and `Button` nodes, all the way down. Nothing executes on render except your construction code, which has already run by the time the handler returns.
+
+This data-first design pays off most in testing. Since a screen is a value with no hidden behavior, you compare it against an expected tree directly.
+
+```typescript app.test.ts
+import { Column, Text } from '@prefecthq/fastmcp-ts/server'
+import { expect, test } from 'vitest'
+
+test('renders a heading', () => {
+  expect(Column({}, [Text('Hello')])).toEqual({
+    type: 'column',
+    props: {},
+    children: [{ type: 'text', props: { content: 'Hello' } }],
+  })
+})
+```
+
+## Layout and display
+
+Layout components arrange other components without rendering anything themselves. `Column` stacks its children vertically, `Row` lays them out horizontally, and `Grid` places them on a two-dimensional grid — together they cover the structure of almost any screen, and they nest freely to build more complex arrangements.
+
+Display components carry the actual content. `Text` renders a string, `Badge` renders a small labelled pill for status or counts, and `Table` renders rows and columns of data. For quantitative data, the chart builders — `Bar`, `Line`, `Area`, and `Pie` — render their respective visualizations from a data series. You reach for these the same way you would lay out any document: choose the container that matches the structure you want, then fill it with the display nodes that carry your content.
+
+```typescript app.ts
+import { Column, Text, Badge, Table } from '@prefecthq/fastmcp-ts/server'
+
+Column({}, [
+  Text('Recent orders'),
+  Badge({ label: '3 pending' }),
+  Table({
+    columns: ['Order', 'Status'],
+    rows: [
+      ['#1024', 'shipped'],
+      ['#1025', 'pending'],
+    ],
+  }),
+])
+```
+
+## Inputs and actions
+
+Inputs collect values from the user and actions send them back to your server. `Input` is a text field, `Select` offers a fixed set of options, and `Button` triggers a call into one of your tools. An input names the value it produces; a button names the tool that should receive those values.
+
+The link from a button to a tool is the `actionRef`. When the user clicks, the host calls the tool you named, passing along the current input values. The reference is resolved at the moment the handler runs rather than when the component is constructed, and this timing is what makes apps survive mounting: if your app is mounted under a prefix, a backend tool registered as `run_search` is exposed to the parent as `prefix_run_search`, and `actionRef` resolves to the prefixed name automatically. You write `actionRef: 'run_search'` and it points at the right tool whether the app runs standalone or nested. If you need that resolved name in your own code, the standalone `actionRef(name)` helper (or `app.toolRef(name)` on a `FastMCPApp`) performs the same lookup.
+
+```typescript app.ts
+import { Column, Input, Button } from '@prefecthq/fastmcp-ts/server'
+
+Column({}, [
+  Input({ name: 'query', placeholder: 'Search…' }),
+  // Clicking calls the `run_search` tool with { query }.
+  Button({ label: 'Search', actionRef: 'run_search' }),
+])
+```
+
+A button can also carry fixed arguments alongside the live input values, which is how a list of choices works: each option's button hard-codes its own value as `args`, so clicking it calls one backend tool with the option already filled in. The [`Choice` provider](/apps/providers) is built exactly this way.
+
+## Control flow
+
+Because a tree is built in ordinary TypeScript, most branching and repetition is just code — an `if` statement that picks which node to push, a `.map()` that produces a list of rows. The control-flow builders exist for the cases where the *host* must decide at render time, against state that only exists on the client.
+
+`If` expresses a conditional whose branches the host evaluates. It is the one builder with a chaining API: `.elif()` adds another branch and `.else()` adds a fallback, mirroring the language construct. The chaining methods are non-enumerable, so the serialized node is pure data — `{ type: 'if', branches, fallback? }` — and an equality check in a test ignores the methods and compares only the branch data.
+
+```typescript app.ts
+import { If, Text } from '@prefecthq/fastmcp-ts/server'
+
+If({ condition: 'x > 0' }, Text('positive'))
+  .elif({ condition: 'x < 0' }, Text('negative'))
+  .else(Text('zero'))
+// → { type: 'if', branches: [...], fallback: { type: 'text', ... } }
+```
+
+`ForEach` repeats a template over a collection the host holds, and `Rx` binds a region to client-side reactive state so it updates without a round-trip to the server. Reach for these only when the condition or the data is owned by the host; when you already have the values on the server, build the tree directly and skip the control-flow nodes entirely.

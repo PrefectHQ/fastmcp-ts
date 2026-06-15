@@ -4,11 +4,98 @@ description: "Verify bearer tokens with JWKS, introspection, or static tokens"
 icon: "key"
 ---
 
-Three built-in verifiers cover the common ways to validate a bearer token, from production JWKS validation to throwaway dev tokens.
+Verification turns the bearer token on an incoming request into a verified `AccessToken`, and the right way to do that depends entirely on what kind of token your identity provider issues. FastMCP ships three verifiers covering the cases you actually meet in practice, and each is a `TokenVerifier` you pass to the server's `auth` option. They differ in where the trust comes from: a JWT verifier trusts a cryptographic signature it can check locally, an introspection verifier trusts the issuing server's live answer, and a static verifier trusts a map you wrote by hand. Picking the right one is mostly a question of which of those you have.
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+## jwtVerifier
 
-- **`jwtVerifier({ jwksUri, issuer, audience })`** — validates JWTs against a JWKS endpoint; issuer/audience checks; claim extraction into `AccessToken`.
-- **`introspectionVerifier`** — defers validation to an OAuth token introspection endpoint for opaque tokens.
-- **`staticTokenVerifier` / `debugTokenVerifier`** — fixed token-to-identity maps for development and tests; never use in production.
-- **Combining strategies** — accept more than one token type with [`multiAuth`](/servers/auth/authorization).
+Reach for `jwtVerifier` first. It is the production default because JSON Web Tokens carry their own proof: the token is signed by your identity provider, the provider publishes its public keys at a JWKS endpoint, and FastMCP validates the signature locally on every request. There is no network call on the hot path — the keys are fetched once and cached — so verification stays fast even under load, and the server keeps working through brief provider outages.
+
+A signature only proves the token is authentic, not that it was meant for you. That is why you give the verifier an `issuer` and an `audience`: the issuer check rejects tokens minted by anyone other than your provider, and the audience check rejects tokens issued for some other service that happen to share the same signing keys. Set both in production. Once a token passes, its `sub` claim becomes the `AccessToken.clientId`, its `scope` claim (whether a space-delimited string or an array) becomes `scopes`, its `exp` becomes `expiresAt`, and the entire payload is preserved under `claims` for any custom fields you rely on.
+
+```typescript server.ts
+import { FastMCP, jwtVerifier } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'secure-server',
+  auth: jwtVerifier({
+    jwksUri: 'https://auth.example.com/.well-known/jwks.json',
+    issuer: 'https://auth.example.com',
+    audience: 'my-mcp-server',
+  }),
+})
+```
+
+Clocks between your server and your identity provider drift, and a token issued a moment ago can look not-yet-valid or a token at its boundary can look expired. The optional `leeway`, in seconds, tolerates that skew; it defaults to `0`, so set a few seconds if you see spurious expiry rejections.
+
+## introspectionVerifier
+
+Some providers issue **opaque** tokens — random strings that carry no payload and no signature you can check. There is nothing to validate locally, so you ask the provider whether the token is still good, using the introspection endpoint defined by [RFC 7662](https://datatracker.ietf.org/doc/html/rfc7662). FastMCP `POST`s the token to that endpoint with your client credentials, and trusts the `active: true` response.
+
+The reason you would *choose* this over JWT verification is the same reason it costs more: introspection asks the authorization server in real time, so a token revoked seconds ago stops working immediately. JWTs, being self-contained, remain valid until they expire even if revoked at the source. If immediate revocation matters to your threat model, introspection buys it. The price is a network call per request, which is why the verifier accepts a `cacheTtl` (in seconds) to cache the introspection result for a short window — a deliberate trade of some revocation latency back for throughput.
+
+```typescript server.ts
+import { FastMCP, introspectionVerifier } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'secure-server',
+  auth: introspectionVerifier({
+    endpoint: 'https://auth.example.com/oauth/introspect',
+    credentials: {
+      clientId: process.env.INTROSPECT_CLIENT_ID!,
+      clientSecret: process.env.INTROSPECT_CLIENT_SECRET!,
+    },
+    cacheTtl: 60,
+  }),
+})
+```
+
+The response maps the same way a JWT does: `client_id` to `clientId`, the space-delimited `scope` to `scopes`, `exp` to `expiresAt`, and the whole response body to `claims`. An inactive token, or any non-`200` from the endpoint, is rejected.
+
+## Static tokens
+
+When there is no identity provider in the loop — a local development server, a script, an internal tool behind its own network boundary — a full verifier is more machinery than the job needs. `staticTokenVerifier` takes a plain map from token strings to the identity each one represents, so you can hand a teammate a known token and have it resolve to a known `clientId` and scope set with no infrastructure at all.
+
+```typescript server.ts
+import { FastMCP, staticTokenVerifier } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'dev-server',
+  auth: staticTokenVerifier({
+    'dev-token-alice': { clientId: 'alice', scopes: ['read', 'write'] },
+    'dev-token-bob': { clientId: 'bob', scopes: ['read'] },
+  }),
+})
+```
+
+For the throwaway case where you do not even want to manage a map — exercising a server from a test or a quick local probe — `debugTokenVerifier` accepts any non-empty bearer token and resolves it to an empty-scoped identity. It logs a warning on construction precisely because it grants access to anyone, so confine it to development. Both static verifiers honor an optional `expiresAt` on an entry and reject tokens that have passed it.
+
+These verifiers earn their keep when the alternative is disabling auth entirely during development. Keeping a real verifier in place — even a trivial one — means your handlers see a populated `ctx.auth` and your [authorization](/servers/auth/authorization) checks run, so the code path you test locally matches the one you ship.
+
+## Combining verifiers
+
+A server in transition often needs to accept more than one kind of token at once — long-lived static tokens for internal callers alongside JWTs from your identity provider, or two providers during a migration. `multiAuth` composes several verifiers into one. It tries each in turn and returns the first `AccessToken` any of them produces; only if every verifier rejects the token does the request fail.
+
+```typescript server.ts
+import {
+  FastMCP,
+  multiAuth,
+  jwtVerifier,
+  staticTokenVerifier,
+} from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'secure-server',
+  auth: multiAuth(
+    jwtVerifier({
+      jwksUri: 'https://auth.example.com/.well-known/jwks.json',
+      issuer: 'https://auth.example.com',
+      audience: 'my-mcp-server',
+    }),
+    staticTokenVerifier({
+      'service-token': { clientId: 'internal-service', scopes: ['read'] },
+    }),
+  ),
+})
+```
+
+Order the verifiers cheapest-first: each is only consulted when the ones before it reject, so putting the local static map ahead of a remote introspection call avoids a network round-trip for tokens the map already covers. Because every verifier yields the same `AccessToken` shape, the rest of your server — context, scope checks, per-component rules — never needs to know which one matched.

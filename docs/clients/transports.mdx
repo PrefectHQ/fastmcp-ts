@@ -4,22 +4,64 @@ description: "Connect over HTTP, stdio subprocesses, or in-process servers"
 icon: "route"
 ---
 
-`Client.connect()` accepts several transport inputs and resolves the right connection automatically:
+A transport is where the server lives. The same `Client` consumes the same primitives no matter how it reached the server, so the only thing that changes between a server running across the network, a server running as a child process, and a server running inside your own process is the argument you hand to `Client.connect()`. You never name the transport explicitly — the client infers it from the shape of that argument and builds the right connection for you.
+
+## Connecting
+
+`Client.connect()` inspects its first argument and resolves a transport from it. A string is a URL, so the client speaks Streamable HTTP. A `StdioTransport` describes a command to run, so the client spawns that subprocess and talks to it over stdin and stdout. A live `FastMCP` instance is already in memory, so the client wires up an in-process channel with no network or process boundary at all.
 
 ```typescript
-// HTTP (Streamable HTTP, falling back to SSE)
-const a = await Client.connect('http://localhost:3000')
+import { Client, StdioTransport } from '@prefecthq/fastmcp-ts/client'
 
-// stdio subprocess
-import { StdioTransport } from '@prefecthq/fastmcp-ts/client'
-const b = await Client.connect(new StdioTransport('npx', ['tsx', 'server.ts']))
+// HTTP — the server is reachable at a URL
+const remote = await Client.connect('https://mcp.example.com')
 
-// in-process FastMCP instance — no network, no subprocess
-const c = await Client.connect(server)
+// stdio — the client spawns the server as a subprocess
+const local = await Client.connect(new StdioTransport('npx', ['tsx', 'server.ts']))
+
+// in-process — the server is a FastMCP instance in this process
+const inProcess = await Client.connect(server)
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+Because the transport is resolved from the argument and nothing else, the same call site works against any of them. A test can connect to an in-process server; the same code in production connects to a URL by changing only what it passes in.
 
-- **Resolution rules** — string URLs become Streamable HTTP (with SSE fallback on 4xx); `StdioTransport` spawns a subprocess; a live server instance connects via an in-memory transport pair; raw SDK `Transport` objects pass through.
-- **In-process connections** — ideal for tests: full protocol fidelity without process or network overhead.
-- **`mcpServers` configs** — `{ mcpServers: { name: { url } | { command } } }` entries; single-entry configs return a `Client`, multi-entry return a [`MultiServerClient`](/clients/multi-server).
+## Transport inputs
+
+Each accepted input maps to a concrete connection, and knowing the mapping tells you which one to reach for.
+
+A **string URL** speaks [Streamable HTTP](/servers/running#transports), the transport for servers exposed over the network. If the server only offers the older SSE endpoint, the client falls back to SSE on a 4xx response, so a URL works against both without special handling.
+
+A **`StdioTransport`** instance spawns a subprocess and communicates over its standard streams. This is how you drive a server that ships as a command — a published package run through `npx`, or a local file run through `tsx`. The first argument is the binary and the rest are its arguments, kept as separate array elements so commands with spaces resolve correctly.
+
+A **`FastMCP` instance** connects in process, covered below. The client recognizes it structurally — anything with a `connect` method qualifies — which avoids importing the server module into client code.
+
+An **`mcpServers` config** describes one or more servers by name, the same shape MCP clients use in their configuration files. Each entry is either `{ url }` for an HTTP server or `{ command, args }` for a stdio server, and entries may also carry [per-server auth](/clients/auth).
+
+```typescript
+const client = await Client.connect({
+  mcpServers: {
+    weather: { url: 'https://weather-mcp.example.com' },
+  },
+})
+```
+
+A single-entry config returns a plain `Client`, so a config file with one server behaves exactly like connecting to that server directly. A config with more than one entry returns a [`MultiServerClient`](/clients/multi-server) that aggregates and namespaces every server behind one interface — the same code path resolves each entry's transport, so a config can freely mix HTTP and stdio servers.
+
+A raw SDK `Transport` object passes through untouched, for the rare case where you have constructed a transport from the underlying MCP SDK yourself.
+
+## In-process connections
+
+Connecting to a `FastMCP` instance directly skips the network and the subprocess entirely. The client pairs an in-memory transport between the two halves and runs the full MCP protocol across it — every request, response, and notification behaves exactly as it would over HTTP, with none of the serialization or process overhead.
+
+```typescript
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const server = new FastMCP({ name: 'calc', version: '1.0.0' })
+server.tool({ name: 'add', input: z.object({ a: z.number(), b: z.number() }) }, ({ a, b }) => a + b)
+
+const client = await Client.connect(server)
+const result = await client.callTool('add', { a: 1, b: 2 })
+```
+
+This is the recommended way to test a server. You exercise the real registration, validation, conversion, and context machinery without spawning anything, so tests stay fast and assert against genuine protocol behavior rather than a mock. The connection requires the server to attach its side before the client's side completes, and the client coordinates that handshake automatically as part of `connect()` — you only pass the instance.

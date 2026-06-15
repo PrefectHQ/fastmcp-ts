@@ -4,22 +4,66 @@ description: "Ready-to-mount interactive primitives: approval, choice, file uplo
 icon: "box-open"
 ---
 
-Providers are prepackaged mini-apps you mount onto any server with one line:
+A handful of interactions show up in almost every app: confirm an action, pick from a list, upload a file, fill in a form. Each of these is an entrypoint plus the backend tools that handle its clicks — exactly the pattern from [the overview](/apps/overview), but one you would rather not rebuild every time. Providers package each interaction as a ready-made mini-app, so you get the screen and its wiring without authoring components.
 
-```typescript
+## Mounting a provider
+
+A provider is a `FastMCPApp` under the hood, and you attach one to your server with `addProvider`. That single call mounts the provider's entrypoint and all of its backend tools onto your server, prefix-aware and ready to use.
+
+```typescript server.ts
 import { FastMCP, Approval, Choice, FileUpload, FormInput } from '@prefecthq/fastmcp-ts/server'
 
-const server = new FastMCP({ name: 'my-server' })
+const server = new FastMCP({ name: 'my-server', version: '1.0.0' })
 
-server.addProvider(new Approval())    // confirm/deny card
-server.addProvider(new Choice())      // clickable option list
-server.addProvider(new FileUpload())  // drag-and-drop picker
-server.addProvider(new FormInput())   // auto-generated validated form
+server.addProvider(new Approval())
+server.addProvider(new Choice())
+server.addProvider(new FileUpload())
+server.addProvider(new FormInput())
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+`addProvider` is a convenience over mounting: it accepts a `FastMCPApp` (or a plain `FastMCP`) and mounts its underlying server for you, so you never have to reach for `.server` or call `mount` directly. Because it mounts, every provider tool is namespaced under the provider's name and its action references resolve against that prefix — the wiring described in [Components](/apps/components) is what makes a mounted provider work unchanged.
 
-- **`Approval`** — confirm/deny card whose outcome is injected back into the conversation.
-- **`Choice`** — clickable option list; each option button carries its value as tool arguments.
-- **`FileUpload`** — drag-and-drop file picker; file bytes are stored via a `FileStorageAdapter` and **never pass through the LLM**; handles tracked in session state.
-- **`FormInput`** — renders a validated form from any Standard Schema (Zod, Valibot, ArkType); submissions are validated server-side with the same schema.
+## Approval
+
+The `Approval` provider renders a confirm/deny card and routes the user's choice back into the conversation. It registers the entrypoint together with two app-only backend tools — one for confirm, one for deny — so each button has a tool to land on while neither appears to the model. The card's buttons use action references, so the provider works the same whether it is mounted standalone or under a prefix.
+
+Reach for `Approval` whenever a model-proposed action needs a human to sign off before it happens: a destructive operation, a purchase, anything you want a person in the loop for.
+
+## Choice
+
+The `Choice` provider renders a list of options as clickable buttons and reports which one the user picked. It registers the entrypoint and a single app-only `_select` backend tool; each option button carries its own value as fixed `args`, so clicking an option calls `_select` with that choice already filled in. This is the multi-option case of the button wiring — one backend tool, distinguished by the arguments each button supplies.
+
+Use `Choice` when you want the user to select from a known set rather than type a free-form answer.
+
+## File upload
+
+The `FileUpload` provider renders a file picker and handles the bytes on the server, where they belong. It registers the entrypoint plus app-only tools to submit and delete files. On submit, the file's bytes are written through a `FileStorageAdapter` and the provider records a lightweight `FileHandle` — an identifier and metadata — in session state under `file_upload_handles_${name}`. The delete tool removes a handle by its id.
+
+This server-side storage is the design, not a workaround. The model and the conversation deal only in handles: small references it can pass to other tools, list, or remove. The bytes live wherever your `FileStorageAdapter` puts them — disk, object storage, a database — and your other tools fetch them by handle when they need the content. Keeping the payload on the server means a multi-megabyte upload costs the conversation a single identifier, and the storage backend is yours to choose by supplying the adapter.
+
+Reach for `FileUpload` whenever an app needs a user to provide a document, image, or dataset that downstream tools will process by reference.
+
+## Form input
+
+The `FormInput` provider turns a Standard Schema into a validated form. You hand it a schema — Zod, Valibot, ArkType, or anything else Standard Schema supports — and it renders a field per property and registers an app-only `_submit` tool that validates the submission against that same schema before your code sees it.
+
+The schema is the single source of truth for both halves of the form. The fields are generated from the schema's JSON Schema `properties` using the same conversion that advertises tool input schemas, so the form's shape always matches what you declared. On submit, the values are validated through the schema's `~standard.validate`, so a submission that reaches your handler has already been checked against the exact contract you wrote.
+
+```typescript server.ts
+import { FastMCP, FormInput } from '@prefecthq/fastmcp-ts/server'
+import { z } from 'zod'
+
+const server = new FastMCP({ name: 'my-server', version: '1.0.0' })
+
+server.addProvider(
+  new FormInput({
+    name: 'contact',
+    schema: z.object({
+      email: z.string().email(),
+      message: z.string().min(1),
+    }),
+  }),
+)
+```
+
+Use `FormInput` when you need structured, validated input and want the form and its validation to stay in lockstep without maintaining them separately.

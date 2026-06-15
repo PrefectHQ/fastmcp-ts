@@ -6,6 +6,8 @@ icon: "download"
 
 import Install from '/snippets/install.mdx'
 
+FastMCP TypeScript installs as a single package with a bundled CLI. Once it's in place, the [quickstart](/quickstart) walks you through building and running your first server.
+
 ## Requirements
 
 FastMCP TypeScript runs on **Node.js 22 or later**. There is no browser support.
@@ -46,9 +48,3 @@ The client's [sampling adapters](/clients/sampling) forward LLM sampling request
 | `GoogleSamplingAdapter` | `npm install @google/genai` |
 
 Nothing breaks if these are absent — the adapters import provider types with `import type`, so there is no runtime cost or error unless you actually instantiate one.
-
-## Next steps
-
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  Build and run your first MCP server.
-</Card>

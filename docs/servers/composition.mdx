@@ -4,7 +4,7 @@ description: "Mount child servers and proxy remote ones into a single gateway"
 icon: "diagram-project"
 ---
 
-Compose servers from smaller ones: `mount()` mirrors an in-process child into a parent, and `createProxy()` wraps a remote MCP server as a mountable `FastMCP` instance.
+Large servers grow out of small ones. You build a weather server and a maps server independently, test them in isolation, then want a client to reach both through a single endpoint. Composition is how you assemble that gateway: `mount()` mirrors an in-process child into a parent, and `createProxy()` wraps a remote MCP server as a `FastMCP` instance you can mount the same way. Either way, the result is one server that exposes the union of its parts, and the parts remain ordinary servers you can run on their own.
 
 ```typescript
 import { FastMCP, createProxy } from '@prefecthq/fastmcp-ts/server'
@@ -17,9 +17,50 @@ gateway.mount(weather, 'weather')   // → weather_forecast
 gateway.mount(maps, 'maps')         // → maps_<tool_name>
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+## Mounting
 
-- **Mounting semantics** — live mirroring (components registered on the child after `mount()` appear in the parent immediately, with `list_changed` notifications); prefixing renames tools/prompts to `${prefix}_${name}` but **never alters resource URIs**; mounting cascades through grandparent chains.
-- **Why it composes cleanly** — mounted components land in the parent's own registries, so transforms, middleware, and auth apply to them identically.
-- **Proxying** — `createProxy({ type: 'stdio' | 'http', ... })` returns a plain `FastMCP` that forwards all calls verbatim; closing the parent closes the proxied connection.
-- **Choosing between mount and proxy** — in-process vs. remote, and combining both behind one gateway.
+`parent.mount(child, prefix?)` mirrors every tool, resource, and prompt from the child into the parent. The mirror is *live*: a component registered on the child after the mount appears in the parent immediately, and the parent fires the matching `list_changed` notification so connected clients learn about it right away. This is what makes composition feel like wiring servers together rather than taking a one-time snapshot — a child that registers tools dynamically keeps the parent in sync as it goes. Mounting the same child twice is a no-op, so you can mount defensively without double-registering.
+
+A prefix keeps two children from colliding. Tool and prompt names become `${prefix}_${name}`, and resource display names are prefixed the same way, so `weather` mounted under `weather` advertises `weather_forecast`. Mounting also cascades: mount a child into a parent that is itself mounted into a grandparent, and registrations propagate up the whole chain, because each mirror fires the next level's callbacks in turn.
+
+### The URI invariant
+
+Prefixing renames tools, prompts, and resource display names, but it never touches resource *URIs*, and that asymmetry is deliberate. A resource URI is an identifier under [RFC 3986](https://datatracker.ietf.org/doc/html/rfc3986), and its scheme — the part before the `://` — is structurally significant. Rewriting `data://reports/q1` to `weather_data://reports/q1` produces a string that is no longer a valid URI: `weather_data` is not a registered scheme, and clients that parse the URI to dereference it will fail. A display name is a human-facing label and is free to change; a URI is the address the client reads by, and changing it would break dereferencing. So mounting prefixes the name a client sees in a list and leaves the URI alone — the client reads the resource by its original, valid URI, and routing already matches it there.
+
+## Why it composes
+
+Mounting is a thin wrapper over the registration system, and that single decision is why everything else keeps working. Rather than building a separate routing layer that intercepts and forwards calls, `mount()` copies the child's registrations directly into the parent's own internal maps. After the mount, a mounted tool is indistinguishable from a tool you registered on the parent by hand — it lives in the same registry and flows through the same request path.
+
+The consequence is that the cross-cutting concerns layer on without special-casing. [Middleware](/servers/middleware) wraps mounted components because they are ordinary entries in the parent's chain. [Transforms](/servers/transforms) project them because they are ordinary entries in the parent's registry. [Auth](/servers/auth/overview) gates them for the same reason. There is no "mounted component" branch in the request handlers, because to the handlers there is no such thing — a mounted tool, a transformed tool, and an authed tool are all just tools.
+
+## Proxying
+
+A child has to be in-process to mount, but plenty of servers you want to compose run elsewhere — a Python MCP server, a managed service, a process you'd rather not embed. `createProxy(config)` bridges that gap. It connects to a remote server, fetches its tools, resources, resource templates, and prompts, and returns a plain `FastMCP` instance whose handlers forward each call to the remote. Because the return value is just a `FastMCP`, you mount it exactly like an in-process child — the gateway can't tell the difference.
+
+Forwarding is verbatim. The proxy passes responses straight through without re-running return-value conversion, so the remote server's output reaches your client unchanged. Lifecycle is wired through too: closing the parent (or the proxy directly) closes the underlying connection to the remote.
+
+```typescript
+import { FastMCP, createProxy } from '@prefecthq/fastmcp-ts/server'
+
+const remote = await createProxy({
+  type: 'stdio',
+  command: 'python',
+  args: ['-m', 'my_mcp_server'],
+})
+
+const gateway = new FastMCP({ name: 'gateway' })
+gateway.mount(remote, 'py')
+await gateway.run()
+```
+
+The proxy transport is either a subprocess over stdio or a remote endpoint over HTTP:
+
+```typescript
+type ProxyTransport =
+  | { type: 'stdio'; command: string; args?: string[]; env?: Record<string, string>; cwd?: string }
+  | { type: 'http'; url: string; requestInit?: RequestInit }
+```
+
+## Mount or proxy
+
+The choice is in-process versus remote. Mount when the child is a `FastMCP` instance you control in the same process — it is the lighter path, with live updates and no network hop. Proxy when the capability lives in another process or on another machine, or when it's implemented in another language; `createProxy` turns that remote server into something mountable. Nothing stops you from doing both behind one gateway, mounting your own in-process servers alongside proxied external ones, since by the time they reach the parent's registry they are all just `FastMCP` instances.

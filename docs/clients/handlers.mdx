@@ -1,24 +1,76 @@
 ---
 title: "Handlers"
-description: "React to server logs, progress, elicitation, and list changes"
+description: "Answer server logs, progress, sampling, elicitation, and list changes"
 icon: "bell"
 ---
 
-Servers push more than tool results: logs, progress updates, elicitation requests, and change notifications. Wire up handlers when connecting:
+A client consumes the server's primitives, but the protocol runs in both directions: the server also pushes notifications and asks the client questions. A tool reports progress as it works, emits log lines, asks the client to run an inference, or asks it to collect input from the user. Handlers are how the client answers. They are the consume-side of the same back-channel a server reaches through [context](/servers/context) — what the server sends with `ctx.reportProgress()` or `ctx.sample()` arrives at the client as a handler call. You register them when you connect.
 
 ```typescript
-const client = await Client.connect('http://localhost:3000', {
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('https://mcp.example.com', {
   handlers: {
     log: ({ level, data }) => console.error(`[server:${level}]`, data),
     progress: ({ progress, total, message }) => render(progress, total, message),
-    onToolsListChanged: { onChanged: (tools) => refresh(tools) },
   },
 })
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+## Server notifications
 
-- **Notification handlers** — `log` (every server log message), `progress` (global default, overridable per call via `onProgress`), and the three `on*ListChanged` handlers with auto-refresh and debouncing.
-- **Request handlers** — `sampling` and `elicitation` answer server-initiated requests; providing them advertises the corresponding capability.
-- **Roots** — static `string[]`/`Root[]` or an async callback for dynamic roots; `notifyRootsChanged()` for pushing updates.
-- **Log level control and completion** — `setLogLevel(level)` to filter server logs; `complete(ref, argument)` for prompt/resource argument autocompletion.
+Some pushes are one-way: the server tells the client something happened and expects no reply. Logs and progress are the two you will reach for most. The `log` handler fires for every log notification the server emits — each call carries the severity `level`, the originating `logger` name, and the `data` payload — which lets you route a server's logs into your own logging, filtered or formatted however you like.
+
+Progress is the other. A long-running tool calls `ctx.reportProgress()`, and your `progress` handler receives the running `progress`, the `total` when the server knows it, and an optional `message`. The handler you set in `handlers` is the global default; a single call can override it by passing `onProgress` in its options, which is the right move when one specific call needs a dedicated progress bar.
+
+```typescript
+await client.callTool('reindex', {}, {
+  onProgress: ({ progress, total }) => updateBar(progress, total),
+})
+```
+
+## Sampling and elicitation
+
+Two server requests expect the client to do real work and return a result. Sampling is the server asking the client to run an LLM inference — a tool that wants the model to summarize, classify, or reason calls `ctx.sample()`, and the request lands on the client's `sampling` handler. Elicitation is the server asking the client to collect structured input from the user — `ctx.elicit()` arrives at the `elicitation` handler, which presents a form and returns what the user entered.
+
+Both are capability-gated, and the rule is the same for each: the client advertises the capability only when you provide the handler. A server checks for the capability before it calls, so a client with no `sampling` handler never receives a sampling request, and one with no `elicitation` handler never receives an elicitation. This keeps the contract honest — the server only asks for what the client has said it can do.
+
+For sampling specifically, you rarely write the handler by hand. A [sampling adapter](/clients/sampling) wires the request straight to a provider's LLM, so the handler is one line:
+
+```typescript
+import { Client, AnthropicSamplingAdapter } from '@prefecthq/fastmcp-ts/client'
+import Anthropic from '@anthropic-ai/sdk'
+
+const client = await Client.connect('https://mcp.example.com', {
+  handlers: {
+    sampling: new AnthropicSamplingAdapter(new Anthropic()).asHandler(),
+    elicitation: async (message, schema) => promptUserForm(message, schema),
+  },
+})
+```
+
+## List-change notifications
+
+When a server registers or removes a tool, resource, or prompt at runtime, it sends a list-changed notification. The three `on*ListChanged` handlers react to those. Left alone, they do the sensible thing: each one re-fetches the affected list automatically before calling your `onChanged` callback, so the callback receives the current set rather than a bare notification you would have to act on yourself.
+
+```typescript
+const client = await Client.connect('https://mcp.example.com', {
+  handlers: {
+    onToolsListChanged: { onChanged: (tools) => refreshToolMenu(tools) },
+  },
+})
+```
+
+A burst of registrations could otherwise fire your callback repeatedly, so the handlers debounce by default — they wait briefly and coalesce a flurry of changes into a single `onChanged` call. The same shape covers resources and prompts through `onResourcesListChanged` and `onPromptsListChanged`. You can turn off the automatic re-fetch with `autoRefresh: false` when you would rather handle the notification yourself, or tune the debounce window.
+
+## Roots
+
+Roots run the other way: rather than answering a server request, the client *declares* something up front. Roots are the filesystem locations a client makes available to the server — the directories a server may operate within — and you advertise them through the `roots` option when connecting. The simplest form is an array of URIs; for locations that change while the client runs, pass a callback that the server queries each time it calls `listRoots()`.
+
+```typescript
+const client = await Client.connect('https://mcp.example.com', {
+  roots: ['file:///home/me/project', 'file:///tmp/scratch'],
+})
+```
+
+URIs without a `file://` scheme are normalized for you, so a bare path works. Static roots never change, so the client advertises the roots capability as non-changing; when you pass a callback instead, it advertises that roots can change and you push updates with `client.notifyRootsChanged()`.
