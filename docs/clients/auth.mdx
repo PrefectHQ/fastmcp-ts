@@ -5,7 +5,11 @@ description: "Bearer tokens, OAuth, and client credentials"
 icon: "key"
 ---
 
-Clients authenticate to protected servers with one of three strategies, passed via the `auth` option:
+A server [verifies the caller's identity](/servers/auth/overview) before it runs any handler. The client's job is the other side of that exchange: present a credential the server will accept. Authentication is orthogonal to the [transport](/clients/transports) — you choose where the server lives and, separately, how you prove who you are — so you supply a credential through the `auth` option regardless of whether you connect over HTTP or stdio. Three strategies cover the common cases, and they line up with the verifiers a server runs: a static bearer token for the simplest setup, OAuth for user-delegated access with refresh, and client credentials for machine-to-machine calls.
+
+## Bearer tokens
+
+The simplest credential is a token you already hold. `BearerAuth` attaches it as an `Authorization: Bearer <token>` header on every request, unchanged for the life of the client. This is the right choice whenever you have a long-lived token from an environment variable or secret store and the server [verifies it directly](/servers/auth/token-verification) — a JWT it validates against a JWKS, an opaque token it introspects, or a static token in a development setup.
 
 ```typescript
 import { Client, BearerAuth } from '@prefecthq/fastmcp-ts/client'
@@ -15,9 +19,40 @@ const client = await Client.connect('https://mcp.example.com', {
 })
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+Because the header is static, `BearerAuth` does no token management. When the token can expire and needs renewing, reach for OAuth instead.
 
-- **`BearerAuth`** — injects a static `Authorization: Bearer <token>` header into every request.
-- **`OAuth`** — wraps the transport's fetch to attach the current token, refreshing automatically when near expiry; concurrent refreshes are coalesced into a single request.
-- **`ClientCredentials`** — machine-to-machine token acquisition via the client credentials grant.
-- **Token storage** — `InMemoryStore` and `FileTokenStorage` for persisting tokens across runs; per-server auth in [multi-server configs](/clients/multi-server).
+## OAuth
+
+When access is delegated through an identity provider — the [OAuth flow a server fronts or proxies](/servers/auth/oauth) — tokens are short-lived and must be refreshed. `OAuth` wraps the transport's `fetch` so that every request resolves the current access token, and when that token is within its refresh buffer of expiring, it transparently exchanges the refresh token for a new one before the request goes out. You never see an expired-token failure on the happy path.
+
+Refreshes are coalesced: if several requests discover an expiring token at once, they share a single refresh call rather than each firing their own, so a burst of concurrent activity never stampedes the token endpoint.
+
+Tokens survive only as long as the client unless you persist them. `OAuth` stores tokens through a pluggable store — the default `InMemoryStore` keeps them for the process lifetime, while `FileTokenStorage` writes them to disk so a restarted client resumes without sending the user back through the authorization flow.
+
+```typescript
+import { Client, OAuth, FileTokenStorage } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('https://mcp.example.com', {
+  auth: new OAuth({
+    storage: new FileTokenStorage('~/.config/myapp/tokens.json'),
+  }),
+})
+```
+
+## Client credentials
+
+Machine-to-machine integrations have no user to send through a browser. The client credentials grant trades a client ID and secret directly for an access token, with no interactive step, which makes `ClientCredentials` the strategy for background jobs, services, and CI talking to a protected server. Like `OAuth`, it acquires and refreshes tokens for you; unlike `OAuth`, the whole exchange is unattended.
+
+```typescript
+import { Client, ClientCredentials } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('https://mcp.example.com', {
+  auth: new ClientCredentials({
+    clientId: process.env.CLIENT_ID!,
+    clientSecret: process.env.CLIENT_SECRET!,
+    tokenUrl: 'https://auth.example.com/oauth/token',
+  }),
+})
+```
+
+When you connect to several servers at once, each can carry its own credential rather than sharing one. A [multi-server config](/clients/multi-server#per-server-auth) accepts an `auth` field per entry, so one client can present a bearer token to one server and run OAuth against another.

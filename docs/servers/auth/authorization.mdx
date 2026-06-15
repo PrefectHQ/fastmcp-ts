@@ -4,11 +4,104 @@ description: "Scopes, per-component checks, and combining auth strategies"
 icon: "user-lock"
 ---
 
-Verification answers "who is calling?"; authorization answers "what may they do?". FastMCP expresses authorization as checks attached to the server or to individual tools, resources, and prompts.
+[Verification](/servers/auth/token-verification) establishes who is calling and hands every handler an `AccessToken`. Authorization is the next decision: given that verified identity, what is this caller allowed to do? FastMCP expresses authorization as small checks that read the `AccessToken` and either pass silently or throw `AuthorizationError`. You attach those checks where the decision belongs — to an individual tool, resource, or prompt — and FastMCP runs them at the right moments without you wiring anything into the request path.
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+The recommended starting point is scopes. OAuth tokens already carry scopes describing what was granted, so gating a component on a required scope is the most direct expression of "this caller may use this." Reach for richer logic only when a scope check cannot say what you mean.
 
-- **`requireScopes(...scopes)`** — gate components on token scopes; failures surface as `AuthorizationError`.
-- **Per-component `auth` checks** — every `ToolConfig` / `ResourceConfig` / `PromptConfig` accepts an `auth` check; unauthorized components are hidden from list responses for that caller.
-- **`multiAuth`** — combine several verifiers so different token types map to the same identity model.
-- **Caching caveat** — partition `CachingMiddleware` by caller identity (custom `CacheKeyFn`) when responses differ per caller.
+## Requiring scopes
+
+`requireScopes` builds an authorization check from one or more scope names. It passes when the caller's token carries every named scope and throws `AuthorizationError` naming the first one it lacks. You set it as the `auth` field on a component's config, and it gates that component alone.
+
+```typescript tool.ts
+import { z } from 'zod'
+import { requireScopes } from '@prefecthq/fastmcp-ts/server'
+
+server.tool(
+  {
+    name: 'deleteRecord',
+    input: z.object({ id: z.string() }),
+    auth: requireScopes('records:write'),
+  },
+  ({ id }) => {
+    // only reached when the caller's token includes 'records:write'
+    return `deleted ${id}`
+  },
+)
+```
+
+A component's check does double duty. When a caller lists tools, FastMCP runs each tool's check against their token and silently drops the ones they fail, so the list a caller sees contains only what they may actually use. When a caller calls a tool directly, the same check runs again before the handler — calling something you were never shown still fails. This is why authorization belongs on the component and not buried inside the handler: putting it on the config gets you correct list filtering and correct call gating from one declaration, and a request with no verified identity at all is rejected before any check even runs.
+
+## Per-component auth
+
+`requireScopes` is one ready-made check, but the `auth` field accepts any `AuthCheck` — a function that takes the `AccessToken` and throws to deny. That escape hatch is for decisions scopes cannot express: ownership ("this caller may only touch their own records"), tenancy ("this caller's organization must match"), or anything that depends on the token's `claims` rather than its scopes.
+
+```typescript tool.ts
+import { z } from 'zod'
+import { AuthorizationError } from '@prefecthq/fastmcp-ts/server'
+
+server.tool(
+  {
+    name: 'readBilling',
+    input: z.object({}),
+    auth: (token) => {
+      if (token.claims.plan !== 'enterprise') {
+        throw new AuthorizationError('Enterprise plan required')
+      }
+    },
+  },
+  () => 'billing details',
+)
+```
+
+The check runs in the same two places — list filtering and call gating — so a custom predicate hides the component from callers who fail it exactly as a scope check does. Throwing `AuthorizationError` is what marks a denial; the message you pass surfaces to the caller. Resources and prompts take the same `auth` field on their config and behave identically, which keeps one authorization model across all three primitives.
+
+## Multiple schemes
+
+A server sometimes has to accept tokens of different kinds at once — JWTs from your identity provider beside long-lived service tokens, or two providers during a migration. `multiAuth` composes several verifiers into a single one that tries each in turn and returns the first identity any of them produces. The point for authorization is that every verifier yields the same `AccessToken` shape, so your scope checks and per-component rules are written once and apply no matter which scheme verified the caller.
+
+```typescript server.ts
+import {
+  FastMCP,
+  multiAuth,
+  jwtVerifier,
+  staticTokenVerifier,
+} from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'secure-server',
+  auth: multiAuth(
+    jwtVerifier({
+      jwksUri: 'https://auth.example.com/.well-known/jwks.json',
+      issuer: 'https://auth.example.com',
+      audience: 'my-mcp-server',
+    }),
+    staticTokenVerifier({
+      'service-token': { clientId: 'internal-service', scopes: ['read'] },
+    }),
+  ),
+})
+```
+
+For the verifier side of this — why you would mix schemes and how to order them — see [token verification](/servers/auth/token-verification). Here the takeaway is that authorization stays uniform downstream of whichever verifier matched.
+
+## Caching and identity
+
+Authorization makes responses caller-specific: two callers asking the same question can legitimately get different answers, because one is allowed something the other is not. That collides with response caching. The [`CachingMiddleware`](/servers/middleware) keys entries on the request method and parameters by default, with no notion of who asked — so a response computed for a privileged caller could be served from cache to one who should never have seen it.
+
+The fix is to fold identity into the cache key. `CachingMiddleware` accepts a `CacheKeyFn`, which receives the full middleware context — including the caller's verified identity — so you can partition the cache per caller and let each identity see only its own cached results. The first argument is the TTL in milliseconds.
+
+```typescript server.ts
+import { FastMCP, CachingMiddleware } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'secure-server' })
+
+server.use(
+  new CachingMiddleware(
+    60_000,
+    (ctx) =>
+      `${ctx.method}:${ctx.mcpContext.auth?.clientId ?? ''}:${JSON.stringify(ctx.request)}`,
+  ),
+)
+```
+
+Any time a cached response could differ by caller, partition the key this way. The general rule follows from the verification-versus-authorization split: identity established once at the edge has to be carried into every decision downstream that depends on it, and a cache is one of those decisions.

@@ -4,19 +4,33 @@ description: "Let the LLM compose component trees at runtime"
 icon: "wand-magic-sparkles"
 ---
 
-The `GenerativeUI` provider lets the model build UI on the fly instead of you authoring every screen:
+Authored entrypoints assume you know what each screen looks like before the conversation starts. Sometimes you don't — the user might ask for any of a hundred views, and writing a screen for each is impractical. Generative UI hands the composition over to the model: it builds the [component tree](/apps/components) itself, at runtime, and the server renders what it produced.
 
-```typescript
+You enable it by mounting the `GenerativeUI` provider, which is an internal `FastMCP` registering the two tools the model needs to compose screens.
+
+```typescript server.ts
 import { FastMCP, GenerativeUI } from '@prefecthq/fastmcp-ts/server'
 
-const server = new FastMCP({ name: 'my-server' })
+const server = new FastMCP({ name: 'my-server', version: '1.0.0' })
 server.addProvider(new GenerativeUI())
-// registers generate_ui and search_components tools
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+## Runtime composition
 
-- **`search_components`** — returns the component catalog so the model can discover what it may build with.
-- **`generate_ui`** — evaluates a model-supplied component expression and returns the rendered tree.
-- **Sandboxing** — expressions run in an isolated VM context containing only the component builders (no Node globals), with a hard timeout.
-- **When to use it** — exploratory and ad-hoc UIs vs. hand-authored entrypoints.
+Composing a screen is a two-step exchange. The model first discovers what it is allowed to build, then asks the server to build it.
+
+Discovery happens through `search_components`, which returns the component catalog — the full vocabulary of builders the model can use, delivered as JSON so the model can read it and plan a layout. The catalog is the contract: it tells the model exactly which components exist and how they fit together, so the model composes against a known set rather than guessing.
+
+Construction happens through `generate_ui`. The model sends an expression that calls the builder functions, the server evaluates it, and the resulting tree is rendered. Because the builders return plain data, the model's expression is just code that produces the same `{ type, props, children }` objects you would write by hand — the model is authoring a screen in the same vocabulary you do, only at runtime.
+
+## The sandbox
+
+Evaluating model-written code on your server is only safe because the code runs nowhere near your server's capabilities. `generate_ui` executes the expression in an isolated VM context whose entire scope is the component builder functions. There are no Node globals — no `require`, no `process`, no filesystem, no network — so the only thing the expression can do is assemble a component tree. The evaluation is also bounded by a two-second timeout, so a runaway or malicious expression cannot hang the server.
+
+This is the safety model that makes runtime composition viable: the model gets exactly enough power to describe a screen and nothing more. It cannot reach your data, call your tools, or touch the host, because none of those are in scope.
+
+## When to use it
+
+Generative UI is the most flexible way to render UI and the one to use most deliberately. Authored entrypoints and [providers](/apps/providers) give you screens you control completely — you wrote them, you tested them, and they render the same way every time. Generative UI trades that determinism for reach: it can produce screens you never anticipated, which is exactly what you want for open-ended exploration and exactly what you don't want for a critical, repeatable flow.
+
+Reach for it when the space of possible screens is too large or too unpredictable to author ahead of time. For the stable screens at the heart of your app, write entrypoints; for the common interaction patterns, mount a provider. Let the model compose UI when the alternative is failing to show the user something you couldn't have planned for.

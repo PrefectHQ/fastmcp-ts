@@ -4,19 +4,81 @@ description: "Intercept and instrument every request with built-in or custom mid
 icon: "layer-group"
 ---
 
-Middleware wraps request handling — logging, caching, rate limiting, and anything custom. Register with `server.use(mw)` or via `FastMCPOptions.middleware`:
+Tools, resources, and prompts each describe one capability. Middleware describes a concern that cuts across all of them — logging every call, caching expensive responses, rejecting traffic that arrives too fast, cancelling work the client no longer wants. Rather than thread that logic through every handler, you register it once and FastMCP runs it around each request. Middleware never changes what a primitive is; a tool wrapped by three middleware is still the same tool, registered the same way. The chain wraps the dispatch to your handlers, so everything you register — including mounted, proxied, or transformed components — passes through it.
+
+You register middleware fluently with `server.use(mw)`, or all at once through `FastMCPOptions.middleware`. The order you register in is the order requests flow through.
 
 ```typescript
 import { FastMCP, LoggingMiddleware, RateLimitingMiddleware } from '@prefecthq/fastmcp-ts/server'
 
 const server = new FastMCP({ name: 'my-server' })
+
 server.use(new LoggingMiddleware())
 server.use(new RateLimitingMiddleware(100, 60_000))   // 100 requests per minute
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+## Hook levels
 
-- **Hook levels** — `setup(server)` runs once per server instance (register notification handlers here); `onRequest(ctx, next)` fires for every request without a more specific hook; per-method hooks (`onCallTool`, `onListTools`, `onReadResource`, `onGetPrompt`, …) take precedence over `onRequest`.
-- **Built-ins** — `LoggingMiddleware`, `CachingMiddleware(ttl, keyFn?)`, `RateLimitingMiddleware(limit, windowMs)`, `SizeLimitingMiddleware(maxBytes)`, `ErrorNormalizationMiddleware`, `CancellationMiddleware`.
-- **Error semantics** — a thrown `McpError` from middleware propagates as a protocol error (never converted to a `{ isError: true }` tool result); non-`McpError` from tool handlers becomes a tool execution error.
-- **Writing your own** — implementing the `Middleware` interface, ordering, and composing with auth and transforms.
+A middleware can intercept requests at three levels of granularity, and you implement only the ones you need. Each is an optional method on the `Middleware` interface.
+
+`setup(server)` runs once per `Server` instance, before any request arrives. This is where you register notification handlers — things that respond to client-initiated messages rather than wrapping a request. Calling `server.use(mw)` invokes `setup` immediately on the primary server so your handlers are live before the first connection, and each new HTTP session runs it again when its server is built.
+
+`onRequest(ctx, next)` is the coarse hook. It fires for every request that has no more-specific hook on that same middleware instance. Call `next()` to continue down the chain to the handler, and do your work before, after, or around that call. This is the right level for concerns that genuinely apply to everything — timing, global error handling, response-size limits.
+
+Per-method hooks — `onCallTool`, `onListTools`, `onReadResource`, `onListResources`, `onListResourceTemplates`, `onGetPrompt`, `onListPrompts` — target a single MCP method. When a middleware defines one, it takes precedence over that instance's `onRequest` for the matching method. Reach for these when a concern only makes sense for one kind of request: rate-limiting tool calls but not list operations, or caching reads while leaving writes untouched.
+
+## Built-in middleware
+
+The built-ins cover the concerns most servers need, so you compose them rather than write them. Each is a class you instantiate and pass to `use()`, and you choose which to layer on based on what the deployment requires.
+
+`LoggingMiddleware` records every request's method, outcome, and elapsed time through a configurable emit function — the first thing to reach for when you want visibility into what a server is doing. `CachingMiddleware` holds responses in a TTL cache so repeated identical calls skip the handler entirely; its default cache key is `method` plus the JSON-serialized params, which is correct for public data but dangerous when responses depend on the caller — see the caveat below. `RateLimitingMiddleware` enforces a fixed-window request budget and throws when a caller exceeds it, protecting expensive handlers from abuse. `SizeLimitingMiddleware` guards the other direction, throwing when a serialized response grows past a byte ceiling. `ErrorNormalizationMiddleware` gives uncaught tool errors a consistent shape, and `CancellationMiddleware` lets a client abort in-flight work it no longer needs.
+
+| Middleware | Use it to |
+|---|---|
+| `LoggingMiddleware` | Log method, outcome, and elapsed time via a configurable emit function |
+| `CachingMiddleware(ttl, keyFn?)` | Cache responses for `ttl`; pass a `keyFn` to partition by caller when responses are caller-specific |
+| `RateLimitingMiddleware(limit, windowMs)` | Cap requests per fixed window; throws `McpError(InvalidRequest)` when exceeded |
+| `SizeLimitingMiddleware(maxBytes)` | Reject responses whose serialized size exceeds `maxBytes` |
+| `ErrorNormalizationMiddleware` | Convert uncaught tool errors to `isError` results; re-throw `McpError` unchanged |
+| `CancellationMiddleware` | Cancel in-flight requests when the client sends a cancellation notification |
+
+`CachingMiddleware`'s default key is the place a multi-tenant server gets surprised. When a tool's result depends on who is calling — anything gated by [per-component auth](/servers/auth/authorization) — the default `method:params` key serves one caller's cached response to the next. Pass a `CacheKeyFn` that folds the caller's identity into the key so each caller gets its own cache partition.
+
+```typescript
+import { FastMCP, CachingMiddleware } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.use(
+  new CachingMiddleware(30_000, (ctx) => `${ctx.auth?.subject}:${ctx.method}:${JSON.stringify(ctx.params)}`)
+)
+```
+
+## Error semantics
+
+Two kinds of failure travel through the chain, and FastMCP keeps them distinct on purpose. A tool that fails its own work — a lookup miss, a downstream timeout — represents a *tool* error: the request was valid, but the operation didn't succeed. The client should see that as a result with `isError: true` and decide what to do. A failure in the request machinery itself — a rate limit tripped, a malformed request, an exhausted resource — represents a *protocol* error, and the client should see a JSON-RPC error.
+
+The mechanism that enforces this is deliberate: the try/catch that converts a thrown error into an `isError` result sits *outside* the middleware chain, and it only catches errors that are not `McpError`. So when any middleware throws an `McpError` — rate limiting throwing `InvalidRequest`, size limiting throwing `InternalError` — it sails past that catch and reaches the client as a protocol error, exactly as intended. A plain `Error` thrown from a tool handler is caught and becomes an `isError` tool result. `ErrorNormalizationMiddleware` follows the same rule from the inside: its `onCallTool` converts ordinary errors to `isError` but explicitly re-throws `McpError`, so wrapping it never downgrades a protocol error into a tool result.
+
+The practical consequence: throw `McpError` when something is wrong with the request or the server, and throw or return a plain error when a tool's work fails. The chain routes each to the right place automatically.
+
+## Writing middleware
+
+A custom middleware is any object implementing the `Middleware` interface. Implement the narrowest hook that fits the concern — a per-method hook when it applies to one method, `onRequest` when it applies to all — and call `next()` to pass control down the chain. Code before `next()` runs on the way in; code after it runs on the way out.
+
+```typescript timing.ts
+import type { Middleware } from '@prefecthq/fastmcp-ts/server'
+
+export class TimingMiddleware implements Middleware {
+  async onRequest<T, R>(ctx: T, next: () => Promise<R>): Promise<R> {
+    const start = performance.now()
+    try {
+      return await next()
+    } finally {
+      console.error(`request took ${performance.now() - start}ms`)
+    }
+  }
+}
+```
+
+Because middleware composes on top of the registration system, it works the same way regardless of where a component came from. A middleware you write sees [mounted and proxied](/servers/composition) components and [transformed](/servers/transforms) ones identically to locally registered ones — they are all just requests flowing through the same chain. When a middleware needs to participate in client-initiated traffic rather than wrap a request, register a notification handler in `setup` instead of using a request hook; `CancellationMiddleware` works exactly this way, registering its cancellation handler in `setup` and aborting matching in-flight requests.

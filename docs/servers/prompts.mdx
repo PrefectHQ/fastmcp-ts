@@ -1,12 +1,16 @@
 ---
 title: "Prompts"
-description: "Reusable message templates with validated arguments"
+description: "Reusable, parameterized message templates clients fetch to seed a conversation"
 icon: "message-lines"
 ---
 
-Prompts are reusable message templates that clients fetch with `prompts/get`. Register one with `server.prompt(config, handler)`:
+Prompts are the template primitive: reusable message sequences a client fetches to seed a conversation. Where a tool runs code and a resource returns data, a prompt returns *messages* — the user-facing starting point for an interaction, filled in with the arguments the client supplies. A prompt is something a person chooses ("review this code"), so it is built around named arguments rather than a validated input object, and its output is conversation rather than content blocks.
 
-```typescript
+## Registration
+
+You register a prompt with `server.prompt(config, handler)`, the same config-first shape as tools and resources. The difference is in how inputs are declared. A prompt has no input schema — this is MCP's own model, not a limitation of FastMCP. A prompt's inputs are a flat list of named `arguments`, each with an optional description and a `required` flag, and the client fills them in by name. The handler receives a `Record<string, string>` of whatever the client supplied.
+
+```typescript server.ts
 import { FastMCP } from '@prefecthq/fastmcp-ts/server'
 
 const server = new FastMCP({ name: 'my-server' })
@@ -21,24 +25,28 @@ server.prompt(
     ],
   },
   ({ code, language }) =>
-    `Review this ${language ?? 'code'} for quality and correctness:\n\n${code}`
+    `Review this ${language ?? 'code'} for quality and correctness:\n\n${code}`,
 )
 ```
 
-The handler receives a `Record<string, string>` of the supplied arguments. Required arguments are validated **before** the handler runs — a missing required argument returns `McpError(InvalidParams)` without invoking the handler.
+FastMCP enforces the `required` flags before your handler runs. If the client omits a required argument, the request returns `McpError(InvalidParams)` and the handler is never invoked — so inside the handler a required argument is always present. Because arguments are named and untyped strings, any further validation of their *contents* is yours to do; the framework guarantees presence, not shape.
 
-## Return values
+## Messages
 
-| Returned value | Conversion |
-|---|---|
-| `string` | Single user text message |
-| `PromptMessage` | Wrapped in a one-element array |
-| `PromptMessage[]` | Used as-is (multi-turn sequence) |
-| `PromptResult(messages, description?)` | Passed through as-is |
+A prompt's job is to produce messages, and FastMCP gives you a short path for the common case and a full one for everything else. The common case is a single user turn: return a string and FastMCP wraps it in one user text message. That alone covers most prompts.
 
-`PromptMessage.content` supports the content types `text`, `image`, `audio`, `resource` (embedded), and `resource_link`.
+```typescript server.ts
+server.prompt(
+  { name: 'summarize', arguments: [{ name: 'text', required: true }] },
+  ({ text }) => `Summarize the following:\n\n${text}`,
+)
+```
 
-```typescript
+When you need more than one turn, or a role other than user, or non-text content, return `PromptMessage` objects. Each message has a `role` and a `content` block, and the content block can be `text`, `image`, `audio`, `resource` (an embedded resource), or `resource_link` (a reference to one). Returning a single `PromptMessage` wraps it in a one-element array; returning an array of them gives you a multi-turn sequence used as-is.
+
+For full control — a multi-turn exchange together with a description that overrides the one in the config — return a `PromptResult`. It carries the message array and an optional description, and is passed through without conversion.
+
+```typescript server.ts
 import { PromptResult } from '@prefecthq/fastmcp-ts/server'
 
 server.prompt(
@@ -49,23 +57,44 @@ server.prompt(
         { role: 'user', content: { type: 'text', text: `Review:\n${code}` } },
         { role: 'assistant', content: { type: 'text', text: 'Here is my review:' } },
       ],
-      'A seeded multi-turn review exchange'
-    )
+      'A seeded multi-turn review exchange',
+    ),
 )
 ```
 
-## Config fields
+## Return values
+
+The same magic conversion that maps tool and resource return values maps prompt return values to a `GetPromptResult`, driven by what you return.
+
+| Returned value | Conversion |
+|---|---|
+| `string` | Single user text message |
+| `PromptMessage` | Wrapped in a one-element array |
+| `PromptMessage[]` | Used as-is (multi-turn sequence) |
+| `PromptResult(messages, description?)` | Passed through as-is |
+
+`PromptResult` is the escape hatch the last row points to — reach for it when you want to set the result description or hand-build the message array.
+
+## Configuration
+
+Beyond `name`, `description`, and `arguments`, the config object accepts these fields. Each is optional.
 
 | Field | Behavior |
 |---|---|
-| `name` | Inferred from `handler.name` when omitted |
+| `name` | Inferred from the handler function's `.name` when omitted |
 | `title` | Human-readable label for UIs |
-| `description` | Inferred from the name (camelCase → words) when omitted |
-| `arguments` | Array of `{ name, description?, required? }` |
-| `timeout` | Per-call timeout in milliseconds |
-| `disabled` | Hides the prompt and rejects `prompts/get` |
-| `auth` | Per-prompt authorization check |
+| `description` | Inferred from the resolved name (camelCase to words) when omitted |
+| `arguments` | Array of `{ name, description?, required? }` declaring the prompt's inputs |
+| `timeout` | Per-call timeout in milliseconds; a handler that exceeds it propagates as an error to the client |
+| `disabled` | When `true`, hides the prompt from listings and rejects `prompts/get` |
+| `auth` | Per-prompt authorization check — see [Authorization](/servers/auth/authorization) |
 
 ## Dynamic registration
 
-Prompts can be registered before or after `run()` — adding one to a running server sends `notifications/prompts/list_changed` automatically.
+You can register a prompt before or after `server.run()`. Adding one to a running server sends `notifications/prompts/list_changed` to connected clients automatically, the same way the tool and resource notifications work — the registration system is uniform across the three primitives.
+
+```typescript server.ts
+// Later, while the server is already running
+server.prompt({ name: 'newTemplate' }, () => 'A fresh prompt')
+// connected clients receive prompts/list_changed
+```

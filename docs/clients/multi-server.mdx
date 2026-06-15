@@ -4,25 +4,57 @@ description: "One client, many servers, automatic namespacing"
 icon: "layer-group"
 ---
 
-Pass an `mcpServers` config with multiple entries and `Client.connect()` returns a `MultiServerClient` — every server's tools, resources, and prompts behind one interface, namespaced by server name:
+A `MultiServerClient` is what you get when you connect to several servers at once. It consumes the same three primitives as a single-server [client](/clients/client) — it calls tools, reads resources, fetches prompts — but spreads them across every connected server, namespacing each one by server name and routing each call to the server it came from. From your side it is one object with one interface; underneath it holds a live connection per server.
+
+## Connecting to many servers
+
+You never construct a `MultiServerClient` directly. `Client.connect()` returns one when you hand it an [`mcpServers` config](/clients/transports#transport-inputs) with more than one entry. A single-entry config returns a plain `Client`, so the same call covers both cases and you only ever import `Client`.
 
 ```typescript
 import { Client } from '@prefecthq/fastmcp-ts/client'
 
 const client = await Client.connect({
   mcpServers: {
-    weather: { url: 'http://localhost:3001' },
-    maps:    { command: 'npx', args: ['maps-mcp'] },
+    github: { url: 'https://github-mcp.example.com' },
+    jira:   { command: 'npx', args: ['jira-mcp'] },
   },
 })
 
-// tool names become weather_forecast, maps_geocode, …
-const forecast = await client.callTool('weather_forecast', { city: 'New York' })
+const tools = await client.listTools()  // github_*, jira_* aggregated
+await client.callTool('github_list_repos', { org: 'PrefectHQ' })
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+Each entry can use any transport — one server over HTTP, another as a stdio subprocess — because each is resolved by the same logic a single connection uses. The config is the only thing that changes.
 
-- **Namespacing rules** — tools and prompts become `${serverName}_${name}`; resource display names are prefixed but **URIs are never altered**.
-- **Routing** — namespaced calls dispatch to exactly one server; resource reads route by a URI-to-server map built from listings, with a fallback scan.
-- **Per-server auth and shared handlers** — each entry accepts its own `auth`; `log`/`sampling`/`elicitation` handlers are registered on every sub-client.
-- **Connect semantics** — parallel connect and close; if any server fails to connect, successful connections are torn down and the error is re-thrown (no partial state).
+## Namespacing
+
+With several servers behind one interface, names could collide, so the client prefixes everything with the server's name from the config. A `list_repos` tool on the `github` server becomes `github_list_repos`; a prompt on `jira` becomes `jira_create_issue`. The prefix is the key in your `mcpServers` config, joined to the original name with an underscore. Resource display names are prefixed the same way.
+
+Resource URIs are the exception: they are never altered. A URI already identifies a resource globally, and prefixing its scheme — turning `data://config` into `github_data://config` — would produce a string that is no longer a valid URI under RFC 3986. So the client namespaces the human-facing name and leaves the URI as the server defined it, which is the same reasoning the server-side [`NamespaceTransform`](/servers/transforms) applies. You read a resource by its original URI regardless of which server holds it.
+
+## Routing
+
+List operations aggregate; routed operations dispatch. Calling `listTools()` fans out to every server, prefixes each result, and returns the merged set — likewise for resources and prompts. Calling a tool goes the other way: the client splits the namespaced name on the first underscore to recover the server name and the local name, then dispatches the call to that one server. The same split routes `getPrompt()`.
+
+Resources route by URI rather than by prefix, since the URI was never namespaced. When you list resources, the client records which server each URI came from, so a later `readResource(uri)` is a direct dispatch to the right server. If you read a URI before ever listing — so the map is empty — the client falls back to trying each server in turn and returning the first that answers, and reports a clear error if no server has it.
+
+## Per-server auth
+
+Authentication is per server, because different servers trust different credentials. Each entry in the config takes its own `auth` field, using the same [strategies](/clients/auth) a single client uses — a bearer token for one, OAuth for another. An `auth` set at the top level applies to any entry that doesn't specify its own, so shared credentials stay in one place while individual servers override as needed.
+
+```typescript
+import { Client, BearerAuth, OAuth } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect({
+  mcpServers: {
+    github: { url: 'https://github-mcp.example.com', auth: new OAuth({ /* ... */ }) },
+    jira:   { url: 'https://jira-mcp.example.com', auth: new BearerAuth(process.env.JIRA_TOKEN!) },
+  },
+})
+```
+
+Handlers, by contrast, are shared. A single `log`, `sampling`, or `elicitation` handler is registered on every connection, so a notification or request from any server reaches the same place. The sampling capability is advertised to all servers when you provide the handler.
+
+## Connect semantics
+
+Connecting is all-or-nothing. The client opens every connection in parallel, and if any one fails, it closes the connections that did succeed and re-throws the error. You never observe a half-connected client where some servers are live and others silently absent — either the whole set is connected or the call fails cleanly. Closing is parallel too, so tearing the client down shuts every connection at once.

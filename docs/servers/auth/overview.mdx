@@ -5,9 +5,17 @@ description: "How FastMCP servers verify callers and protect components"
 icon: "shield"
 ---
 
-FastMCP authentication is built around a single interface: a `TokenVerifier` that turns a bearer token into a verified `AccessToken`. Pass one via the `auth` option and every HTTP request is verified before it reaches your handlers:
+Authentication on a FastMCP server splits into two questions asked in order. First, *who is calling?* — every request arrives carrying a bearer token, and the server must turn that token into a verified identity before any handler runs. Second, *what may they do?* — given a verified identity, the server decides which tools, resources, and prompts that caller is allowed to reach. The first question is **verification**; the second is **authorization**. Keep them separate in your head and the whole feature set falls into place: verification produces an identity once, at the edge of the server, and authorization consults that identity wherever access needs gating.
 
-```typescript
+Verification is a server-level concern. You configure it once when you construct the server, and it sits upstream of every handler — a request that fails verification never reaches your code. Authorization is finer-grained: it lives on the server for blanket rules and on individual components for per-tool rules, and it always reads the identity that verification already established.
+
+## Token verification
+
+Verification is expressed through one small interface, the `TokenVerifier`. A verifier takes the raw bearer token string off the wire and returns an `AccessToken` describing the caller — their `clientId`, their granted `scopes`, the token's `expiresAt` timestamp, and the full set of `claims` from the token payload. Anything it cannot verify, it rejects by throwing, and the request is refused before a handler is invoked.
+
+You install a verifier through the server's `auth` option. From that point on, every HTTP request must present a valid `Bearer` token; the server runs your verifier, and only a successful result lets the request proceed.
+
+```typescript server.ts
 import { FastMCP, jwtVerifier } from '@prefecthq/fastmcp-ts/server'
 
 const server = new FastMCP({
@@ -20,8 +28,32 @@ const server = new FastMCP({
 })
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+Once a token is verified, the resulting `AccessToken` travels with the request. Any handler can read it from the ambient context, which is how authorization decisions and audit logging reach the caller's identity without threading it through arguments.
 
-- **The `TokenVerifier` model** — verify a bearer token, produce an `AccessToken` (subject, scopes, claims) available to handlers via `getContext().auth`.
-- **Where auth applies** — HTTP transport request verification; interaction with middleware and mounted children.
-- **Choosing a strategy** — [JWT, introspection, or static tokens](/servers/auth/token-verification) for verification; a [full OAuth provider or proxy](/servers/auth/oauth) when you need the authorization flow; [scopes and per-component checks](/servers/auth/authorization) for fine-grained access.
+```typescript tool.ts
+import { z } from 'zod'
+
+server.tool(
+  { name: 'whoami', input: z.object({}) },
+  () => {
+    const ctx = server.getContext()
+    return `You are ${ctx.auth?.clientId ?? 'anonymous'}`
+  },
+)
+```
+
+A verifier handles the case where clients already hold tokens. When clients need the server to help them *obtain* tokens — running the authorization flow, registering clients, issuing or delegating tokens — that is a larger arrangement covered under [OAuth](/servers/auth/oauth), configured through the separate `oauth` option rather than `auth`.
+
+## Where auth applies
+
+Verification guards the Streamable HTTP transport, which is the only transport that carries an `Authorization` header. The stdio transport runs as a local subprocess with no network boundary, so there is no token to verify; auth is a property of servers you expose over HTTP. A request with no bearer token is answered with `401`, a request whose token fails verification is also `401`, and a request rejected by an authorization check is answered with `403` — the distinction the HTTP status codes draw is exactly the verification-versus-authorization split.
+
+Because verification runs at the server edge and deposits its result in the context, everything layered on top inherits it. [Middleware](/servers/middleware) sees the verified identity, [mounted children](/servers/composition) are protected by the parent's verifier, and per-component authorization checks read the same `AccessToken`. There is one place identity enters the system, and one shape it takes everywhere downstream.
+
+## Choosing a strategy
+
+The recommended default for production is JWT verification against a JWKS endpoint: your identity provider signs tokens, publishes its public keys, and FastMCP validates signatures locally on every request with no network round-trip. This is what [`jwtVerifier`](/servers/auth/token-verification) gives you, and it is the right starting point whenever you have an OAuth identity provider issuing JWTs.
+
+You move off that default for specific reasons. When your provider issues *opaque* tokens — strings that carry no verifiable payload — local validation is impossible, and you verify by asking the provider directly through token [introspection](/servers/auth/token-verification). When you are developing locally or running an internal service where a full identity provider is overkill, a [static token map](/servers/auth/token-verification) maps fixed strings to identities with no infrastructure at all. And when your server needs to issue tokens itself rather than verify ones issued elsewhere, you reach past verification entirely to a full [OAuth provider or proxy](/servers/auth/oauth).
+
+Verification answers who is calling; it does not by itself restrict what they may do. Granting a verified caller access to some components and not others — gating on scopes, attaching checks to individual tools, partitioning cached responses per caller — is [authorization](/servers/auth/authorization), and it builds on the identity verification establishes here.

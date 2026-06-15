@@ -2,6 +2,10 @@
 
 TypeScript/Node.js implementation of [FastMCP](https://github.com/PrefectHQ/fastmcp). Covers all three pillars: servers, clients, and apps.
 
+## Documentation
+
+When writing, revising, reorganizing, or reviewing anything in `docs/` (concept guides, feature pages, API references, tutorials, or docstrings that compile into the docs), follow the conventions in the `writing-documentation` skill at `.claude/skills/writing-documentation/SKILL.md`. The docs site is Mintlify, configured in `docs/docs.json`.
+
 ## Key decisions
 
 **Runtime:** Node.js only. No browser support.

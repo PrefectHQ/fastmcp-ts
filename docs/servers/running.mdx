@@ -1,20 +1,72 @@
 ---
 title: "Running your server"
-description: "Transports, ports, and environment-driven configuration"
+description: "Connect a server to the world with one run() call, configured by code, env vars, and defaults"
 icon: "play"
 ---
 
-A single `server.run()` call starts your server on stdio (the default) or Streamable HTTP:
+Registering tools, resources, and prompts builds a server; running it connects that server to the world. A single `server.run()` call does it. What that call needs to know — which transport to speak, which port to bind, where to listen — resolves from a chain of code, environment variables, and defaults, so the same compiled server can run on stdio during development and over HTTP in production with no code change.
 
-```typescript
-await server.run()                                  // fully env-driven, stdio default
-await server.run({ transport: 'http' })             // transport fixed; port/host from env
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+// register tools, resources, prompts…
+
+await server.run()
+```
+
+## Transports
+
+A transport is the channel a client uses to reach the server, and FastMCP supports two. They suit different deployments, and the choice is usually made by where the server runs rather than by anything in your handler code.
+
+Stdio is the default. The server reads MCP messages from standard input and writes responses to standard output, which is exactly what a desktop host like Claude Desktop expects when it launches a server as a subprocess. One process, one client, no network — ideal for local tools and for anything a host spawns on demand.
+
+Streamable HTTP is the choice when the server is a long-lived service that clients connect to over the network. The server listens on a host and port and serves MCP over HTTP, so many clients can reach one deployed instance. Reach for it when you're deploying a server rather than handing one to a host to launch.
+
+SSE is not supported. Server-Sent Events transport is deprecated in the MCP SDK and Streamable HTTP supersedes it, so there is nothing to configure — HTTP means Streamable HTTP.
+
+## Configuration
+
+Every setting `run()` needs resolves through the same priority chain: an explicit value in code wins, an environment variable comes next, and a built-in default is the fallback. This ordering is what lets one build behave differently across environments. Hard-code nothing and the server is fully driven by its environment; hard-code the transport and let the deployment platform supply the port; hard-code everything for a fixed local setup.
+
+```typescript server.ts
+await server.run()                                  // fully env-driven; stdio if nothing is set
+await server.run({ transport: 'http' })             // transport fixed in code; port and host from env
 await server.run({ transport: 'http', port: 3000 }) // fully explicit
 ```
 
-<Note>This page is under construction. The outline below sketches what it will cover.</Note>
+The environment variables fill the middle of the chain. Each maps to one setting, and they exist so a deployment can be reconfigured without a rebuild.
 
-- **Configuration priority** — code > environment variables > defaults, so a deployed server switches transports with env vars alone: `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`, `MCP_PATH` (plus plain `PORT` as a fallback for Railway/Render/Heroku). Defaults: stdio, port 3000, host `0.0.0.0`, path `/mcp`.
-- **Transports** — `stdio` and `http` (Streamable HTTP). SSE is not supported; Streamable HTTP supersedes it.
-- **Inspecting the bound address** — `server.address` after `run()` resolves (including OS-assigned ports with `port: 0`); `null` for stdio.
-- **Running via the CLI** — `fastmcp run server.ts` and the [`dev inspector`](/cli) loop.
+| Variable | Sets | Default |
+|---|---|---|
+| `MCP_TRANSPORT` | Transport (`stdio` or `http`) | `stdio` |
+| `MCP_HOST` | Bind host (HTTP) | `0.0.0.0` |
+| `MCP_PORT` | Bind port (HTTP) | `3000` |
+| `MCP_PATH` | HTTP path | `/mcp` |
+
+One extra rule smooths deployment to managed platforms: when `MCP_PORT` is unset, FastMCP reads plain `PORT` as a fallback. Railway, Render, and Heroku assign a port through `PORT` automatically, so a server deployed there binds the right port with no configuration of its own.
+
+## HTTP options
+
+When you run over HTTP, the same three settings — `host`, `port`, and `path` — are available directly on the run config when you'd rather fix them in code than in the environment. They follow the resolution chain like everything else, so a value here overrides the corresponding environment variable.
+
+```typescript server.ts
+await server.run({ transport: 'http', host: '127.0.0.1', port: 8080, path: '/api/mcp' })
+```
+
+After `run()` resolves, the bound address is available as `server.address`. This matters most when you let the OS choose the port by binding `port: 0`: the actual port isn't known until the socket is open, and `server.address` is how you read it back — useful in tests and in code that needs to advertise its own URL. It is `null` for stdio, which has no address, and `null` before `run()` has resolved.
+
+```typescript server.ts
+await server.run({ transport: 'http', port: 0 }) // OS picks a free port
+console.log(server.address)                       // e.g. http://0.0.0.0:54123/mcp
+```
+
+## Stream overrides
+
+The stdio transport reads from `process.stdin` and writes to `process.stdout` by default, but `run()` accepts explicit `stdin` and `stdout` streams in its place. This is what makes a stdio server testable without spawning a child process: hand it a pair of in-memory streams, drive one side from your test, and assert on the other. In normal operation you never set these — they exist so tests can exercise the real transport in-process.
+
+```typescript server.test.ts
+await server.run({ transport: 'stdio', stdin: testInput, stdout: testOutput })
+```
+
+If you'd rather drive the server from the command line during development, the [CLI](/cli) wraps all of this — `fastmcp run server.ts` launches a server and its `dev inspector` loop reloads it on change.
