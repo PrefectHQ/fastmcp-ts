@@ -5,9 +5,7 @@ import type {
   OAuthClientMetadata,
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js'
-import { spawn } from 'child_process'
 import * as fs from 'fs/promises'
-import * as http from 'http'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
 
@@ -149,7 +147,7 @@ export class OAuth implements OAuthClientProvider {
   private _callbackPromise: Promise<string> | null = null
   private _callbackResolve: ((code: string) => void) | null = null
   private _callbackReject: ((err: Error) => void) | null = null
-  private _callbackServer: http.Server | null = null
+  private _callbackServer: { close(): void } | null = null
   private _actualCallbackPort: number | null = null
 
   constructor(options: OAuthOptions = {}) {
@@ -229,7 +227,7 @@ export class OAuth implements OAuthClientProvider {
     if (this._onRedirect) {
       await this._onRedirect(authorizationUrl)
     } else {
-      openBrowser(authorizationUrl.toString())
+      await openBrowser(authorizationUrl.toString())
     }
   }
 
@@ -311,9 +309,10 @@ export class OAuth implements OAuthClientProvider {
     return `${this._serverUrl}/${type}`
   }
 
-  private _startCallbackServer(): Promise<void> {
-    if (this._callbackServer) return Promise.resolve()
-    return new Promise((resolve, reject) => {
+  private async _startCallbackServer(): Promise<void> {
+    if (this._callbackServer) return
+    const http = await import('http')
+    await new Promise<void>((resolve, reject) => {
       const server = http.createServer((req, res) => {
         const url = new URL(req.url ?? '/', `http://localhost`)
         const error = url.searchParams.get('error')
@@ -490,7 +489,8 @@ export class ClientCredentials {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function openBrowser(url: string): void {
+async function openBrowser(url: string): Promise<void> {
+  const { spawn } = await import('child_process')
   if (process.platform === 'win32') {
     spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' })
   } else if (process.platform === 'darwin') {
