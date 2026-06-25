@@ -54,6 +54,8 @@ export type {
 } from './auth.js'
 export { OAuth, BearerAuth, ClientCredentials, InMemoryStore, FileTokenStorage } from './auth.js'
 
+export { LocalStorageStore, IndexedDBStore } from './browser-stores.js'
+
 export type {
   McpServerLike,
   McpServerEntry,
