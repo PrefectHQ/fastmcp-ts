@@ -188,8 +188,9 @@ export class Client implements IClient {
     } catch (err) {
       if (err instanceof UnauthorizedError && this._auth instanceof OAuth) {
         // The SDK opened the browser and is waiting for the user to authorize.
-        // Wait for the callback server to receive the code, then finish auth
-        // and retry the connection.
+        // Wait for the callback to receive the code, then finish auth on the
+        // original transport (it holds the discovery/PKCE context) to exchange
+        // the code for tokens.
         const code = await this._auth.waitForCallback()
         if (
           'finishAuth' in transport &&
@@ -199,7 +200,12 @@ export class Client implements IClient {
             code,
           )
         }
-        await sdkClient.connect(transport)
+        // The original transport is already started and cannot be reconnected;
+        // build a fresh one for the authenticated attempt. It reads the tokens
+        // finishAuth stored in the auth provider.
+        const retry = await resolveTransport(this._input, this._auth)
+        if (retry.beforeConnect) await retry.beforeConnect()
+        await sdkClient.connect(retry.transport)
       } else {
         throw err
       }
