@@ -174,7 +174,7 @@ export class Client implements IClient {
 
     this._registerHandlers(sdkClient)
 
-    const { transport, beforeConnect } = resolveTransport(this._input, this._auth)
+    const { transport, beforeConnect } = await resolveTransport(this._input, this._auth)
 
     // Bind the server URL into the OAuth provider before the SDK transport
     // reads clientMetadata or tokens() so storage keys are properly namespaced.

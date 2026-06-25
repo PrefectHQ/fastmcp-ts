@@ -105,7 +105,7 @@ export class MultiServerClient implements IClient {
         entries.map(async ([name, entry]) => {
           const sdk = this._buildSdkClient()
           this._registerHandlers(sdk)
-          const { transport, beforeConnect } = resolveEntryTransport(
+          const { transport, beforeConnect } = await resolveEntryTransport(
             entry as McpServerValue,
           )
           if (beforeConnect) await beforeConnect()

@@ -72,16 +72,16 @@ describe('Client — Bearer token', () => {
     expect(fromString.getHeaders()).toEqual(fromClass.getHeaders())
   })
 
-  it('transport injects static auth headers via requestInit', () => {
+  it('transport injects static auth headers via requestInit', async () => {
     const auth = new BearerAuth('static-token')
-    const { transport } = resolveTransport('https://example.com/mcp', auth)
+    const { transport } = await resolveTransport('https://example.com/mcp', auth)
     // The transport is a StreamableHTTPClientTransport; we verify it was
     // constructed (i.e. resolveTransport didn't throw).
     expect(transport).toBeDefined()
   })
 
-  it('arbitrary headers in McpConfig are forwarded', () => {
-    const { transport } = resolveTransport(
+  it('arbitrary headers in McpConfig are forwarded', async () => {
+    const { transport } = await resolveTransport(
       {
         mcpServers: {
           myServer: { url: 'https://example.com/mcp', headers: { 'X-Tenant': 'acme' } },

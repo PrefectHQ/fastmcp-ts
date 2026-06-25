@@ -3,8 +3,25 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { OAuth, BearerAuth, type ClientCredentials } from './auth.js'
+
+// ---------------------------------------------------------------------------
+// Stdio transport — loaded lazily. The SDK's stdio module imports Node's
+// `child_process`, so a static import would pull Node built-ins into the
+// browser bundle. Importing it on demand keeps the client graph browser-safe.
+// ---------------------------------------------------------------------------
+
+async function createStdioTransport(opts: {
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+  cwd?: string
+}): Promise<Transport> {
+  const { StdioClientTransport } = await import(
+    '@modelcontextprotocol/sdk/client/stdio.js'
+  )
+  return new StdioClientTransport(opts)
+}
 
 // ---------------------------------------------------------------------------
 // McpServerLike — structural interface for in-process servers.
@@ -209,10 +226,10 @@ function urlToTransport(
 // Used by MultiServerClient to connect to each server independently.
 // ---------------------------------------------------------------------------
 
-export function resolveEntryTransport(
+export async function resolveEntryTransport(
   entry: McpServerValue,
   auth?: BearerAuth | OAuth | ClientCredentials,
-): ResolvedTransport {
+): Promise<ResolvedTransport> {
   // In-process server (McpServerLike: has connect(transport)).
   if (isMcpServerLike(entry)) {
     const [serverSide, clientSide] = InMemoryTransport.createLinkedPair()
@@ -232,7 +249,7 @@ export function resolveEntryTransport(
 
   const cmd = entry as { command: string; args?: string[]; env?: Record<string, string> }
   return {
-    transport: new StdioClientTransport({
+    transport: await createStdioTransport({
       command: cmd.command,
       args: cmd.args,
       env: cmd.env,
@@ -252,14 +269,14 @@ function resolveEntryAuth(
 // resolveTransport — internal; used by Client.connect()
 // ---------------------------------------------------------------------------
 
-export function resolveTransport(
+export async function resolveTransport(
   input: ClientTransportInput,
   auth?: BearerAuth | OAuth | ClientCredentials,
-): ResolvedTransport {
+): Promise<ResolvedTransport> {
   // 1. Our StdioTransport config class (check before the duck-type checks below).
   if (input instanceof StdioTransport) {
     return {
-      transport: new StdioClientTransport({
+      transport: await createStdioTransport({
         command: input.command,
         args: input.args,
         env: input.env,
@@ -289,7 +306,7 @@ export function resolveTransport(
     const entries = Object.entries(input.mcpServers)
     if (entries.length === 0) throw new Error('mcpServers config is empty')
     const [, entry] = entries[0]!
-    return resolveEntryTransport(entry, auth)
+    return await resolveEntryTransport(entry, auth)
   }
 
   // 5. In-process server (McpServerLike: has connect(transport)).
