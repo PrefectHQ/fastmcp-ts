@@ -153,9 +153,9 @@ export class OAuth implements OAuthClientProvider {
   private readonly _onRedirect?: (url: URL) => void | Promise<void>
 
   private _codeVerifier: string | undefined
-  private _callbackPromise: Promise<string> | null = null
-  private _callbackResolve: ((code: string) => void) | null = null
-  private _callbackReject: ((err: Error) => void) | null = null
+  protected _callbackPromise: Promise<string> | null = null
+  protected _callbackResolve: ((code: string) => void) | null = null
+  protected _callbackReject: ((err: Error) => void) | null = null
   private _callbackServer: { close(): void } | null = null
   private _actualCallbackPort: number | null = null
 
@@ -226,17 +226,58 @@ export class OAuth implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    this._callbackPromise = new Promise<string>((resolve, reject) => {
-      this._callbackResolve = resolve
-      this._callbackReject = reject
-    })
-    // Suppress unhandled-rejection warnings — waitForCallback observes this via Promise.race
-    this._callbackPromise.catch(() => {})
+    this._armCallbackPromise()
     await this._startCallbackServer()
     if (this._onRedirect) {
       await this._onRedirect(authorizationUrl)
     } else {
       await openBrowser(authorizationUrl.toString())
+    }
+  }
+
+  /**
+   * Creates the pending-callback promise that {@link waitForCallback} awaits.
+   * Subclasses (e.g. BrowserOAuth) call this before opening their own redirect.
+   */
+  protected _armCallbackPromise(): void {
+    this._callbackPromise = new Promise<string>((resolve, reject) => {
+      this._callbackResolve = resolve
+      this._callbackReject = reject
+    })
+    // Suppress unhandled-rejection warnings — the promise is observed via Promise.race.
+    this._callbackPromise.catch(() => {})
+  }
+
+  /** Resolves the pending callback with an authorization code. */
+  protected _resolveCallback(code: string): void {
+    this._callbackResolve?.(code)
+  }
+
+  /** Rejects the pending callback with an error. */
+  protected _rejectCallback(err: Error): void {
+    this._callbackReject?.(err)
+  }
+
+  /**
+   * Races the pending callback promise against a timeout and clears the
+   * promise state. Subclasses reuse this and add their own teardown.
+   */
+  protected async _awaitCallback(timeoutMs: number): Promise<string> {
+    if (!this._callbackPromise) {
+      throw new Error('No pending OAuth callback — call redirectToAuthorization() first')
+    }
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error('OAuth callback timed out waiting for authorization')),
+        timeoutMs,
+      ),
+    )
+    try {
+      return await Promise.race([this._callbackPromise, timeout])
+    } finally {
+      this._callbackPromise = null
+      this._callbackResolve = null
+      this._callbackReject = null
     }
   }
 
@@ -295,21 +336,9 @@ export class OAuth implements OAuthClientProvider {
    * Must be called after the UnauthorizedError thrown by connect() is caught.
    */
   async waitForCallback(timeoutMs = 5 * 60 * 1000): Promise<string> {
-    if (!this._callbackPromise) {
-      throw new Error('No pending OAuth callback — call redirectToAuthorization() first')
-    }
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error('OAuth callback timed out waiting for authorization')),
-        timeoutMs,
-      ),
-    )
     try {
-      return await Promise.race([this._callbackPromise, timeout])
+      return await this._awaitCallback(timeoutMs)
     } finally {
-      this._callbackPromise = null
-      this._callbackResolve = null
-      this._callbackReject = null
       this._stopCallbackServer()
     }
   }
