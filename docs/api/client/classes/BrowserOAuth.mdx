@@ -1,36 +1,36 @@
 ---
-title: "OAuth"
+title: "BrowserOAuth"
 ---
 
-Defined in: [client/auth.ts:145](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L145)
+Defined in: [client/browser-oauth.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L37)
 
-## Extended by
+## Extends
 
-- [`BrowserOAuth`](/api/client/classes/BrowserOAuth)
-
-## Implements
-
-- `OAuthClientProvider`
+- [`OAuth`](/api/client/classes/OAuth)
 
 ## Constructors
 
 ### Constructor
 
 ```ts
-new OAuth(options?): OAuth;
+new BrowserOAuth(options): BrowserOAuth;
 ```
 
-Defined in: [client/auth.ts:162](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L162)
+Defined in: [client/browser-oauth.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L44)
 
 #### Parameters
 
-##### options?
+##### options
 
-[`OAuthOptions`](/api/client/interfaces/OAuthOptions) = `{}`
+[`BrowserOAuthOptions`](/api/client/interfaces/BrowserOAuthOptions)
 
 #### Returns
 
-`OAuth`
+`BrowserOAuth`
+
+#### Overrides
+
+[`OAuth`](/api/client/classes/OAuth).[`constructor`](/api/client/classes/OAuth#constructor)
 
 ## Properties
 
@@ -42,6 +42,10 @@ protected _callbackPromise: Promise<string> | null = null;
 
 Defined in: [client/auth.ts:156](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L156)
 
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`_callbackPromise`](/api/client/classes/OAuth#_callbackpromise)
+
 ***
 
 ### \_callbackReject
@@ -52,6 +56,10 @@ protected _callbackReject: ((err) => void) | null = null;
 
 Defined in: [client/auth.ts:158](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L158)
 
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`_callbackReject`](/api/client/classes/OAuth#_callbackreject)
+
 ***
 
 ### \_callbackResolve
@@ -61,6 +69,10 @@ protected _callbackResolve: ((code) => void) | null = null;
 ```
 
 Defined in: [client/auth.ts:157](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L157)
+
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`_callbackResolve`](/api/client/classes/OAuth#_callbackresolve)
 
 ## Accessors
 
@@ -81,6 +93,10 @@ Only populated after redirectToAuthorization() has been called.
 
 `number` \| `null`
 
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`callbackServerPort`](/api/client/classes/OAuth#callbackserverport)
+
 ***
 
 ### clientMetadata
@@ -92,7 +108,7 @@ get clientMetadata(): {
 };
 ```
 
-Defined in: [client/auth.ts:189](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L189)
+Defined in: [client/browser-oauth.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L55)
 
 Metadata about this OAuth client.
 
@@ -103,11 +119,9 @@ Metadata about this OAuth client.
 }
 ```
 
-#### Implementation of
+#### Overrides
 
-```ts
-OAuthClientProvider.clientMetadata
-```
+[`OAuth`](/api/client/classes/OAuth).[`clientMetadata`](/api/client/classes/OAuth#clientmetadata)
 
 ***
 
@@ -116,10 +130,10 @@ OAuthClientProvider.clientMetadata
 #### Get Signature
 
 ```ts
-get redirectUrl(): string | URL;
+get redirectUrl(): string;
 ```
 
-Defined in: [client/auth.ts:184](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L184)
+Defined in: [client/browser-oauth.ts:51](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L51)
 
 The URL to redirect the user agent to after authorization.
 Return undefined for non-interactive flows that don't require user interaction
@@ -127,13 +141,11 @@ Return undefined for non-interactive flows that don't require user interaction
 
 ##### Returns
 
-`string` \| `URL`
+`string`
 
-#### Implementation of
+#### Overrides
 
-```ts
-OAuthClientProvider.redirectUrl
-```
+[`OAuth`](/api/client/classes/OAuth).[`redirectUrl`](/api/client/classes/OAuth#redirecturl)
 
 ## Methods
 
@@ -145,12 +157,16 @@ protected _armCallbackPromise(): void;
 
 Defined in: [client/auth.ts:242](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L242)
 
-Creates the pending-callback promise that [waitForCallback](#waitforcallback) awaits.
+Creates the pending-callback promise that [waitForCallback](/api/client/classes/OAuth#waitforcallback) awaits.
 Subclasses (e.g. BrowserOAuth) call this before opening their own redirect.
 
 #### Returns
 
 `void`
+
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`_armCallbackPromise`](/api/client/classes/OAuth#_armcallbackpromise)
 
 ***
 
@@ -175,6 +191,10 @@ promise state. Subclasses reuse this and add their own teardown.
 
 `Promise`&lt;`string`&gt;
 
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`_awaitCallback`](/api/client/classes/OAuth#_awaitcallback)
+
 ***
 
 ### \_bind()
@@ -198,6 +218,10 @@ Called by Client before connecting.
 
 `void`
 
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`_bind`](/api/client/classes/OAuth#_bind)
+
 ***
 
 ### \_rejectCallback()
@@ -219,6 +243,10 @@ Rejects the pending callback with an error.
 #### Returns
 
 `void`
+
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`_rejectCallback`](/api/client/classes/OAuth#_rejectcallback)
 
 ***
 
@@ -242,6 +270,10 @@ Resolves the pending callback with an authorization code.
 
 `void`
 
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`_resolveCallback`](/api/client/classes/OAuth#_resolvecallback)
+
 ***
 
 ### clientInformation()
@@ -260,11 +292,9 @@ server.
 
 `Promise`&lt;`OAuthClientInformationMixed` \| `undefined`&gt;
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.clientInformation
-```
+[`OAuth`](/api/client/classes/OAuth).[`clientInformation`](/api/client/classes/OAuth#clientinformation)
 
 ***
 
@@ -283,11 +313,9 @@ the authorization result.
 
 `string`
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.codeVerifier
-```
+[`OAuth`](/api/client/classes/OAuth).[`codeVerifier`](/api/client/classes/OAuth#codeverifier)
 
 ***
 
@@ -313,11 +341,9 @@ re-discovery in case the authorization server has changed.
 
 `Promise`&lt;`OAuthDiscoveryState` \| `undefined`&gt;
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.discoveryState
-```
+[`OAuth`](/api/client/classes/OAuth).[`discoveryState`](/api/client/classes/OAuth#discoverystate)
 
 ***
 
@@ -343,11 +369,9 @@ This avoids requiring the user to intervene manually.
 
 `Promise`&lt;`void`&gt;
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.invalidateCredentials
-```
+[`OAuth`](/api/client/classes/OAuth).[`invalidateCredentials`](/api/client/classes/OAuth#invalidatecredentials)
 
 ***
 
@@ -357,7 +381,7 @@ OAuthClientProvider.invalidateCredentials
 redirectToAuthorization(authorizationUrl): Promise<void>;
 ```
 
-Defined in: [client/auth.ts:228](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L228)
+Defined in: [client/browser-oauth.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L59)
 
 Invoked to redirect the user agent to the given URL to begin the authorization flow.
 
@@ -371,11 +395,33 @@ Invoked to redirect the user agent to the given URL to begin the authorization f
 
 `Promise`&lt;`void`&gt;
 
-#### Implementation of
+#### Overrides
+
+[`OAuth`](/api/client/classes/OAuth).[`redirectToAuthorization`](/api/client/classes/OAuth#redirecttoauthorization)
+
+***
+
+### resumeFromRedirect()
 
 ```ts
-OAuthClientProvider.redirectToAuthorization
+resumeFromRedirect(href?): string | null;
 ```
+
+Defined in: [client/browser-oauth.ts:100](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L100)
+
+Redirect-mode resume: parse the authorization code from a returned URL
+(defaults to the current location). Returns the code, or null if absent.
+Throws if the provider returned an error.
+
+#### Parameters
+
+##### href?
+
+`string` = `window.location.href`
+
+#### Returns
+
+`string` \| `null`
 
 ***
 
@@ -404,11 +450,9 @@ statically known (e.g., pre-registered).
 
 `Promise`&lt;`void`&gt;
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.saveClientInformation
-```
+[`OAuth`](/api/client/classes/OAuth).[`saveClientInformation`](/api/client/classes/OAuth#saveclientinformation)
 
 ***
 
@@ -433,11 +477,9 @@ the authorization flow.
 
 `void`
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.saveCodeVerifier
-```
+[`OAuth`](/api/client/classes/OAuth).[`saveCodeVerifier`](/api/client/classes/OAuth#savecodeverifier)
 
 ***
 
@@ -468,11 +510,9 @@ Called by `auth` after successful discovery.
 
 `Promise`&lt;`void`&gt;
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.saveDiscoveryState
-```
+[`OAuth`](/api/client/classes/OAuth).[`saveDiscoveryState`](/api/client/classes/OAuth#savediscoverystate)
 
 ***
 
@@ -495,11 +535,9 @@ authorization.
 
 `Promise`&lt;`void`&gt;
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.saveTokens
-```
+[`OAuth`](/api/client/classes/OAuth).[`saveTokens`](/api/client/classes/OAuth#savetokens)
 
 ***
 
@@ -524,11 +562,9 @@ Loads any existing OAuth tokens for the current session, or returns
 \}
   \| `undefined`&gt;
 
-#### Implementation of
+#### Inherited from
 
-```ts
-OAuthClientProvider.tokens
-```
+[`OAuth`](/api/client/classes/OAuth).[`tokens`](/api/client/classes/OAuth#tokens)
 
 ***
 
@@ -538,7 +574,7 @@ OAuthClientProvider.tokens
 waitForCallback(timeoutMs?): Promise<string>;
 ```
 
-Defined in: [client/auth.ts:338](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L338)
+Defined in: [client/browser-oauth.ts:87](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L87)
 
 Waits for the OAuth authorization code to arrive via the callback server,
 then stops the server and resolves with the code.
@@ -554,3 +590,7 @@ Must be called after the UnauthorizedError thrown by connect() is caught.
 #### Returns
 
 `Promise`&lt;`string`&gt;
+
+#### Overrides
+
+[`OAuth`](/api/client/classes/OAuth).[`waitForCallback`](/api/client/classes/OAuth#waitforcallback)

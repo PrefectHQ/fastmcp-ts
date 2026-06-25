@@ -65,3 +65,7 @@ const result = await client.callTool('add', { a: 1, b: 2 })
 ```
 
 This is the recommended way to test a server. You exercise the real registration, validation, conversion, and context machinery without spawning anything, so tests stay fast and assert against genuine protocol behavior rather than a mock. The connection requires the server to attach its side before the client's side completes, and the client coordinates that handshake automatically as part of `connect()` — you only pass the instance.
+
+## Browser builds
+
+The client bundles for the browser, where the only server it can reach is one exposed over the network. A **string URL** works unchanged: Streamable HTTP and the SSE fallback both ride the browser's own `fetch` and `EventSource`. The other inputs are inherently Node-only — a `StdioTransport` spawns a subprocess, and an in-process `FastMCP` instance needs a server living in the same runtime, neither of which a browser can offer. Those paths are loaded lazily, so they never enter a browser bundle, and a build pulls in only the HTTP transport it actually uses. Proving who you are from a browser is its own concern, covered in [authentication](/clients/auth#browser-apps).

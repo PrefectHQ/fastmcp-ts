@@ -2,7 +2,7 @@
 title: "ErrorNormalizationMiddleware"
 ---
 
-Defined in: [server/middleware.ts:203](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L203)
+Defined in: [server/middleware.ts:203](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L203)
 
 Normalises errors thrown by handlers to proper MCP shapes:
 - tools/call plain errors → \{ isError: true, content: [...] \}  (per MCP spec)
@@ -38,7 +38,7 @@ new ErrorNormalizationMiddleware(): ErrorNormalizationMiddleware;
 onCallTool<T, R>(ctx, next): Promise<R>;
 ```
 
-Defined in: [server/middleware.ts:204](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L204)
+Defined in: [server/middleware.ts:204](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L204)
 
 #### Type Parameters
 
@@ -76,7 +76,7 @@ Defined in: [server/middleware.ts:204](https://github.com/PrefectHQ/fastmcp-ts/b
 onRequest<T, R>(ctx, next): Promise<R>;
 ```
 
-Defined in: [server/middleware.ts:216](https://github.com/PrefectHQ/fastmcp-ts/blob/b2d2ea75e5bfae881ff1e471df09a9fe36c6ba70/src/server/middleware.ts#L216)
+Defined in: [server/middleware.ts:216](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L216)
 
 #### Type Parameters
 

@@ -21,6 +21,12 @@
             "isDeprecated": false
           },
           {
+            "title": "BrowserOAuth",
+            "kind": 128,
+            "path": "client/classes/BrowserOAuth.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "Client",
             "kind": 128,
             "path": "client/classes/Client.mdx",
@@ -51,9 +57,21 @@
             "isDeprecated": false
           },
           {
+            "title": "IndexedDBStore",
+            "kind": 128,
+            "path": "client/classes/IndexedDBStore.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "InMemoryStore",
             "kind": 128,
             "path": "client/classes/InMemoryStore.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "LocalStorageStore",
+            "kind": 128,
+            "path": "client/classes/LocalStorageStore.mdx",
             "isDeprecated": false
           },
           {
@@ -91,6 +109,12 @@
       {
         "title": "Interfaces",
         "children": [
+          {
+            "title": "BrowserOAuthOptions",
+            "kind": 256,
+            "path": "client/interfaces/BrowserOAuthOptions.mdx",
+            "isDeprecated": false
+          },
           {
             "title": "CallToolOptions",
             "kind": 256,
@@ -339,6 +363,12 @@
             "title": "defaultProgressHandler",
             "kind": 64,
             "path": "client/functions/defaultProgressHandler.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "handleOAuthCallback",
+            "kind": 64,
+            "path": "client/functions/handleOAuthCallback.mdx",
             "isDeprecated": false
           },
           {
