@@ -5,10 +5,6 @@ import type {
   OAuthClientMetadata,
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js'
-import * as fs from 'fs/promises'
-import { homedir } from 'os'
-import { dirname, join } from 'path'
-
 // ---------------------------------------------------------------------------
 // OAuthToken — internal type used by ClientCredentials for expiry tracking.
 // Not the SDK's OAuthTokens: we track expires_at in milliseconds.
@@ -60,15 +56,25 @@ export class InMemoryStore implements KeyValueStore {
 // ---------------------------------------------------------------------------
 
 export class FileTokenStorage implements KeyValueStore {
-  private readonly _path: string
+  private readonly _explicitPath?: string
+  private _resolvedPath?: string
 
   constructor(path?: string) {
-    this._path = path ?? join(homedir(), '.fastmcp', 'tokens.json')
+    this._explicitPath = path
+  }
+
+  private async _path(): Promise<string> {
+    if (this._resolvedPath) return this._resolvedPath
+    if (this._explicitPath) return (this._resolvedPath = this._explicitPath)
+    const { homedir } = await import('os')
+    const { join } = await import('path')
+    return (this._resolvedPath = join(homedir(), '.fastmcp', 'tokens.json'))
   }
 
   private async _readAll(): Promise<Record<string, string>> {
+    const fs = await import('fs/promises')
     try {
-      const raw = await fs.readFile(this._path, 'utf8')
+      const raw = await fs.readFile(await this._path(), 'utf8')
       const parsed: unknown = JSON.parse(raw)
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         return parsed as Record<string, string>
@@ -80,10 +86,13 @@ export class FileTokenStorage implements KeyValueStore {
   }
 
   private async _writeAll(data: Record<string, string>): Promise<void> {
-    await fs.mkdir(dirname(this._path), { recursive: true })
-    const tmp = `${this._path}.tmp`
+    const fs = await import('fs/promises')
+    const { dirname } = await import('path')
+    const path = await this._path()
+    await fs.mkdir(dirname(path), { recursive: true })
+    const tmp = `${path}.tmp`
     await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8')
-    await fs.rename(tmp, this._path)
+    await fs.rename(tmp, path)
   }
 
   async get(key: string): Promise<string | null> {
