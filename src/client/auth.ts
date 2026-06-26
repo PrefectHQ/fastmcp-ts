@@ -5,12 +5,6 @@ import type {
   OAuthClientMetadata,
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js'
-import { spawn } from 'child_process'
-import * as fs from 'fs/promises'
-import * as http from 'http'
-import { homedir } from 'os'
-import { dirname, join } from 'path'
-
 // ---------------------------------------------------------------------------
 // OAuthToken — internal type used by ClientCredentials for expiry tracking.
 // Not the SDK's OAuthTokens: we track expires_at in milliseconds.
@@ -62,15 +56,25 @@ export class InMemoryStore implements KeyValueStore {
 // ---------------------------------------------------------------------------
 
 export class FileTokenStorage implements KeyValueStore {
-  private readonly _path: string
+  private readonly _explicitPath?: string
+  private _resolvedPath?: string
 
   constructor(path?: string) {
-    this._path = path ?? join(homedir(), '.fastmcp', 'tokens.json')
+    this._explicitPath = path
+  }
+
+  private async _path(): Promise<string> {
+    if (this._resolvedPath) return this._resolvedPath
+    if (this._explicitPath) return (this._resolvedPath = this._explicitPath)
+    const { homedir } = await import('os')
+    const { join } = await import('path')
+    return (this._resolvedPath = join(homedir(), '.fastmcp', 'tokens.json'))
   }
 
   private async _readAll(): Promise<Record<string, string>> {
+    const fs = await import('fs/promises')
     try {
-      const raw = await fs.readFile(this._path, 'utf8')
+      const raw = await fs.readFile(await this._path(), 'utf8')
       const parsed: unknown = JSON.parse(raw)
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         return parsed as Record<string, string>
@@ -82,10 +86,13 @@ export class FileTokenStorage implements KeyValueStore {
   }
 
   private async _writeAll(data: Record<string, string>): Promise<void> {
-    await fs.mkdir(dirname(this._path), { recursive: true })
-    const tmp = `${this._path}.tmp`
+    const fs = await import('fs/promises')
+    const { dirname } = await import('path')
+    const path = await this._path()
+    await fs.mkdir(dirname(path), { recursive: true })
+    const tmp = `${path}.tmp`
     await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf8')
-    await fs.rename(tmp, this._path)
+    await fs.rename(tmp, path)
   }
 
   async get(key: string): Promise<string | null> {
@@ -146,10 +153,10 @@ export class OAuth implements OAuthClientProvider {
   private readonly _onRedirect?: (url: URL) => void | Promise<void>
 
   private _codeVerifier: string | undefined
-  private _callbackPromise: Promise<string> | null = null
-  private _callbackResolve: ((code: string) => void) | null = null
-  private _callbackReject: ((err: Error) => void) | null = null
-  private _callbackServer: http.Server | null = null
+  protected _callbackPromise: Promise<string> | null = null
+  protected _callbackResolve: ((code: string) => void) | null = null
+  protected _callbackReject: ((err: Error) => void) | null = null
+  private _callbackServer: { close(): void } | null = null
   private _actualCallbackPort: number | null = null
 
   constructor(options: OAuthOptions = {}) {
@@ -219,17 +226,58 @@ export class OAuth implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    this._callbackPromise = new Promise<string>((resolve, reject) => {
-      this._callbackResolve = resolve
-      this._callbackReject = reject
-    })
-    // Suppress unhandled-rejection warnings — waitForCallback observes this via Promise.race
-    this._callbackPromise.catch(() => {})
+    this._armCallbackPromise()
     await this._startCallbackServer()
     if (this._onRedirect) {
       await this._onRedirect(authorizationUrl)
     } else {
-      openBrowser(authorizationUrl.toString())
+      await openBrowser(authorizationUrl.toString())
+    }
+  }
+
+  /**
+   * Creates the pending-callback promise that {@link waitForCallback} awaits.
+   * Subclasses (e.g. BrowserOAuth) call this before opening their own redirect.
+   */
+  protected _armCallbackPromise(): void {
+    this._callbackPromise = new Promise<string>((resolve, reject) => {
+      this._callbackResolve = resolve
+      this._callbackReject = reject
+    })
+    // Suppress unhandled-rejection warnings — the promise is observed via Promise.race.
+    this._callbackPromise.catch(() => {})
+  }
+
+  /** Resolves the pending callback with an authorization code. */
+  protected _resolveCallback(code: string): void {
+    this._callbackResolve?.(code)
+  }
+
+  /** Rejects the pending callback with an error. */
+  protected _rejectCallback(err: Error): void {
+    this._callbackReject?.(err)
+  }
+
+  /**
+   * Races the pending callback promise against a timeout and clears the
+   * promise state. Subclasses reuse this and add their own teardown.
+   */
+  protected async _awaitCallback(timeoutMs: number): Promise<string> {
+    if (!this._callbackPromise) {
+      throw new Error('No pending OAuth callback — call redirectToAuthorization() first')
+    }
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error('OAuth callback timed out waiting for authorization')),
+        timeoutMs,
+      ),
+    )
+    try {
+      return await Promise.race([this._callbackPromise, timeout])
+    } finally {
+      this._callbackPromise = null
+      this._callbackResolve = null
+      this._callbackReject = null
     }
   }
 
@@ -288,21 +336,9 @@ export class OAuth implements OAuthClientProvider {
    * Must be called after the UnauthorizedError thrown by connect() is caught.
    */
   async waitForCallback(timeoutMs = 5 * 60 * 1000): Promise<string> {
-    if (!this._callbackPromise) {
-      throw new Error('No pending OAuth callback — call redirectToAuthorization() first')
-    }
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error('OAuth callback timed out waiting for authorization')),
-        timeoutMs,
-      ),
-    )
     try {
-      return await Promise.race([this._callbackPromise, timeout])
+      return await this._awaitCallback(timeoutMs)
     } finally {
-      this._callbackPromise = null
-      this._callbackResolve = null
-      this._callbackReject = null
       this._stopCallbackServer()
     }
   }
@@ -311,9 +347,10 @@ export class OAuth implements OAuthClientProvider {
     return `${this._serverUrl}/${type}`
   }
 
-  private _startCallbackServer(): Promise<void> {
-    if (this._callbackServer) return Promise.resolve()
-    return new Promise((resolve, reject) => {
+  private async _startCallbackServer(): Promise<void> {
+    if (this._callbackServer) return
+    const http = await import('http')
+    await new Promise<void>((resolve, reject) => {
       const server = http.createServer((req, res) => {
         const url = new URL(req.url ?? '/', `http://localhost`)
         const error = url.searchParams.get('error')
@@ -490,7 +527,8 @@ export class ClientCredentials {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function openBrowser(url: string): void {
+async function openBrowser(url: string): Promise<void> {
+  const { spawn } = await import('child_process')
   if (process.platform === 'win32') {
     spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' })
   } else if (process.platform === 'darwin') {

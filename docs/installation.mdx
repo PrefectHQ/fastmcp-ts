@@ -10,7 +10,9 @@ FastMCP TypeScript installs as a single package with a bundled CLI. Once it's in
 
 ## Requirements
 
-FastMCP TypeScript runs on **Node.js 22 or later**. There is no browser support.
+The server entrypoint, `@prefecthq/fastmcp-ts/server`, runs on **Node.js 22 or later** — serving MCP depends on Node APIs like subprocesses and the filesystem.
+
+The client entrypoint, `@prefecthq/fastmcp-ts/client`, runs on Node.js 22 or later and also **bundles for the browser**. Any bundler that honors the package's `browser` field — Vite, webpack, esbuild, Rollup — produces a build with no Node built-ins, so a web app can talk to an MCP server over HTTP. The Node-only pieces, the stdio [transport](/clients/transports#browser-builds) and filesystem token storage, load lazily and drop out of a browser build; [authenticating a browser client](/clients/auth#browser-apps) uses a popup or redirect OAuth flow and web-backed token storage.
 
 ## Install the package
 

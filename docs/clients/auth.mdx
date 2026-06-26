@@ -5,7 +5,7 @@ description: "Bearer tokens, OAuth, and client credentials"
 icon: "key"
 ---
 
-A server [verifies the caller's identity](/servers/auth/overview) before it runs any handler. The client's job is the other side of that exchange: present a credential the server will accept. Authentication is orthogonal to the [transport](/clients/transports) — you choose where the server lives and, separately, how you prove who you are — so you supply a credential through the `auth` option regardless of whether you connect over HTTP or stdio. Three strategies cover the common cases, and they line up with the verifiers a server runs: a static bearer token for the simplest setup, OAuth for user-delegated access with refresh, and client credentials for machine-to-machine calls.
+A server [verifies the caller's identity](/servers/auth/overview) before it runs any handler. The client's job is the other side of that exchange: present a credential the server will accept. Authentication is orthogonal to the [transport](/clients/transports) — you choose where the server lives and, separately, how you prove who you are — so you supply a credential through the `auth` option regardless of whether you connect over HTTP or stdio. Three strategies cover the common cases, and they line up with the verifiers a server runs: a static bearer token for the simplest setup, OAuth for user-delegated access with refresh, and client credentials for machine-to-machine calls. When the client runs in a [browser](#browser-apps), the OAuth flow changes shape — a popup or redirect rather than the system browser — but the credential model is unchanged.
 
 ## Bearer tokens
 
@@ -34,7 +34,7 @@ import { Client, OAuth, FileTokenStorage } from '@prefecthq/fastmcp-ts/client'
 
 const client = await Client.connect('https://mcp.example.com', {
   auth: new OAuth({
-    storage: new FileTokenStorage('~/.config/myapp/tokens.json'),
+    store: new FileTokenStorage('~/.config/myapp/tokens.json'),
   }),
 })
 ```
@@ -50,9 +50,41 @@ const client = await Client.connect('https://mcp.example.com', {
   auth: new ClientCredentials({
     clientId: process.env.CLIENT_ID!,
     clientSecret: process.env.CLIENT_SECRET!,
-    tokenUrl: 'https://auth.example.com/oauth/token',
+    tokenEndpoint: 'https://auth.example.com/oauth/token',
   }),
 })
 ```
 
 When you connect to several servers at once, each can carry its own credential rather than sharing one. A [multi-server config](/clients/multi-server#per-server-auth) accepts an `auth` field per entry, so one client can present a bearer token to one server and run OAuth against another.
+
+## Browser apps
+
+The [`OAuth`](#oauth) strategy assumes a desktop environment: it opens the system browser, runs a throwaway HTTP server on `localhost` to catch the redirect, and writes tokens to a file. None of that exists inside a browser tab. `BrowserOAuth` runs the same authorization-code-with-PKCE flow and the same transparent refresh, but drives the redirect the way a web app can and reads tokens from web storage instead of disk. It is an `OAuth` provider underneath, so the [connection](/clients/client) treats it identically — only the construction differs.
+
+The authorization step opens the provider in a **popup** by default. You give `BrowserOAuth` a `redirectUri` on your own origin; the page served there hands the authorization code back to the opener by calling `handleOAuthCallback`. The popup closes itself, the original page receives the code over `postMessage`, and the connection completes without the user ever leaving your app.
+
+```typescript
+import { Client, BrowserOAuth, IndexedDBStore } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('https://mcp.example.com', {
+  auth: new BrowserOAuth({
+    redirectUri: `${location.origin}/oauth/callback`,
+    store: new IndexedDBStore(),
+  }),
+})
+```
+
+The page at that `redirectUri` only needs to forward the result back to the opener:
+
+```typescript
+import { handleOAuthCallback } from '@prefecthq/fastmcp-ts/client'
+
+// Served at /oauth/callback — runs once the provider redirects back.
+handleOAuthCallback()
+```
+
+Browsers only open popups in response to a user gesture, so trigger `connect()` from a click rather than on page load, or the window is blocked. Where popups are impractical — stricter mobile browsers, for instance — construct `BrowserOAuth` with `mode: 'redirect'` to navigate the whole tab to the provider instead. The tab returns to your `redirectUri` with the code in the query string, and `resumeFromRedirect()` reads it so the page that loads can finish connecting.
+
+Tokens persist through the same pluggable store the Node provider uses, with browser-backed implementations standing in for the filesystem. `LocalStorageStore` keeps tokens in `localStorage` for a small, synchronous store; `IndexedDBStore` uses IndexedDB when you want larger or more durable storage. Either lets a returning user skip the authorization flow, exactly as `FileTokenStorage` does on a server.
+
+One constraint shapes every browser deployment: the client reaches the server's OAuth and message endpoints with `fetch`, so they must be reachable cross-origin. A [FastMCP server's OAuth mode](/servers/auth/oauth) does not emit CORS headers, so a browser on a different origin is stopped by the same-origin policy before a request is even sent. Serve your app from the same origin as the server, or place a CORS-aware proxy in front of it.

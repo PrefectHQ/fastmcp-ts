@@ -1,0 +1,129 @@
+---
+title: "BrowserOAuthOptions"
+---
+
+Defined in: [client/browser-oauth.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L19)
+
+## Extends
+
+- `Omit`&lt;[`OAuthOptions`](/api/client/interfaces/OAuthOptions), `"callbackPort"` \| `"onRedirect"`&gt;
+
+## Properties
+
+### clientId?
+
+```ts
+optional clientId?: string;
+```
+
+Defined in: [client/auth.ts:123](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L123)
+
+Pre-registered client ID. When set, Dynamic Client Registration is skipped.
+
+#### Inherited from
+
+[`OAuthOptions`](/api/client/interfaces/OAuthOptions).[`clientId`](/api/client/interfaces/OAuthOptions#clientid)
+
+***
+
+### clientName?
+
+```ts
+optional clientName?: string;
+```
+
+Defined in: [client/auth.ts:129](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L129)
+
+Client name used in Dynamic Client Registration. Default: "FastMCP Client".
+
+#### Inherited from
+
+[`OAuthOptions`](/api/client/interfaces/OAuthOptions).[`clientName`](/api/client/interfaces/OAuthOptions#clientname)
+
+***
+
+### clientSecret?
+
+```ts
+optional clientSecret?: string;
+```
+
+Defined in: [client/auth.ts:125](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L125)
+
+Pre-registered client secret.
+
+#### Inherited from
+
+[`OAuthOptions`](/api/client/interfaces/OAuthOptions).[`clientSecret`](/api/client/interfaces/OAuthOptions#clientsecret)
+
+***
+
+### mode?
+
+```ts
+optional mode?: "popup" | "redirect";
+```
+
+Defined in: [client/browser-oauth.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L32)
+
+'popup' (default) opens the authorization URL in a popup window and listens
+for a postMessage from the callback page. 'redirect' navigates the whole
+tab; resume with [BrowserOAuth.resumeFromRedirect](/api/client/classes/BrowserOAuth#resumefromredirect) on return.
+
+***
+
+### popupFeatures?
+
+```ts
+optional popupFeatures?: string;
+```
+
+Defined in: [client/browser-oauth.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L34)
+
+`window.open` features string for popup mode.
+
+***
+
+### redirectUri
+
+```ts
+redirectUri: string;
+```
+
+Defined in: [client/browser-oauth.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L26)
+
+Redirect URI registered with the provider. Must serve a page that calls
+[handleOAuthCallback](/api/client/functions/handleOAuthCallback) (popup mode) or is your app route that reads the
+returned `?code=` (redirect mode).
+
+***
+
+### scopes?
+
+```ts
+optional scopes?: string | string[];
+```
+
+Defined in: [client/auth.ts:127](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L127)
+
+Requested OAuth scopes (space-separated string or array).
+
+#### Inherited from
+
+[`OAuthOptions`](/api/client/interfaces/OAuthOptions).[`scopes`](/api/client/interfaces/OAuthOptions#scopes)
+
+***
+
+### store?
+
+```ts
+optional store?: KeyValueStore;
+```
+
+Defined in: [client/auth.ts:131](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L131)
+
+Persistent key-value store for tokens, client info, and discovery state. Default: in-memory.
+
+#### Inherited from
+
+[`OAuthOptions`](/api/client/interfaces/OAuthOptions).[`store`](/api/client/interfaces/OAuthOptions#store)

@@ -223,12 +223,15 @@
                 "pages": [
                   "api/client/classes/AnthropicSamplingAdapter",
                   "api/client/classes/BearerAuth",
+                  "api/client/classes/BrowserOAuth",
                   "api/client/classes/Client",
                   "api/client/classes/ClientCredentials",
                   "api/client/classes/FileTokenStorage",
                   "api/client/classes/GenericSamplingAdapter",
                   "api/client/classes/GoogleSamplingAdapter",
+                  "api/client/classes/IndexedDBStore",
                   "api/client/classes/InMemoryStore",
+                  "api/client/classes/LocalStorageStore",
                   "api/client/classes/MultiServerClient",
                   "api/client/classes/OAuth",
                   "api/client/classes/OpenAISamplingAdapter",
@@ -239,6 +242,7 @@
               {
                 "group": "Interfaces",
                 "pages": [
+                  "api/client/interfaces/BrowserOAuthOptions",
                   "api/client/interfaces/CallToolOptions",
                   "api/client/interfaces/ClientCredentialsOptions",
                   "api/client/interfaces/ClientDefaultOptions",
@@ -289,6 +293,7 @@
                 "pages": [
                   "api/client/functions/defaultLogHandler",
                   "api/client/functions/defaultProgressHandler",
+                  "api/client/functions/handleOAuthCallback",
                   "api/client/functions/toResult"
                 ]
               }

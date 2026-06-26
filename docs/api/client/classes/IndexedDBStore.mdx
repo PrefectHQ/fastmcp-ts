@@ -1,0 +1,121 @@
+---
+title: "IndexedDBStore"
+---
+
+Defined in: [client/browser-stores.ts:40](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-stores.ts#L40)
+
+KeyValueStore backed by IndexedDB. Preferred when tokens should survive
+outside the synchronous, size-limited localStorage (e.g. larger payloads or
+stricter persistence). Opens the database per operation and closes it again.
+
+## Implements
+
+- [`KeyValueStore`](/api/client/type-aliases/KeyValueStore)
+
+## Constructors
+
+### Constructor
+
+```ts
+new IndexedDBStore(opts?): IndexedDBStore;
+```
+
+Defined in: [client/browser-stores.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-stores.ts#L44)
+
+#### Parameters
+
+##### opts?
+
+###### dbName?
+
+`string`
+
+###### storeName?
+
+`string`
+
+#### Returns
+
+`IndexedDBStore`
+
+## Methods
+
+### delete()
+
+```ts
+delete(key): Promise<void>;
+```
+
+Defined in: [client/browser-stores.ts:87](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-stores.ts#L87)
+
+#### Parameters
+
+##### key
+
+`string`
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+```ts
+KeyValueStore.delete
+```
+
+***
+
+### get()
+
+```ts
+get(key): Promise<string | null>;
+```
+
+Defined in: [client/browser-stores.ts:78](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-stores.ts#L78)
+
+#### Parameters
+
+##### key
+
+`string`
+
+#### Returns
+
+`Promise`&lt;`string` \| `null`&gt;
+
+#### Implementation of
+
+```ts
+KeyValueStore.get
+```
+
+***
+
+### set()
+
+```ts
+set(key, value): Promise<void>;
+```
+
+Defined in: [client/browser-stores.ts:83](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-stores.ts#L83)
+
+#### Parameters
+
+##### key
+
+`string`
+
+##### value
+
+`string`
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+#### Implementation of
+
+```ts
+KeyValueStore.set
+```

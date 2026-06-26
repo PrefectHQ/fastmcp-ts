@@ -1,5 +1,3 @@
-import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 
 import { Client as SdkClient } from '@modelcontextprotocol/sdk/client'
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
@@ -174,7 +172,7 @@ export class Client implements IClient {
 
     this._registerHandlers(sdkClient)
 
-    const { transport, beforeConnect } = resolveTransport(this._input, this._auth)
+    const { transport, beforeConnect } = await resolveTransport(this._input, this._auth)
 
     // Bind the server URL into the OAuth provider before the SDK transport
     // reads clientMetadata or tokens() so storage keys are properly namespaced.
@@ -190,8 +188,9 @@ export class Client implements IClient {
     } catch (err) {
       if (err instanceof UnauthorizedError && this._auth instanceof OAuth) {
         // The SDK opened the browser and is waiting for the user to authorize.
-        // Wait for the callback server to receive the code, then finish auth
-        // and retry the connection.
+        // Wait for the callback to receive the code, then finish auth on the
+        // original transport (it holds the discovery/PKCE context) to exchange
+        // the code for tokens.
         const code = await this._auth.waitForCallback()
         if (
           'finishAuth' in transport &&
@@ -201,7 +200,12 @@ export class Client implements IClient {
             code,
           )
         }
-        await sdkClient.connect(transport)
+        // The original transport is already started and cannot be reconnected;
+        // build a fresh one for the authenticated attempt. It reads the tokens
+        // finishAuth stored in the auth provider.
+        const retry = await resolveTransport(this._input, this._auth)
+        if (retry.beforeConnect) await retry.beforeConnect()
+        await sdkClient.connect(retry.transport)
       } else {
         throw err
       }
@@ -559,18 +563,26 @@ function resolveAuth(
 
 function normalizeRootsOption(roots: RootsValue): () => Promise<Root[]> {
   if (typeof roots === 'function') {
-    return async () => (await roots()).map(normalizeRootInput)
+    return async () => Promise.all((await roots()).map(normalizeRootInput))
   }
-  const normalized = roots.map(normalizeRootInput)
-  return () => Promise.resolve(normalized)
+  return async () => Promise.all(roots.map(normalizeRootInput))
 }
 
-function normalizeRootInput(input: RootInput): Root {
-  if (typeof input === 'string') return { uri: normalizeRootUri(input) }
-  return { ...input, uri: normalizeRootUri(input.uri) }
+async function normalizeRootInput(input: RootInput): Promise<Root> {
+  if (typeof input === 'string') return { uri: await normalizeRootUri(input) }
+  return { ...input, uri: await normalizeRootUri(input.uri) }
 }
 
-function normalizeRootUri(input: string): string {
-  if (input.startsWith('file://')) return input
+async function normalizeRootUri(input: string): Promise<string> {
+  // Already a URI (file://, http://, ...) — pass through with no Node import.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(input)) return input
+  // A bare filesystem path requires Node to resolve against the cwd.
+  if (typeof process === 'undefined' || !process.versions?.node) {
+    throw new Error(
+      `Cannot normalize filesystem root "${input}" in a browser. Pass a file:// URI instead.`,
+    )
+  }
+  const { resolve } = await import('node:path')
+  const { pathToFileURL } = await import('node:url')
   return pathToFileURL(resolve(input)).href
 }
