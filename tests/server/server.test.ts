@@ -131,7 +131,7 @@ describe('Server', () => {
           },
         },
       })
-      mcp.tool({ name: 'whoami' }, () => {
+      mcp.tool({ name: 'whoami', description: 'whoami' }, () => {
         capturedClientId = contextStore.getStore()?.auth?.clientId
         return 'ok'
       })

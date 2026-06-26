@@ -31,7 +31,7 @@ async function withServer(
 function makeRootsServer() {
   const mcp = new FastMCP({ name: 'test', version: '1.0.0' })
   let capturedRoots: Root[] = []
-  mcp.tool({ name: 'getRoots' }, async () => {
+  mcp.tool({ name: 'getRoots', description: 'a tool' }, async () => {
     capturedRoots = await mcp.getContext().listRoots() as Root[]
     return 'done'
   })

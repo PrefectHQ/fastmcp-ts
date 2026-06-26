@@ -130,7 +130,7 @@ describe('Apps — Built-in Providers', () => {
         expect(payload.uri).toMatch(/^ui:\/\/files\//)
 
         // Raw file bytes must NOT appear in the tool result — only the handle does
-        const text = (result.content[0] as { text: string }).text
+        const text = (result.content as { text: string }[])[0].text
         expect(text).not.toContain('name,age')
       })
     })

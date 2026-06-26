@@ -34,7 +34,7 @@ describe('Client — Resource Subscriptions', () => {
     it('calls the handler when the server sends a resource update', async () => {
       await withSubscriptionServer(async (client, server) => {
         const updates: string[] = []
-        await client.subscribeResource('file:///data.txt', (uri) => updates.push(uri))
+        await client.subscribeResource('file:///data.txt', (uri) => { updates.push(uri) })
         await server.sendResourceUpdated({ uri: 'file:///data.txt' })
         await tick()
         expect(updates).toEqual(['file:///data.txt'])
@@ -44,7 +44,7 @@ describe('Client — Resource Subscriptions', () => {
     it('does not call the handler for a different URI', async () => {
       await withSubscriptionServer(async (client, server) => {
         const updates: string[] = []
-        await client.subscribeResource('file:///watched.txt', (uri) => updates.push(uri))
+        await client.subscribeResource('file:///watched.txt', (uri) => { updates.push(uri) })
         await server.sendResourceUpdated({ uri: 'file:///other.txt' })
         await tick()
         expect(updates).toHaveLength(0)
@@ -55,8 +55,8 @@ describe('Client — Resource Subscriptions', () => {
       await withSubscriptionServer(async (client, server) => {
         const aUpdates: string[] = []
         const bUpdates: string[] = []
-        await client.subscribeResource('file:///a.txt', (uri) => aUpdates.push(uri))
-        await client.subscribeResource('file:///b.txt', (uri) => bUpdates.push(uri))
+        await client.subscribeResource('file:///a.txt', (uri) => { aUpdates.push(uri) })
+        await client.subscribeResource('file:///b.txt', (uri) => { bUpdates.push(uri) })
         await server.sendResourceUpdated({ uri: 'file:///b.txt' })
         await tick()
         expect(aUpdates).toHaveLength(0)
@@ -67,7 +67,7 @@ describe('Client — Resource Subscriptions', () => {
     it('calls the handler multiple times for repeated updates', async () => {
       await withSubscriptionServer(async (client, server) => {
         const updates: string[] = []
-        await client.subscribeResource('file:///counter.txt', (uri) => updates.push(uri))
+        await client.subscribeResource('file:///counter.txt', (uri) => { updates.push(uri) })
         await server.sendResourceUpdated({ uri: 'file:///counter.txt' })
         await server.sendResourceUpdated({ uri: 'file:///counter.txt' })
         await tick()
@@ -80,7 +80,7 @@ describe('Client — Resource Subscriptions', () => {
     it('stops calling the handler after unsubscribing', async () => {
       await withSubscriptionServer(async (client, server) => {
         const updates: string[] = []
-        await client.subscribeResource('file:///live.txt', (uri) => updates.push(uri))
+        await client.subscribeResource('file:///live.txt', (uri) => { updates.push(uri) })
         await server.sendResourceUpdated({ uri: 'file:///live.txt' })
         await tick()
         expect(updates).toHaveLength(1)

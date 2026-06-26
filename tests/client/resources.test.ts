@@ -56,7 +56,7 @@ describe('Client — Resources', () => {
         (mcp) => {
           mcp.resource(
             { uri: 'file:///{path}', name: 'File' },
-            ({ path }) => `content of ${path}`,
+            (params) => `content of ${params?.path}`,
           )
         },
         async (client) => {
@@ -89,7 +89,7 @@ describe('Client — Resources', () => {
         (mcp) => {
           mcp.resource(
             { uri: 'item:///{id}', name: 'Item' },
-            ({ id }) => `item:${id}`,
+            (params) => `item:${params?.id}`,
           )
         },
         async (client) => {

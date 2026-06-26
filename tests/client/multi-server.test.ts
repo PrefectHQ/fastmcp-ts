@@ -29,7 +29,7 @@ function makeServerB() {
   mcp.resource({ uri: 'b://data', name: 'b-data', description: 'data from B' }, () => 'data-b')
   mcp.resource(
     { uri: 'b://item/{id}', name: 'b-item', description: 'item template' },
-    ({ id }: { id: string }) => `item-${id}`,
+    (params) => `item-${params?.id}`,
   )
   mcp.prompt({ name: 'greet', description: 'greet from B', arguments: [] }, () => 'hello from B')
   return mcp
@@ -247,8 +247,8 @@ describe('Client — Multi-server', () => {
       await client.listResources()
       const contentsA = await client.readResource('a://data')
       const contentsB = await client.readResource('b://data')
-      expect((contentsA[0] as { text: string }).text).toBe('data-a')
-      expect((contentsB[0] as { text: string }).text).toBe('data-b')
+      expect((contentsA[0] as unknown as { text: string }).text).toBe('data-a')
+      expect((contentsB[0] as unknown as { text: string }).text).toBe('data-b')
     })
 
     it('readResource() falls back to try-all when URI map is not yet populated', async () => {
@@ -257,7 +257,7 @@ describe('Client — Multi-server', () => {
       await using client = await MultiServerClient.connect({ mcpServers: { a, b } })
       // No listResources() call — map is empty
       const contents = await client.readResource('b://data')
-      expect((contents[0] as { text: string }).text).toBe('data-b')
+      expect((contents[0] as unknown as { text: string }).text).toBe('data-b')
     })
 
     it('readResource() throws when URI is not found on any server', async () => {
@@ -413,7 +413,7 @@ describe('Client — Multi-server', () => {
       // indexOf('_') would split this as serverName="my", localName="server_greet" — wrong.
       // The fix (longest-prefix-first matching) must produce serverName="my_server".
       const my_server = new FastMCP({ name: 'my_server' })
-      my_server.tool({ name: 'greet', input: z.object({}) }, () => 'hello from my_server')
+      my_server.tool({ name: 'greet', description: 'greet', input: z.object({}) }, () => 'hello from my_server')
       await using client = await MultiServerClient.connect({ mcpServers: { my_server } })
 
       const tools = await client.listTools()
@@ -425,9 +425,9 @@ describe('Client — Multi-server', () => {
 
     it('server named "a" and "a_b" both route correctly when "a_b" has a tool "c"', async () => {
       const a = new FastMCP({ name: 'a' })
-      a.tool({ name: 'ping', input: z.object({}) }, () => 'from-a')
+      a.tool({ name: 'ping', description: 'ping', input: z.object({}) }, () => 'from-a')
       const a_b = new FastMCP({ name: 'a_b' })
-      a_b.tool({ name: 'c', input: z.object({}) }, () => 'from-a_b')
+      a_b.tool({ name: 'c', description: 'c', input: z.object({}) }, () => 'from-a_b')
       await using client = await MultiServerClient.connect({ mcpServers: { a, a_b } })
 
       const resultA = await client.callTool('a_ping')

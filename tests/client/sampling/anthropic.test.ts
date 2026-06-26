@@ -205,7 +205,7 @@ describe('AnthropicSamplingAdapter', () => {
   describe('response mapping', () => {
     it('maps end_turn → CreateMessageResult with text content', async () => {
       const mock = makeMockClient(makeAnthropicMessage({
-        content: [{ type: 'text', text: 'hello back' }],
+        content: [{ type: 'text', text: 'hello back' }] as Anthropic.ContentBlock[],
         stop_reason: 'end_turn',
         model: 'claude-test',
       }))
@@ -222,7 +222,7 @@ describe('AnthropicSamplingAdapter', () => {
 
     it('maps tool_use → CreateMessageResultWithTools with ToolUseContent array', async () => {
       const mock = makeMockClient(makeAnthropicMessage({
-        content: [{ type: 'tool_use', id: 'tu1', name: 'search', input: { q: 'test' } }],
+        content: [{ type: 'tool_use', id: 'tu1', name: 'search', input: { q: 'test' } }] as Anthropic.ContentBlock[],
         stop_reason: 'tool_use',
         model: 'claude-test',
       }))

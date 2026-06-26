@@ -5,7 +5,7 @@ import { Client } from 'fastmcp-ts/client'
 
 function makeServer(name = 'test') {
   const mcp = new FastMCP({ name, version: '1.0.0' })
-  mcp.tool({ name: 'echo', input: z.object({ msg: z.string() }) }, ({ msg }) => msg)
+  mcp.tool({ name: 'echo', description: 'a tool', input: z.object({ msg: z.string() }) }, ({ msg }) => msg)
   return mcp
 }
 
@@ -88,7 +88,7 @@ describe('Client', () => {
   describe('in-process transport', () => {
     it('connects directly to a FastMCP server instance', async () => {
       const mcp = new FastMCP({ name: 'direct', version: '1.0.0' })
-      mcp.tool({ name: 'greet', input: z.object({ name: z.string() }) }, ({ name }) => `hello ${name}`)
+      mcp.tool({ name: 'greet', description: 'a tool', input: z.object({ name: z.string() }) }, ({ name }) => `hello ${name}`)
 
       const client = await Client.connect(mcp)
       await using _ = client
