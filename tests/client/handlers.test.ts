@@ -25,7 +25,7 @@ describe('Client — Handlers', () => {
       const received: LogMessage[] = []
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'logger', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'logger', description: 'a tool', input: z.object({}) }, async () => {
             await mcp.getContext().info('hello from tool')
             return 'done'
           })
@@ -43,7 +43,7 @@ describe('Client — Handlers', () => {
       const received: LogMessage[] = []
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'named', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'named', description: 'a tool', input: z.object({}) }, async () => {
             await mcp.getContext().log('warning', 'watch out', 'my-logger')
             return 'done'
           })
@@ -65,7 +65,7 @@ describe('Client — Handlers', () => {
       const allLevels = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'] as const
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'allLevels', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'allLevels', description: 'a tool', input: z.object({}) }, async () => {
             const ctx = mcp.getContext()
             for (const lvl of allLevels) {
               await ctx.log(lvl, 'msg')
@@ -87,7 +87,7 @@ describe('Client — Handlers', () => {
       const progressCalls: Array<[number, number | undefined, string | undefined]> = []
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'progressor', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'progressor', description: 'a tool', input: z.object({}) }, async () => {
             await mcp.getContext().reportProgress(50, 100, 'halfway')
             return 'done'
           })
@@ -108,7 +108,7 @@ describe('Client — Handlers', () => {
       const received: number[] = []
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'multi', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'multi', description: 'a tool', input: z.object({}) }, async () => {
             const ctx = mcp.getContext()
             await ctx.reportProgress(25, 100)
             await ctx.reportProgress(50, 100)
@@ -137,7 +137,7 @@ describe('Client — Handlers', () => {
 
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'sampler', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'sampler', description: 'a tool', input: z.object({}) }, async () => {
             await mcp.getContext().sample({
               messages: [{ role: 'user', content: { type: 'text', text: 'say hi' } }],
             })
@@ -158,7 +158,7 @@ describe('Client — Handlers', () => {
       let capturedResult: unknown
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'sampler', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'sampler', description: 'a tool', input: z.object({}) }, async () => {
             capturedResult = await mcp.getContext().sample({
               messages: [{ role: 'user', content: { type: 'text', text: 'say hi' } }],
             })
@@ -196,7 +196,7 @@ describe('Client — Handlers', () => {
 
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'elicitor', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'elicitor', description: 'a tool', input: z.object({}) }, async () => {
             await mcp.getContext().elicit('What is your name?', {
               type: 'object',
               properties: { name: { type: 'string', title: 'Name' } },
@@ -219,7 +219,7 @@ describe('Client — Handlers', () => {
       let capturedResult: unknown
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'elicitor', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'elicitor', description: 'a tool', input: z.object({}) }, async () => {
             capturedResult = await mcp.getContext().elicit('Pick a name', {
               type: 'object',
               properties: { name: { type: 'string' } },
@@ -250,7 +250,7 @@ describe('Client — Handlers', () => {
       ]
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'noop', input: z.object({}) }, () => 'ok')
+          mcp.tool({ name: 'noop', description: 'a tool', input: z.object({}) }, () => 'ok')
         },
         async (client) => {
           for (const level of levels) {
@@ -264,7 +264,7 @@ describe('Client — Handlers', () => {
       const received: LogMessage[] = []
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'logger', input: z.object({}) }, async () => {
+          mcp.tool({ name: 'logger', description: 'a tool', input: z.object({}) }, async () => {
             const ctx = mcp.getContext()
             await ctx.info('this should be suppressed')
             await ctx.error('this should arrive')

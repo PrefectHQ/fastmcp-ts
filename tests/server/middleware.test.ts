@@ -85,7 +85,7 @@ describe('Server — Middleware', () => {
       try {
         const result = await client.callTool({ name: 'echo', arguments: {} })
         expect(handlerSpy).not.toHaveBeenCalled()
-        expect(result.content[0]).toMatchObject({ type: 'text', text: 'short-circuited' })
+        expect((result as { content: { type: string; text: string }[] }).content[0]).toMatchObject({ type: 'text', text: 'short-circuited' })
       } finally {
         await close()
       }
@@ -202,8 +202,8 @@ describe('Server — Middleware', () => {
       const mcp = new FastMCP({
         name: 'test',
         auth: staticTokenVerifier({
-          [adminToken]: { token: adminToken, clientId: 'admin', scopes: ['admin', 'read'], claims: {} },
-          [userToken]: { token: userToken, clientId: 'user', scopes: ['read'], claims: {} },
+          [adminToken]: { clientId: 'admin', scopes: ['admin', 'read'], claims: {} },
+          [userToken]: { clientId: 'user', scopes: ['read'], claims: {} },
         }),
       })
 
@@ -367,7 +367,10 @@ describe('Server — Middleware', () => {
       const toolHook = vi.fn((_ctx: MiddlewareContext, next: Next) => next())
       const requestHook = vi.fn((_ctx: MiddlewareContext, next: Next) => next())
 
-      mcp.use({ onCallTool: toolHook, onRequest: requestHook })
+      mcp.use({
+        onCallTool: toolHook,
+        onRequest: requestHook,
+      })
 
       const { client, close } = await createTestClient(mcp)
       try {
@@ -563,7 +566,7 @@ describe('Server — Middleware', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const result = await client.callTool({ name: 'read', arguments: {} })
-        expect(result.content[0]).toMatchObject({ type: 'text', text: 'from-middleware' })
+        expect((result as { content: { type: string; text: string }[] }).content[0]).toMatchObject({ type: 'text', text: 'from-middleware' })
       } finally {
         await close()
       }

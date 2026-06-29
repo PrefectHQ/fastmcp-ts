@@ -4,7 +4,8 @@ import type {
   Tool,
   Resource,
   ResourceTemplate,
-  ResourceContents,
+  TextResourceContents,
+  BlobResourceContents,
   Prompt,
   GetPromptResult,
 } from './results.js'
@@ -35,7 +36,7 @@ export interface IToolsClient {
 export interface IResourcesClient {
   listResources(options?: RequestOptions): Promise<Resource[]>
   listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]>
-  readResource(uri: string, options?: RequestOptions): Promise<ResourceContents[]>
+  readResource(uri: string, options?: RequestOptions): Promise<Array<TextResourceContents | BlobResourceContents>>
   subscribeResource(uri: string, handler: ResourceUpdateHandler, options?: RequestOptions): Promise<void>
   unsubscribeResource(uri: string, options?: RequestOptions): Promise<void>
 }

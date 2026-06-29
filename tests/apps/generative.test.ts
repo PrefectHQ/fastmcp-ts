@@ -33,7 +33,7 @@ describe('Apps — Generative UI', () => {
         const result = await client.callTool({ name: 'search_components', arguments: {} })
         expect(result.isError).toBeFalsy()
         // The catalog is delivered as JSON text (structuredContent must be a plain object per MCP spec)
-        const catalog = JSON.parse((result.content[0] as { text: string }).text) as Array<{ type: string; description: string }>
+        const catalog = JSON.parse(((result.content as { text: string }[])[0]).text) as Array<{ type: string; description: string }>
         expect(Array.isArray(catalog)).toBe(true)
         expect(catalog.some((c) => c.type === 'column')).toBe(true)
         expect(catalog.some((c) => c.type === 'text')).toBe(true)

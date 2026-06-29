@@ -1,7 +1,33 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { LocalStorageStore, IndexedDBStore } from 'fastmcp-ts/client'
+
+// Node 22.4+ expose a native experimental `localStorage` global that is unusable
+// unless `--localstorage-file` is provided. Under vitest's jsdom environment it
+// shadows jsdom's implementation (and vitest aliases `window` to `globalThis`,
+// so `window.localStorage` is the same broken native one). Pin a minimal
+// in-memory Storage onto the global so the bare `localStorage` reference (used
+// by both LocalStorageStore and these tests) works regardless of Node version
+// or flags. This still exercises the store's real logic (prefixing, round-trip).
+beforeAll(() => {
+  const data = new Map<string, string>()
+  const storage: Storage = {
+    getItem: (key) => (data.has(key) ? data.get(key)! : null),
+    setItem: (key, value) => void data.set(key, String(value)),
+    removeItem: (key) => void data.delete(key),
+    clear: () => data.clear(),
+    key: (index) => [...data.keys()][index] ?? null,
+    get length() {
+      return data.size
+    },
+  }
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    writable: true,
+    value: storage,
+  })
+})
 
 describe('LocalStorageStore', () => {
   beforeEach(() => localStorage.clear())

@@ -28,6 +28,17 @@ const FASTMCP_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/fastmcp-http-
 const AUTH_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/auth-http-server.ts')
 const ENV_SERVER = resolve(import.meta.dirname, 'fixtures/env-server.mjs')
 
+// Claude Desktop's config directory is OS-specific (mirrors the branching in
+// src/cli/utils/config-paths.ts). Resolve it relative to HOME on the current
+// platform rather than hardcoding the macOS location, so these tests pass on
+// Linux and Windows CI as well as macOS.
+const CLAUDE_DESKTOP_DIR =
+  process.platform === 'darwin'
+    ? ['Library', 'Application Support', 'Claude']
+    : process.platform === 'win32'
+      ? ['AppData', 'Roaming', 'Claude']
+      : ['.config', 'Claude']
+
 /** Spawn an HTTP fixture and resolve with the actual bound port once it prints "listening on". */
 function waitForPort(subprocess: ResultPromise): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -452,7 +463,7 @@ describe.sequential('CLI — discover', () => {
 
   it('finds MCP servers in a Claude Desktop config file', async () => {
     await withTempDir(async (dir) => {
-      const configDir = join(dir, 'Library', 'Application Support', 'Claude')
+      const configDir = join(dir, ...CLAUDE_DESKTOP_DIR)
       await mkdir(configDir, { recursive: true })
       await writeFile(
         join(configDir, 'claude_desktop_config.json'),
@@ -679,7 +690,7 @@ describe.sequential('CLI — install claude-code', () => {
 describe.sequential('CLI — install claude-desktop', () => {
   it('writes the server entry to the Claude Desktop config file', async () => {
     await withTempDir(async (dir) => {
-      await mkdir(join(dir, 'Library', 'Application Support', 'Claude'), { recursive: true })
+      await mkdir(join(dir, ...CLAUDE_DESKTOP_DIR), { recursive: true })
       const { exitCode } = await runCli(
         ['install', 'claude-desktop', 'my-server', 'node server.js'],
         { env: { ...process.env, HOME: dir } },
@@ -687,7 +698,7 @@ describe.sequential('CLI — install claude-desktop', () => {
       expect(exitCode).toBe(0)
       const config = JSON.parse(
         await readFile(
-          join(dir, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json'),
+          join(dir, ...CLAUDE_DESKTOP_DIR, 'claude_desktop_config.json'),
           'utf8',
         ),
       )
@@ -697,7 +708,7 @@ describe.sequential('CLI — install claude-desktop', () => {
 
   it('--force overwrites a pre-existing entry', async () => {
     await withTempDir(async (dir) => {
-      const configDir = join(dir, 'Library', 'Application Support', 'Claude')
+      const configDir = join(dir, ...CLAUDE_DESKTOP_DIR)
       await mkdir(configDir, { recursive: true })
       await writeFile(
         join(configDir, 'claude_desktop_config.json'),

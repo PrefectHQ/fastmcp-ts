@@ -8,12 +8,13 @@ import {
   ResourceListChangedNotificationSchema,
   PromptListChangedNotificationSchema,
 } from '@modelcontextprotocol/sdk/types'
+import { z } from 'zod'
 
 /** Connect a FastMCP backend to a proxy Client via an in-memory transport pair. */
 async function connectBackendToClient(backend: FastMCP): Promise<Client> {
   const proxyClient = new Client(
     { name: 'fastmcp-proxy', version: '0.0.1' },
-    { capabilities: { tools: {}, resources: {}, prompts: {} } },
+    { capabilities: {} },
   )
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   await backend.connect(serverTransport)
@@ -239,7 +240,10 @@ describe('Proxy — buildProxyFromClient', () => {
 
   it('forwards tool calls to the backend', async () => {
     const backend = trackFastMCP(new FastMCP({ name: 'backend' }))
-    backend.tool({ name: 'add', description: 'add two numbers' }, ({ a, b }: { a: number; b: number }) => a + b)
+    backend.tool(
+      { name: 'add', description: 'add two numbers', input: z.object({ a: z.number(), b: z.number() }) },
+      ({ a, b }) => a + b,
+    )
 
     const proxyClient = trackClient(await connectBackendToClient(backend))
     const proxy = trackFastMCP(await buildProxyFromClient(proxyClient, { cacheTtl: 0 }))

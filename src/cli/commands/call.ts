@@ -80,7 +80,7 @@ export default defineCommand({
     }
 
     const mode = args.file
-      ? { kind: 'inprocess' as const, spec: fileSpec }
+      ? { kind: 'inprocess' as const, spec: fileSpec! }
       : args.command
         ? { kind: 'stdio' as const, command: args.command }
         : { kind: 'url' as const, url: args.url! }

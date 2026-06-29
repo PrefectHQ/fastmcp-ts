@@ -21,8 +21,9 @@ describe('Apps — FastMCPApp', () => {
         const tool = tools.tools.find((t) => t.name === 'show_dashboard')
         expect(tool).toBeDefined()
         // Entry-point tools are automatically linked to a ui:// resource
-        expect(tool!._meta?.ui?.resourceUri).toBeDefined()
-        expect(tool!._meta?.ui?.resourceUri).toMatch(/^ui:\/\//)
+        const meta = tool!._meta as { ui?: { resourceUri?: string } } | undefined
+        expect(meta?.ui?.resourceUri).toBeDefined()
+        expect(meta?.ui?.resourceUri).toMatch(/^ui:\/\//)
       } finally {
         await close()
       }
@@ -176,7 +177,7 @@ describe('Apps — FastMCPApp', () => {
         expect(result.isError).toBeFalsy()
         // Graceful degradation: structuredContent is suppressed, plain text returned
         expect(result.structuredContent).toBeUndefined()
-        expect(result.content[0].type).toBe('text')
+        expect((result.content as { type: string }[])[0].type).toBe('text')
       } finally {
         await close()
       }

@@ -71,7 +71,7 @@ describe('Client — Tools', () => {
     it('returns text content from the tool result', async () => {
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'greet', input: z.object({ name: z.string() }) }, ({ name }) => `hello ${name}`)
+          mcp.tool({ name: 'greet', description: 'a tool', input: z.object({ name: z.string() }) }, ({ name }) => `hello ${name}`)
         },
         async (client) => {
           const result = await client.callTool('greet', { name: 'ada' })
@@ -85,7 +85,7 @@ describe('Client — Tools', () => {
       await withServer(
         (mcp) => {
           mcp.tool(
-            { name: 'data', input: z.object({}) },
+            { name: 'data', description: 'a tool', input: z.object({}) },
             () => ({ value: 42, label: 'answer' }),
           )
         },
@@ -101,7 +101,7 @@ describe('Client — Tools', () => {
       await withServer(
         (mcp) => {
           mcp.tool(
-            { name: 'spy', input: z.object({ x: z.number(), y: z.string() }) },
+            { name: 'spy', description: 'a tool', input: z.object({ x: z.number(), y: z.string() }) },
             (args) => { received.push(args); return 'ok' },
           )
         },
@@ -115,7 +115,7 @@ describe('Client — Tools', () => {
     it('throws ToolCallError when the server returns isError: true', async () => {
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'fail', input: z.object({}) }, () => {
+          mcp.tool({ name: 'fail', description: 'a tool', input: z.object({}) }, () => {
             throw new Error('something went wrong')
           })
         },
@@ -130,7 +130,7 @@ describe('Client — Tools', () => {
     it('returns the full result including isError without throwing', async () => {
       await withServer(
         (mcp) => {
-          mcp.tool({ name: 'fail', input: z.object({}) }, () => {
+          mcp.tool({ name: 'fail', description: 'a tool', input: z.object({}) }, () => {
             throw new Error('oops')
           })
         },
@@ -150,10 +150,10 @@ describe('Client — onToolsListChanged', () => {
 
     await withServerExposed(
       (mcp) => {
-        mcp.tool({ name: 'initial', input: z.object({}) }, () => 'ok')
+        mcp.tool({ name: 'initial', description: 'a tool', input: z.object({}) }, () => 'ok')
       },
       async (client, mcp) => {
-        mcp.tool({ name: 'dynamic', input: z.object({}) }, () => 'added')
+        mcp.tool({ name: 'dynamic', description: 'a tool', input: z.object({}) }, () => 'added')
         await vi.waitFor(() => {
           expect(received.length).toBeGreaterThan(0)
         }, { timeout: 2000 })
@@ -179,7 +179,7 @@ describe('Client — onToolsListChanged', () => {
     await withServerExposed(
       () => {},
       async (client, mcp) => {
-        mcp.tool({ name: 'new-tool', input: z.object({}) }, () => 'ok')
+        mcp.tool({ name: 'new-tool', description: 'a tool', input: z.object({}) }, () => 'ok')
         await vi.waitFor(() => {
           expect(received.length).toBeGreaterThan(0)
         }, { timeout: 2000 })

@@ -4,6 +4,7 @@ import { createProxy } from '../../src/server/proxy'
 import { Client } from '@modelcontextprotocol/sdk/client/index'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
+import { z } from 'zod'
 
 async function makeClient(server: FastMCP): Promise<Client> {
   const client = new Client({ name: 'test-client', version: '1.0.0' })
@@ -209,7 +210,10 @@ describe('Server — Composition', () => {
 
     it('a prefixed tool call is correctly routed to the child server handler', async () => {
       const child = track(new FastMCP({ name: 'child' }))
-      child.tool({ name: 'greet', description: 'greet' }, ({ name }: { name: string }) => `hello ${name}`)
+      child.tool(
+        { name: 'greet', description: 'greet', input: z.object({ name: z.string() }) },
+        ({ name }) => `hello ${name}`,
+      )
 
       const parent = track(new FastMCP({ name: 'parent' }))
       parent.mount(child, 'v1')
@@ -449,7 +453,10 @@ describe('Server — Composition', () => {
 
     it('tools on the proxied server are callable via the parent', async () => {
       const remote = track(new FastMCP({ name: 'remote' }))
-      remote.tool({ name: 'echo', description: 'echo' }, ({ message }: { message: string }) => message)
+      remote.tool(
+        { name: 'echo', description: 'echo', input: z.object({ message: z.string() }) },
+        ({ message }) => message,
+      )
       await remote.run({ transport: 'http', port: 0 })
 
       const port = remote.address!.port
@@ -499,7 +506,7 @@ describe('Server — Composition', () => {
       const remote = track(new FastMCP({ name: 'remote' }))
       remote.resource(
         { uri: 'memo://notes/{id}', name: 'note' },
-        ({ id }: { id: string }) => `note ${id}`,
+        (params) => `note ${(params as { id: string }).id}`,
       )
       await remote.run({ transport: 'http', port: 0 })
 

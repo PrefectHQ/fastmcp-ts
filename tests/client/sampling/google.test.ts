@@ -218,7 +218,7 @@ describe('GoogleSamplingAdapter', () => {
 
     it('maps MAX_TOKENS finish reason → maxTokens stop reason', async () => {
       const mock = makeMockClient([makeChunk({
-        candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model', parts: [{ text: 'partial' }] }, index: 0 }],
+        candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model', parts: [{ text: 'partial' }] }, index: 0 }] as GenerateContentResponse['candidates'],
       })])
       const adapter = new GoogleSamplingAdapter(mock as unknown as GoogleGenAI)
       const result = await adapter.asHandler()(makeParams())

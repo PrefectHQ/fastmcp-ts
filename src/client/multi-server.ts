@@ -20,7 +20,8 @@ import type {
   GetPromptResult,
   Prompt,
   Resource,
-  ResourceContents,
+  TextResourceContents,
+  BlobResourceContents,
   ResourceTemplate,
   Tool,
 } from './results.js'
@@ -270,7 +271,10 @@ export class MultiServerClient implements IClient {
     return results.flat()
   }
 
-  async readResource(uri: string, options?: RequestOptions): Promise<ResourceContents[]> {
+  async readResource(
+    uri: string,
+    options?: RequestOptions,
+  ): Promise<Array<TextResourceContents | BlobResourceContents>> {
     this._assertConnected()
     const sdkOptions = this._toSdkOptions(
       options,
@@ -283,7 +287,7 @@ export class MultiServerClient implements IClient {
     if (knownServer) {
       const sdk = this._clients.get(knownServer)!
       const result = await sdk.readResource({ uri }, sdkOptions)
-      return result.contents as ResourceContents[]
+      return result.contents
     }
 
     // Fallback: try each server in order, return the first success.
@@ -291,7 +295,7 @@ export class MultiServerClient implements IClient {
     for (const sdk of this._clients.values()) {
       try {
         const result = await sdk.readResource({ uri }, sdkOptions)
-        return result.contents as ResourceContents[]
+        return result.contents
       } catch (err) {
         errors.push(err)
       }

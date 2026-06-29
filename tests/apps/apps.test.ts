@@ -135,9 +135,10 @@ describe('Apps', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const result = await client.callTool({ name: 'show_dashboard', arguments: {} })
+        const content = result.content as { type: string }[]
         expect(result.isError).toBeFalsy()
-        expect(result.content.length).toBeGreaterThan(0)
-        expect(result.content[0].type).toBe('text')
+        expect(content.length).toBeGreaterThan(0)
+        expect(content[0].type).toBe('text')
       } finally {
         await close()
       }
@@ -172,7 +173,8 @@ describe('Apps', () => {
       try {
         const tools = await client.listTools()
         const tool = tools.tools.find((t) => t.name === 'open_app')!
-        expect(tool._meta?.ui?.resourceUri).toBe('ui://my-app/view')
+        const meta = tool._meta as { ui?: { resourceUri?: string } } | undefined
+        expect(meta?.ui?.resourceUri).toBe('ui://my-app/view')
       } finally {
         await close()
       }
@@ -188,7 +190,8 @@ describe('Apps', () => {
       try {
         const tools = await client.listTools()
         const tool = tools.tools.find((t) => t.name === 'show_dashboard')!
-        expect(tool._meta?.ui?.resourceUri).toBe('ui://show_dashboard')
+        const meta = tool._meta as { ui?: { resourceUri?: string } } | undefined
+        expect(meta?.ui?.resourceUri).toBe('ui://show_dashboard')
       } finally {
         await close()
       }
