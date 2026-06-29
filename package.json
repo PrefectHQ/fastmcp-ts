@@ -39,7 +39,7 @@
   },
   "sideEffects": false,
   "bin": {
-    "fastmcp": "./dist/cli/index.cjs"
+    "fastmcp": "dist/cli/index.cjs"
   },
   "files": [
     "dist",
