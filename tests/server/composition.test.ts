@@ -306,7 +306,7 @@ describe('Server — Composition', () => {
             onCallTool: async (_ctx, _next) => ({
               content: [{ type: 'text' as const, text: 'blocked' }],
               isError: true,
-            } as never),
+            }),
           }],
         }),
       )

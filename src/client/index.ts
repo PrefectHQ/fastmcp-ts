@@ -5,6 +5,8 @@ export type {
   Resource,
   ResourceTemplate,
   ResourceContents,
+  TextResourceContents,
+  BlobResourceContents,
   Prompt,
   PromptArgument,
   PromptMessage,

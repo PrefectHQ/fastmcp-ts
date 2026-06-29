@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod/v4'
 import { FastMCP } from 'fastmcp-ts/server'
 import { Client, MultiServerClient } from 'fastmcp-ts/client'
+import type { TextResourceContents } from '@modelcontextprotocol/sdk/types'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -247,8 +248,8 @@ describe('Client — Multi-server', () => {
       await client.listResources()
       const contentsA = await client.readResource('a://data')
       const contentsB = await client.readResource('b://data')
-      expect((contentsA[0] as unknown as { text: string }).text).toBe('data-a')
-      expect((contentsB[0] as unknown as { text: string }).text).toBe('data-b')
+      expect((contentsA[0] as TextResourceContents).text).toBe('data-a')
+      expect((contentsB[0] as TextResourceContents).text).toBe('data-b')
     })
 
     it('readResource() falls back to try-all when URI map is not yet populated', async () => {
@@ -257,7 +258,7 @@ describe('Client — Multi-server', () => {
       await using client = await MultiServerClient.connect({ mcpServers: { a, b } })
       // No listResources() call — map is empty
       const contents = await client.readResource('b://data')
-      expect((contents[0] as unknown as { text: string }).text).toBe('data-b')
+      expect((contents[0] as TextResourceContents).text).toBe('data-b')
     })
 
     it('readResource() throws when URI is not found on any server', async () => {

@@ -14,21 +14,28 @@ export interface MiddlewareContext<T = unknown> {
 
 export type Next<R = unknown> = () => Promise<R>
 
+/**
+ * A middleware hook. Either call `next()` and return (optionally transforming) its
+ * result, or short-circuit by returning your own result without calling `next()`.
+ * The return is typed `Promise<unknown>` because a hook can substitute any result
+ * shape for the method it intercepts; the framework resolves the concrete type at
+ * the call boundary.
+ */
 export interface Middleware {
   /** Called once per Server instance. Use to register notification handlers or other server-level setup. */
   setup?(server: Server): void
 
   // Coarse hook — fires for every request that has no more-specific hook on this instance
-  onRequest?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
+  onRequest?(ctx: MiddlewareContext, next: Next): Promise<unknown>
 
   // Per-method hooks — take precedence over onRequest for their specific method
-  onCallTool?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
-  onListTools?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
-  onReadResource?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
-  onListResources?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
-  onListResourceTemplates?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
-  onGetPrompt?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
-  onListPrompts?<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R>
+  onCallTool?(ctx: MiddlewareContext, next: Next): Promise<unknown>
+  onListTools?(ctx: MiddlewareContext, next: Next): Promise<unknown>
+  onReadResource?(ctx: MiddlewareContext, next: Next): Promise<unknown>
+  onListResources?(ctx: MiddlewareContext, next: Next): Promise<unknown>
+  onListResourceTemplates?(ctx: MiddlewareContext, next: Next): Promise<unknown>
+  onGetPrompt?(ctx: MiddlewareContext, next: Next): Promise<unknown>
+  onListPrompts?(ctx: MiddlewareContext, next: Next): Promise<unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +95,7 @@ export function runMiddlewareChain<R>(
 export class LoggingMiddleware implements Middleware {
   constructor(private readonly emit: (msg: string) => void = console.log) {}
 
-  async onRequest<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
+  async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     const t0 = Date.now()
     this.emit(`[fastmcp] → ${ctx.method}`)
     try {
@@ -133,12 +140,12 @@ export class CachingMiddleware implements Middleware {
     private readonly _keyFn?: CacheKeyFn,
   ) {}
 
-  async onRequest<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
+  async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     const key = this._keyFn
       ? this._keyFn(ctx as MiddlewareContext)
       : `${ctx.method}:${JSON.stringify(ctx.request)}`
     const entry = this._cache.get(key)
-    if (entry && entry.expiresAt > Date.now()) return entry.value as R
+    if (entry && entry.expiresAt > Date.now()) return entry.value
     const result = await next()
     this._cache.set(key, { value: result, expiresAt: Date.now() + this.ttl })
     return result
@@ -158,7 +165,7 @@ export class RateLimitingMiddleware implements Middleware {
     this._lastRefill = Date.now()
   }
 
-  async onRequest<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
+  async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     const now = Date.now()
     if (now - this._lastRefill >= this.windowMs) {
       this._tokens = this.limit
@@ -176,7 +183,7 @@ export class RateLimitingMiddleware implements Middleware {
 export class SizeLimitingMiddleware implements Middleware {
   constructor(private readonly maxBytes: number) {}
 
-  async onRequest<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
+  async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     const result = await next()
     const size = Buffer.byteLength(JSON.stringify(result), 'utf8')
     if (size > this.maxBytes) {
@@ -201,7 +208,7 @@ export class SizeLimitingMiddleware implements Middleware {
  * converted to isError:true tool responses.
  */
 export class ErrorNormalizationMiddleware implements Middleware {
-  async onCallTool<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
+  async onCallTool(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     try {
       return await next()
     } catch (err) {
@@ -209,11 +216,11 @@ export class ErrorNormalizationMiddleware implements Middleware {
       return {
         content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
         isError: true,
-      } as unknown as R
+      }
     }
   }
 
-  async onRequest<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
+  async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     try {
       return await next()
     } catch (err) {
@@ -240,7 +247,7 @@ export class CancellationMiddleware implements Middleware {
     })
   }
 
-  async onRequest<T, R>(ctx: MiddlewareContext<T>, next: Next<R>): Promise<R> {
+  async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     const { requestId } = ctx.mcpContext
     if (!requestId) return next()
 

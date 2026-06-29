@@ -8,14 +8,13 @@ import {
   ResourceListChangedNotificationSchema,
   PromptListChangedNotificationSchema,
 } from '@modelcontextprotocol/sdk/types'
-import type { ClientCapabilities } from '@modelcontextprotocol/sdk/types'
 import { z } from 'zod'
 
 /** Connect a FastMCP backend to a proxy Client via an in-memory transport pair. */
 async function connectBackendToClient(backend: FastMCP): Promise<Client> {
   const proxyClient = new Client(
     { name: 'fastmcp-proxy', version: '0.0.1' },
-    { capabilities: { tools: {}, resources: {}, prompts: {} } as ClientCapabilities },
+    { capabilities: {} },
   )
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   await backend.connect(serverTransport)

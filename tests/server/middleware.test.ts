@@ -76,7 +76,7 @@ describe('Server — Middleware', () => {
           // Short-circuit: never call next()
           return {
             content: [{ type: 'text' as const, text: 'short-circuited' }],
-          } as never
+          }
         },
       }
       mcp.use(mw)
@@ -368,8 +368,8 @@ describe('Server — Middleware', () => {
       const requestHook = vi.fn((_ctx: MiddlewareContext, next: Next) => next())
 
       mcp.use({
-        onCallTool: toolHook as Middleware['onCallTool'],
-        onRequest: requestHook as Middleware['onRequest'],
+        onCallTool: toolHook,
+        onRequest: requestHook,
       })
 
       const { client, close } = await createTestClient(mcp)

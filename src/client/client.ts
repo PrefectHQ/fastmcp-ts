@@ -24,7 +24,8 @@ import type {
   LoggingLevel,
   Prompt,
   Resource,
-  ResourceContents,
+  TextResourceContents,
+  BlobResourceContents,
   ResourceTemplate,
   Root,
   Tool,
@@ -354,12 +355,15 @@ export class Client implements IClient {
     return result.resourceTemplates as ResourceTemplate[]
   }
 
-  async readResource(uri: string, options?: RequestOptions): Promise<ResourceContents[]> {
+  async readResource(
+    uri: string,
+    options?: RequestOptions,
+  ): Promise<Array<TextResourceContents | BlobResourceContents>> {
     const result = await this._sdk().readResource(
       { uri },
       this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
     )
-    return result.contents as ResourceContents[]
+    return result.contents
   }
 
   /** Returns the raw SDK ReadResourceResult without unwrapping. */
