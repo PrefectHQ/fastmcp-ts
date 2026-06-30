@@ -2,16 +2,7 @@
 
 `@prefecthq/fastmcp-ts` is released with [Changesets](https://github.com/changesets/changesets)
 and GitHub Actions. Publishing to npm uses **Trusted Publishing (OIDC)** with
-provenance — there is no npm token stored anywhere.
-
-## One-time setup (maintainers / org admins)
-
-- [ ] On npmjs.com → the `@prefecthq/fastmcp-ts` package → **Settings → Trusted
-      Publisher** → add a GitHub Actions publisher for repo
-      `PrefectHQ/fastmcp-ts`, workflow `release.yml`. **The pipeline cannot
-      publish until this is done.**
-- [ ] GitHub repo → **Settings → Actions → General** → enable "Allow GitHub
-      Actions to create and approve pull requests".
+provenance.
 
 ## How a release happens
 
@@ -25,9 +16,7 @@ provenance — there is no npm token stored anywhere.
      `latest`, with provenance), pushes the matching `v<version>` git tag, and
      creates a **GitHub Release** with the changelog notes.
 
-**To cut a release: merge the open "Version Packages" PR.** That's the only
-step. The version, git tag, npm publish, and GitHub Release all come from that
-one merge, so they can never drift.
+**To cut a release: merge the open "Version Packages" PR.**
 
 ## Choosing the version
 
