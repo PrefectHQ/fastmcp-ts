@@ -60,15 +60,14 @@
     "docs:dev": "cd docs && npx --yes mint@latest dev",
     "docs:api": "typedoc && node scripts/generate-api-nav.mjs",
     "docs:links": "cd docs && npx --yes mint@latest broken-links",
-    "release": "np --tag alpha"
-  },
-  "np": {
-    "branch": "main",
-    "testScript": "test",
-    "release": true
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
+    "@changesets/changelog-github": "^0.7.0",
+    "@changesets/cli": "^2.31.0",
     "@google/genai": "^1.50.1",
     "@playwright/test": "^1.61.1",
     "@types/node": "^22.0.0",
@@ -80,7 +79,6 @@
     "fake-indexeddb": "^6.2.5",
     "get-bin-path": "^11.0.1",
     "jsdom": "^29.1.1",
-    "np": "^11.2.1",
     "openai": "^6.34.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
