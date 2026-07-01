@@ -1281,7 +1281,7 @@ export class FastMCP {
     const path = options?.path ?? process.env.MCP_PATH ?? '/mcp'
 
     if (transport === 'stdio') {
-      const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio')
+      const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js')
       await this.connect(new StdioServerTransport(options?.stdin, options?.stdout))
     } else if (this._oauth) {
       await this._runHttpOAuth(port, host, path)
@@ -1292,12 +1292,12 @@ export class FastMCP {
 
   private async _runHttpOAuth(port: number, host: string, path: string): Promise<void> {
     const { StreamableHTTPServerTransport } = await import(
-      '@modelcontextprotocol/sdk/server/streamableHttp'
+      '@modelcontextprotocol/sdk/server/streamableHttp.js'
     )
     const express = (await import('express')).default
-    const { mcpAuthRouter } = await import('@modelcontextprotocol/sdk/server/auth/router')
+    const { mcpAuthRouter } = await import('@modelcontextprotocol/sdk/server/auth/router.js')
     const { requireBearerAuth } = await import(
-      '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth'
+      '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js'
     )
 
     const oauth = this._oauth!
@@ -1366,7 +1366,7 @@ export class FastMCP {
 
   private async _runHttpSimple(port: number, host: string, path: string): Promise<void> {
     const { StreamableHTTPServerTransport } = await import(
-      '@modelcontextprotocol/sdk/server/streamableHttp'
+      '@modelcontextprotocol/sdk/server/streamableHttp.js'
     )
     const { createServer } = await import('node:http')
 

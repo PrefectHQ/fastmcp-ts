@@ -10,6 +10,7 @@
 
 import { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport } from '../dist/client.js'
 import { FastMCP } from '../dist/server.js'
+import { Readable, Writable } from 'node:stream'
 
 const required = { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport, FastMCP }
 const missing = Object.entries(required).filter(([, v]) => v === undefined).map(([k]) => k)
@@ -19,4 +20,12 @@ if (missing.length) {
   process.exit(1)
 }
 
-console.log('✓ dist exports resolve')
+const stdioServer = new FastMCP({ name: 'dist-stdio-smoke', version: '1.0.0' })
+await stdioServer.run({ transport: 'stdio', stdin: Readable.from([]), stdout: new Writable({ write(_chunk, _encoding, callback) { callback() } }) })
+await stdioServer.close()
+
+const httpServer = new FastMCP({ name: 'dist-http-smoke', version: '1.0.0' })
+await httpServer.run({ transport: 'http', host: '127.0.0.1', port: 0 })
+await httpServer.close()
+
+console.log('✓ dist exports and run transports resolve')
