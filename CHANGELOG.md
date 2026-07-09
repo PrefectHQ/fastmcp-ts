@@ -1,5 +1,12 @@
 # @prefecthq/fastmcp-ts
 
+## 0.0.6
+
+### Patch Changes
+
+- ea8a7d0: Fix MCP SDK subpath imports used by createProxy transports.
+- d7977df: Fix MCP SDK subpath imports used by FastMCP run transports.
+
 ## 0.0.5
 
 ### Patch Changes
