@@ -295,7 +295,7 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
   let transport: import('@modelcontextprotocol/sdk/shared/transport').Transport
 
   if (config.type === 'stdio') {
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio')
+    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
     transport = new StdioClientTransport({
       command: config.command,
       args: config.args,
@@ -304,7 +304,7 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
     })
   } else {
     const { StreamableHTTPClientTransport } = await import(
-      '@modelcontextprotocol/sdk/client/streamableHttp'
+      '@modelcontextprotocol/sdk/client/streamableHttp.js'
     )
     transport = new StreamableHTTPClientTransport(new URL(config.url), {
       requestInit: config.requestInit,
