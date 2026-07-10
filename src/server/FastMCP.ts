@@ -224,6 +224,7 @@ export class FastMCP {
   private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
+  private _isRunning = false
   private _sessions = new Map<string, Session>()
   // Primary server used by connect() and stdio
   private _primaryServer: Server
@@ -1263,13 +1264,24 @@ export class FastMCP {
     return this._address
   }
 
+  /**
+   * Whether `run()` or `connect()` has been called on this instance. Used by the
+   * CLI's entrypoint loader to detect servers that already started themselves via
+   * top-level code, so it doesn't attempt to start them a second time.
+   */
+  get isRunning(): boolean {
+    return this._isRunning
+  }
+
   async connect(transport: Transport): Promise<void> {
+    this._isRunning = true
     // Rebuild so UI extension capability reflects all registered components.
     this._primaryServer = this._makeServer()
     await this._primaryServer.connect(transport)
   }
 
   async run(options?: RunOptions): Promise<void> {
+    this._isRunning = true
     const rawTransport = process.env.MCP_TRANSPORT ?? options?.transport ?? 'stdio'
     if (rawTransport !== 'stdio' && rawTransport !== 'http') {
       throw new Error(`Unknown transport: "${rawTransport}". Supported: stdio, http.`)

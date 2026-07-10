@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty'
 import { spawn } from 'node:child_process'
 import { parseFileSpec } from '../../utils/file-spec.js'
+import { resolveEntrypointBootstrapPath, buildEntrypointEnv } from '../../utils/entrypoint-bootstrap.js'
 import { cliError, formatError } from '../../utils/error.js'
 import { log } from '../../ui/output.js'
 import { theme } from '../../ui/theme.js'
@@ -21,10 +22,14 @@ export default defineCommand({
       cliError(formatError(err))
     }
 
-    // Build the server command for the inspector: tsx for TypeScript, node for JS
+    // Build the server command for the inspector: it spawns the entrypoint
+    // bootstrap (tsx for TypeScript, node for JS) rather than the user's file
+    // directly, so file:export entrypoint specs resolve the same way `run`
+    // and `inspect` do.
+    const bootstrapPath = resolveEntrypointBootstrapPath()
     const serverCmd = fileSpec.isTypeScript
-      ? `npx tsx ${fileSpec.filePath}`
-      : `node ${fileSpec.filePath}`
+      ? `npx tsx ${bootstrapPath}`
+      : `node ${bootstrapPath}`
 
     await withSpinner('Starting inspector…', () =>
       new Promise<void>((resolve) => setTimeout(resolve, 300)),
@@ -33,7 +38,11 @@ export default defineCommand({
     const inspectorProcess = spawn(
       'npx',
       ['@modelcontextprotocol/inspector', '--server', serverCmd],
-      { stdio: 'inherit', shell: true, env: { ...process.env, MCP_TRANSPORT: 'stdio' } },
+      {
+        stdio: 'inherit',
+        shell: true,
+        env: { ...process.env, MCP_TRANSPORT: 'stdio', ...buildEntrypointEnv(fileSpec) },
+      },
     )
 
     log.info(`Inspector running — ${theme.url(`http://localhost:${args.port}`)}`)
