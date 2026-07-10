@@ -1,21 +1,22 @@
 import { defineCommand } from 'citty'
 import { spawn } from 'node:child_process'
-import { parseFileSpec } from '../utils/file-spec.js'
+import { parseFileSpec, type FileSpec } from '../utils/file-spec.js'
+import { resolveEntrypointBootstrapPath, buildEntrypointEnv } from '../utils/entrypoint-bootstrap.js'
 import { cliError, formatError } from '../utils/error.js'
 import { log } from '../ui/output.js'
 import { theme } from '../ui/theme.js'
 import { symbols } from '../ui/symbols.js'
 
 function spawnServer(
-  filePath: string,
-  isTypeScript: boolean,
+  spec: FileSpec,
   env: NodeJS.ProcessEnv,
 ): ReturnType<typeof spawn> {
-  const [cmd, args] = isTypeScript
-    ? ['npx', ['tsx', filePath]]
-    : ['node', [filePath]]
+  const bootstrapPath = resolveEntrypointBootstrapPath()
+  const [cmd, args] = spec.isTypeScript
+    ? ['npx', ['tsx', bootstrapPath]]
+    : ['node', [bootstrapPath]]
   return spawn(cmd, args, {
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...buildEntrypointEnv(spec), ...env },
     stdio: ['inherit', 'pipe', 'pipe'],
   })
 }
@@ -41,7 +42,7 @@ export default defineCommand({
     }
     if (args.port) transportEnv['MCP_PORT'] = args.port
 
-    let child = spawnServer(fileSpec.filePath, fileSpec.isTypeScript, transportEnv)
+    let child = spawnServer(fileSpec, transportEnv)
     let started = false
 
     function attachHandlers(proc: ReturnType<typeof spawn>): void {
@@ -80,7 +81,7 @@ export default defineCommand({
         process.stderr.write(`${theme.muted(symbols.reload)} Reloading…\n`)
         child.kill()
         started = false
-        child = spawnServer(fileSpec.filePath, fileSpec.isTypeScript, transportEnv)
+        child = spawnServer(fileSpec, transportEnv)
         attachHandlers(child)
       })
     }

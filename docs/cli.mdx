@@ -24,6 +24,42 @@ fastmcp run server.ts --reload          # restart on file change
 
 Reach for `--reload` during development: it watches the file and respawns the server on every change, so edits take effect without a manual restart.
 
+## Entrypoint exports
+
+Every example so far runs a file that starts itself — `server.ts` ends in a top-level `await server.run()`, the way the [running your server](/servers/running) guide teaches it. Point the CLI at a file that only *exports* a server instead, and it starts the server for you: `fastmcp run server.ts:app` imports `server.ts`, resolves the export named `app`, and calls `.run()` on it. This is the shape a platform wants when it deploys your server — it can bind the transport and port through `MCP_TRANSPORT` and `MCP_PORT` without your file needing to know it's being deployed at all.
+
+Drop the `:app` and the CLI looks for a `default`, `mcp`, `server`, or `app` export, in that order, so a plain `export const server = new FastMCP(...)` is found with no export name given at all. This is the same convention Python FastMCP uses, which keeps a project's entrypoint recognizable regardless of which language wrote it.
+
+```bash
+fastmcp run server.ts:app
+fastmcp run server.ts          # auto-detects default/mcp/server/app
+```
+
+A named export can also be a factory — a function, sync or async, that takes no arguments and returns a `FastMCP` server when called. Reach for this when building the server needs work that only makes sense at start time, like reading a config file or opening a database connection before registering tools. Factories are only resolved when you name the export explicitly, since calling an arbitrary exported function as a side effect of guessing a name would be surprising — auto-detection only ever matches an export that's already a `FastMCP` instance.
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+export async function createServer() {
+  const config = await loadConfig()
+  const server = new FastMCP({ name: config.name })
+  // register tools, resources, prompts…
+  return server
+}
+```
+
+```bash
+fastmcp run server.ts:createServer
+```
+
+`run`, `inspect --file`, `list --file`, `call --file`, and `dev inspector` all resolve entrypoints the same way, so `file:export` works identically everywhere. `inspect`, `list`, and `call` also accept an explicit `--export <name>` flag, which takes precedence over the colon syntax when both are given:
+
+```bash
+fastmcp inspect --file server.ts --export app
+```
+
+An export name that doesn't exist, or that resolves to something other than a `FastMCP` server or a factory returning one, is a hard error naming the file and export so a typo is easy to spot. A file with no `default`/`mcp`/`server`/`app` export and no `--export` flag is assumed to be the self-running kind — the CLI imports it, lets its top-level code start the server, and does nothing further.
+
 ## Inspect a server
 
 `fastmcp inspect` lists a server's tools, resources, and prompts and renders them as tables. Point it at a file to start the server in-process and inspect it, or at a running URL to inspect a live server. This is the command for a quick read of what a server exposes — the fastest way to confirm a registration landed or remember a tool's arguments.

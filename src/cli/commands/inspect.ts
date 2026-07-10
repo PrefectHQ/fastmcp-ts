@@ -14,6 +14,7 @@ export default defineCommand({
     url: { type: 'string', description: 'Server URL' },
     command: { type: 'string', description: 'stdio server command' },
     file: { type: 'string', description: 'Server file (e.g. server.ts)' },
+    export: { type: 'string', description: 'Named export to resolve (e.g. server); overrides file:export syntax' },
     auth: { type: 'string', description: 'Bearer token' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
   },
@@ -28,7 +29,7 @@ export default defineCommand({
     let fileSpec
     if (args.file) {
       try {
-        fileSpec = parseFileSpec(args.file)
+        fileSpec = parseFileSpec(args.file, args.export)
       } catch (err) {
         cliError(formatError(err))
       }

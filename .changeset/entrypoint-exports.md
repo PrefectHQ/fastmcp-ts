@@ -1,0 +1,7 @@
+---
+"@prefecthq/fastmcp-ts": minor
+---
+
+Add entrypoint-export support to the CLI. `fastmcp run <file>:<export>` and `--file`/`--export` on `inspect`, `list`, and `call` now resolve a named export (or a sync/async factory function returning one) and start or introspect it directly, instead of requiring the file to call `.run()` itself. When no export is given, `default`, `mcp`, `server`, and `app` are auto-detected in that order, mirroring Python FastMCP's entrypoint convention. Files that already start their own server continue to work unchanged.
+
+Adds `FastMCP.isRunning`, a read-only getter reporting whether `run()`/`connect()` has been called on the instance.
