@@ -988,6 +988,27 @@ describe.sequential('CLI — entrypoint exports', () => {
     expect(stderr).toMatch(/echo/)
   })
 
+  it('run --host and --path are honored for an exported FastMCP server', async () => {
+    const subprocess = execa(
+      'node',
+      [
+        process.env['FASTMCP_BIN']!, 'run', `${ENTRYPOINT_NAMED_SERVER}:server`,
+        '--transport', 'http', '--host', '127.0.0.1', '--port', '0', '--path', '/custom-mcp',
+      ],
+      { reject: false, timeout: 15_000 },
+    )
+
+    const port = await waitForPort(subprocess)
+
+    // A wrong --path (still defaulting to /mcp) would 404 here, so success
+    // confirms both --host and --path were passed through to the server.
+    const { exitCode, stderr } = await runCli(['list', '--url', `http://127.0.0.1:${port}/custom-mcp`])
+
+    subprocess.kill()
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
   it('resolves a sync factory function export via --export', async () => {
     const { exitCode, stderr } = await runCli([
       'inspect', '--file', ENTRYPOINT_FACTORY_SERVER, '--export', 'createServer',

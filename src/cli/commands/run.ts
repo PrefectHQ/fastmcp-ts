@@ -26,7 +26,9 @@ export default defineCommand({
   args: {
     spec: { type: 'positional', description: 'File spec (e.g. server.ts or server.ts:app)', required: true },
     transport: { type: 'string', description: 'Transport type (stdio|http|sse)', default: 'stdio' },
+    host: { type: 'string', description: 'HTTP host to bind to (for http transport)' },
     port: { type: 'string', description: 'HTTP port (for http/sse transports)' },
+    path: { type: 'string', description: 'HTTP path to serve on (for http transport)' },
     reload: { type: 'boolean', description: 'Restart on file change', default: false },
   },
   async run({ args }) {
@@ -40,7 +42,9 @@ export default defineCommand({
     const transportEnv: Record<string, string> = {
       MCP_TRANSPORT: args.transport,
     }
+    if (args.host) transportEnv['MCP_HOST'] = args.host
     if (args.port) transportEnv['MCP_PORT'] = args.port
+    if (args.path) transportEnv['MCP_PATH'] = args.path
 
     let child = spawnServer(fileSpec, transportEnv)
     let started = false

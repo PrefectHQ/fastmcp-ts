@@ -18,11 +18,11 @@ Two global flags apply to every command. `--quiet` suppresses the human-readable
 
 ```bash
 fastmcp run server.ts
-fastmcp run server.ts --transport http --port 3000
+fastmcp run server.ts --transport http --host 0.0.0.0 --port 3000 --path /mcp
 fastmcp run server.ts --reload          # restart on file change
 ```
 
-Reach for `--reload` during development: it watches the file and respawns the server on every change, so edits take effect without a manual restart.
+Reach for `--reload` during development: it watches the file and respawns the server on every change, so edits take effect without a manual restart. `--transport`, `--host`, `--port`, and `--path` set the same [`MCP_TRANSPORT`/`MCP_HOST`/`MCP_PORT`/`MCP_PATH` environment variables](/servers/running#configuration) `server.run()` already reads, so they're interchangeable with exporting those variables directly — useful when a deployment platform wants to pass configuration as flags.
 
 ## Entrypoint exports
 
