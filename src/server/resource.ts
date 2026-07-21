@@ -1,5 +1,7 @@
 import type { AuthCheck } from './auth/authorization'
 import type { ResourceUiMeta } from './apps/types'
+import { isInputRequiredResult } from './mrtr'
+import type { InputRequiredResult } from './mrtr'
 
 export interface ResourceAnnotations {
   /** Intended audience(s) — 'user', 'assistant', or both. */
@@ -70,7 +72,12 @@ export function convertResourceResult(
   value: unknown,
   uri: string,
   mimeType?: string,
-): { contents: ResourceContent[] } {
+): { contents: ResourceContent[] } | InputRequiredResult {
+  // Multi-round-trip escape hatch (protocol revision 2026-07-28) — see tool.ts's
+  // convertResult for the same pattern applied to tools/call.
+  if (isInputRequiredResult(value)) {
+    return value
+  }
   if (value instanceof ResourceResult) {
     return { contents: value.contents as ResourceContent[] }
   }

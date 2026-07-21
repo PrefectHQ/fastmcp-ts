@@ -1,7 +1,7 @@
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
-import { ProtocolError, ProtocolErrorCode, Server, createMcpHandler, isLegacyRequest, isJsonContentType } from "@modelcontextprotocol/server";
-import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, CacheHint } from "@modelcontextprotocol/server";
+import { ProtocolError, ProtocolErrorCode, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec } from "@modelcontextprotocol/server";
+import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, CacheHint, RequestStateCodec, ServerContext } from "@modelcontextprotocol/server";
 
 // Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
 // mirrors its CACHEABLE_RESULT_METHODS literal union (SEP-2549 cacheable operations).
@@ -27,6 +27,7 @@ import type { Middleware } from './middleware'
 import { applyTransformChain } from './transform'
 import type { Transform, ToolView, ResourceView, PromptView, SynthesizedTool } from './transform'
 import { convertResult, toJsonSchema, validateInput, ToolResult } from './tool'
+import { isInputRequiredResult } from './mrtr'
 import {
   convertResourceResult,
   isUriTemplate,
@@ -86,6 +87,42 @@ export interface FastMCPOptions {
    * SDK's high-level `McpServer.registerResource`, which FastMCP does not use).
    */
   cacheHints?: Partial<Record<CacheableResultMethod, CacheHint>>
+  /**
+   * HMAC-SHA256 integrity protection for multi-round-trip `requestState`
+   * (protocol revision 2026-07-28) — see `ctx.requestState()` / `ctx.mintRequestState()`.
+   * Backed by the SDK's `createRequestStateCodec`. When omitted, `requestState` passes
+   * through unverified (the raw wire string) — the client can read and tamper with it,
+   * so this MUST be configured for any flow whose `requestState` influences
+   * authorization, resource access, or business logic.
+   */
+  requestState?: {
+    /** HMAC secret. A `string` is UTF-8-encoded; MUST be at least 32 bytes (256 bits). */
+    key: Uint8Array | string
+    /** How long a minted `requestState` stays valid, in seconds. Default: 600 (10 minutes). */
+    ttlSeconds?: number
+    /** Binds a minted `requestState` to, e.g., the authenticated principal and/or the
+     * originating method — a value minted under one binding is rejected when echoed
+     * under a different one. See `RequestStateCodecOptions.bind`. */
+    bind?: (ctx: ServerContext) => string
+  }
+  /**
+   * Multi-round-trip (`inputRequired`) serving knobs (protocol revision 2026-07-28).
+   * On 2026-era requests the client fulfils `input_required` returns directly; on
+   * 2025-era connections the SDK's legacy shim fulfils them server-side (real
+   * server→client requests + handler re-entry) — so handlers written with
+   * `inputRequired(...)` serve both eras unchanged.
+   */
+  inputRequired?: {
+    /** Handler re-entries per originating request before the shim fails (legacy era
+     * only). Default: 8. */
+    maxRounds?: number
+    /** Per-leg timeout (ms) for the legacy shim's embedded server→client requests.
+     * Default: 600_000 (10 minutes) — human-paced, deliberately above the 60s protocol default. */
+    roundTimeoutMs?: number
+    /** `false` disables the legacy shim: an `inputRequired(...)` return on a 2025-era
+     * request fails loudly instead of being bridged. Default: true. */
+    legacyShim?: boolean
+  }
 }
 
 export interface RunOptions {
@@ -232,6 +269,8 @@ export class FastMCP {
   private _middleware: Middleware[]
   private _transforms: Transform[]
   private _cacheHints: Partial<Record<CacheableResultMethod, CacheHint>> | undefined
+  private _requestStateCodec: RequestStateCodec | undefined
+  private _inputRequiredOptions: FastMCPOptions['inputRequired']
   private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
@@ -263,6 +302,10 @@ export class FastMCP {
     this._middleware = options.middleware ? [...options.middleware] : []
     this._transforms = options.transforms ? [...options.transforms] : []
     this._cacheHints = options.cacheHints
+    this._requestStateCodec = options.requestState
+      ? createRequestStateCodec(options.requestState)
+      : undefined
+    this._inputRequiredOptions = options.inputRequired
     this._primaryServer = this._makeServer()
   }
 
@@ -288,6 +331,10 @@ export class FastMCP {
       {
         capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {}, ...(extensions ? { extensions } : {}) },
         ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
+        ...(this._requestStateCodec
+          ? { requestState: { verify: this._requestStateCodec.verify.bind(this._requestStateCodec) } }
+          : {}),
+        ...(this._inputRequiredOptions ? { inputRequired: this._inputRequiredOptions } : {}),
       },
     )
     for (const mw of this._middleware) mw.setup?.(server)
@@ -302,7 +349,7 @@ export class FastMCP {
   private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
     server.setRequestHandler('tools/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
           const clientIsUiCapable = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
@@ -410,7 +457,7 @@ export class FastMCP {
       const synthTool = synthesizedList.find((s) => s.name === requestedName)
       if (synthTool) {
         if (synthTool.auth) await runAuthCheck(synthTool.auth, token)
-        const ctx = createContext(server, sdkCtx, token, sessionState)
+        const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
         try {
           return await contextStore.run(ctx, () =>
             runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
@@ -464,7 +511,7 @@ export class FastMCP {
 
       const resolvedTool = tool
       const rawArgs: unknown = req.params.arguments ?? {}
-      const ctx = createContext(server, sdkCtx, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
 
       try {
         return await contextStore.run(ctx, () =>
@@ -511,7 +558,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
           const allVisible = (
@@ -563,7 +610,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/templates/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
@@ -661,7 +708,7 @@ export class FastMCP {
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(server, sdkCtx, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
@@ -689,7 +736,7 @@ export class FastMCP {
 
     server.setRequestHandler('prompts/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
           const allVisible = (
@@ -767,7 +814,7 @@ export class FastMCP {
         }
       }
 
-      const ctx = createContext(server, sdkCtx, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/get', req.params, ctx, async () => {
@@ -1042,7 +1089,14 @@ export class FastMCP {
       const childCtx: typeof parentCtx = prefix
         ? { ...parentCtx, resolveToolName: (name) => `${prefix}_${name}` }
         : parentCtx
-      return child._dispatchTool(originalName, args, childCtx).then((result) => new ToolResult(result))
+      // _dispatchTool already ran the child's own convertResult, so its resolved
+      // value is either a finished CallToolResult (wrap in ToolResult so the parent's
+      // own convertResult passes it through unchanged) or an InputRequiredResult
+      // (multi-round-trip escape hatch — already recognized directly by convertResult,
+      // must not be wrapped).
+      return child._dispatchTool(originalName, args, childCtx).then((result) =>
+        isInputRequiredResult(result) ? result : new ToolResult(result),
+      )
     })
   }
 
@@ -1073,9 +1127,9 @@ export class FastMCP {
     const forwardedConfig: PromptConfig = { ...(prompt.config as PromptConfig), name: key }
     this.prompt(forwardedConfig, (args?: Record<string, string>) => {
       const ctx = contextStore.getStore()!
-      return child
-        ._dispatchPrompt(originalName, args ?? {}, ctx)
-        .then((result) => new PromptResult(result.messages, result.description))
+      return child._dispatchPrompt(originalName, args ?? {}, ctx).then((result) =>
+        isInputRequiredResult(result) ? result : new PromptResult(result.messages, result.description),
+      )
     })
   }
 

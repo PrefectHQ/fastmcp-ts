@@ -240,20 +240,65 @@ Each workstream owns its own doc updates (see W10 for the cross-cutting docs pas
   backfills them per-request from the validated envelope) — no code change needed, but
   worth a real test when W4 (Apps) does a fuller audit.
 
-### W2 — MRTR + state
+### W2 — MRTR + state ✅ (done, committed on this branch)
 
-- [ ] Export `inputRequired`, `acceptedContent`, `inputResponse`; teach `convertResult` to
-  pass `InputRequiredResult` through untouched (src/server/tool.ts).
-- [ ] `McpContext`: add `inputResponses` + `requestState<T>()`; era-gate
-  `elicit`/`sample`/`listRoots` (legacy: current behavior; modern: typed error naming the
-  replacement) (src/server/context.ts:222–266).
-- [ ] `FastMCPOptions.requestState` → `createRequestStateCodec`; `FastMCPOptions.inputRequired`
-  knobs (`maxRounds`, `roundTimeoutMs`, `legacyShim`).
-- [ ] Rework `FileUpload` provider off session state → server-minted handles via
-  `FileStorageAdapter` (+ `requestState` for flow phase) (src/server/apps/providers/FileUpload.ts).
-  Audit `Approval` / `Choice` / `FormInput`.
-- [ ] Tests: a multi-round flow (phase-switch union) exercised on the modern wire AND via the
-  legacy shim on a sessionful legacy connection — assert identical handler behavior.
+- [x] New `src/server/mrtr.ts` re-exports the SDK's `inputRequired`, `acceptedContent`,
+  `inputResponse`, `isInputRequiredResult` and the `InputRequired*`/`InputRequest*`/
+  `InputResponse*` types (thin re-export — no fastmcp-specific behavior needed on top of
+  the SDK's already-generic primitives). `convertResult` (tool.ts), `convertResourceResult`
+  (resource.ts), and `convertPromptResult` (prompt.ts) all check `isInputRequiredResult`
+  first and pass it through untouched — all three MRTR-capable methods (`tools/call`,
+  `resources/read`, `prompts/get`) support the escape hatch, matching the SDK's own
+  `InputRequiredResult` doc comment. `_mirrorTool`/`_mirrorPrompt` (composition/mounting)
+  updated to recognize and pass through a child's `InputRequiredResult` instead of
+  unconditionally wrapping it as a finished result.
+- [x] `McpContext`: added `inputResponses`, `requestState<T>()`, and `mintRequestState<T>()`.
+  **Era-gating `elicit`/`sample`/`listRoots` required no code change** — verified by SDK
+  source inspection that `server.elicitInput`/`createMessage`/`listRoots` already throw a
+  clear `SdkError(MethodNotSupportedByProtocolVersion)` on a modern-era request, with a
+  message that already names `inputRequired(...)` as the replacement
+  (`"Server-to-client requests are not available on protocol revision 2026-07-28: '<method>'
+  cannot be sent... Return inputRequired({ ... }) from the handler instead..."`). Added
+  `@deprecated` JSDoc on all three pointing to the MRTR replacement.
+- [x] `FastMCPOptions.requestState` (`{ key, ttlSeconds?, bind? }`) builds a
+  `createRequestStateCodec` instance once, wired into every `_makeServer()`'s
+  `ServerOptions.requestState.verify`. `FastMCPOptions.inputRequired` (`maxRounds`,
+  `roundTimeoutMs`, `legacyShim`) passed straight through to `ServerOptions.inputRequired`.
+  `ctx.mintRequestState()` signs via the codec when configured; falls back to unsigned
+  `JSON.stringify` with a console warning when it isn't (matches the SDK's own
+  passthrough-when-unconfigured semantics).
+- [x] `FileUpload` reworked: removed the vestigial session-state handle-tracking list
+  (`SESSION_HANDLES_KEY`) entirely — it served no purpose other than bookkeeping for a
+  session-close cleanup that never fires on stateless modern HTTP anyway. The handle
+  itself was already the durable, portable, server-minted identifier (the spec's
+  explicit-handle pattern) — that part didn't need to change. Added TTL-based expiry
+  (`FileUploadOptions.ttlMs`, default 30 min) to the default in-memory storage adapter as
+  the real era-agnostic cleanup mechanism; `ctx.onClose` cleanup kept as a best-effort
+  early-cleanup optimization for transports that do have a session (stdio, legacy HTTP).
+  **`requestState` turned out not to apply here** — FileUpload's flow is entirely
+  tool-based (upload → handle → later read/delete), not an elicitation/sampling/roots
+  MRTR flow, so there was no "flow phase" for `requestState` to carry. Audited `Approval`
+  / `Choice` / `FormInput`: none touch session state at all — already era-agnostic, no
+  changes needed.
+- [x] New `tests/server/mrtr.test.ts`, 4 tests, all passing:
+  1. A tool using `inputRequired(...)` completes a full round-trip on the raw modern wire
+     (hand-rolled retry with `inputResponses`) — verified `resultType: 'input_required'`,
+     the embedded `elicitation/create` request, and the final result after retry. Required
+     discovering that the client must declare the `elicitation` capability in its
+     per-request envelope for the embedded request to be permitted
+     (`-32021 MissingRequiredClientCapability` otherwise) — the same gate that guards the
+     legacy push-style call.
+  2. **The identical handler** (same tool registration, zero branching) verified against a
+     default (legacy-era) SDK client with an `elicitation/create` handler registered the
+     ordinary 2025 way — the SDK's legacy shim transparently bridges the `inputRequired`
+     return into a real server-initiated request over the sessionful legacy connection.
+     This is the "write once, serve both eras" property working end-to-end, and confirms
+     W1's decision to keep the legacy branch sessionful (rather than using
+     `createMcpHandler`'s stateless legacy fallback) was necessary for this to work at all.
+  3. `FastMCPOptions.requestState` mints a signed `requestState`, and the handler reads
+     back the verified, decoded payload via `ctx.requestState<T>()` on retry.
+  4. A tampered `requestState` is rejected with the frozen `-32602` error
+     (`"Invalid or expired requestState"`) before the handler ever runs.
 
 ### W3 — Notifications & subscriptions
 

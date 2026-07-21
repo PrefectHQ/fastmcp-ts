@@ -18,27 +18,54 @@ export interface FileStorageAdapter {
   delete(handle: string): void
 }
 
-function makeInMemoryAdapter(): FileStorageAdapter {
-  const store = new Map<string, FileHandle>()
+/**
+ * Default in-memory adapter with TTL-based expiry. Expiry is checked lazily on
+ * every save/load (no timer), so it costs nothing when idle. This is the
+ * era-agnostic cleanup mechanism for uploaded files: unlike session-close
+ * cleanup (ctx.onClose, below), which only fires for transports that actually
+ * have a session (stdio, legacy HTTP), TTL expiry works uniformly for
+ * stateless modern (2026-07-28) HTTP requests too, where there is no session
+ * to close.
+ */
+function makeInMemoryAdapter(ttlMs: number): FileStorageAdapter {
+  const store = new Map<string, { file: FileHandle; expiresAt: number }>()
+  function sweep(): void {
+    const now = Date.now()
+    for (const [handle, entry] of store) {
+      if (entry.expiresAt <= now) store.delete(handle)
+    }
+  }
   return {
-    save: (handle, file) => store.set(handle, file),
-    load: (handle) => store.get(handle),
-    delete: (handle) => store.delete(handle),
+    save: (handle, file) => {
+      sweep()
+      store.set(handle, { file, expiresAt: Date.now() + ttlMs })
+    },
+    load: (handle) => {
+      sweep()
+      return store.get(handle)?.file
+    },
+    delete: (handle) => {
+      store.delete(handle)
+    },
   }
 }
 
 export interface FileUploadOptions {
   storage?: FileStorageAdapter
+  /**
+   * How long (ms) an uploaded file is retained by the default in-memory storage
+   * adapter before automatic expiry. Only applies when no custom `storage` is
+   * supplied. Default: 30 minutes.
+   */
+  ttlMs?: number
 }
-
-const SESSION_HANDLES_KEY = '__fastmcp_file_handles'
 
 export class FileUpload {
   readonly server: FastMCP
   private readonly _storage: FileStorageAdapter
 
   constructor(options?: FileUploadOptions) {
-    this._storage = options?.storage ?? makeInMemoryAdapter()
+    this._storage = options?.storage ?? makeInMemoryAdapter(options?.ttlMs ?? 30 * 60_000)
     this.server = new FastMCP({ name: 'file-upload' })
 
     const storage = this._storage
@@ -79,6 +106,12 @@ export class FileUpload {
         ui: { visibility: ['app'] },
       },
       (args: Record<string, unknown>) => {
+        // The handle is the durable, portable identifier for this upload — it works
+        // the same way whether the caller is on a session-based transport (stdio,
+        // legacy HTTP) or a stateless modern (2026-07-28) HTTP request: the model
+        // threads it back as an ordinary tool argument on later calls (file_upload_delete,
+        // reading the ui://files/{handle} resource), the same explicit-handle pattern
+        // the spec recommends in place of session state.
         const handle = randomUUID()
         const fileData = Buffer.from(args.data as string, 'base64')
         storage.save(handle, {
@@ -88,13 +121,11 @@ export class FileUpload {
           data: fileData,
         })
 
-        // Track handle in session state and register cleanup on session close
-        const ctx = contextStore.getStore()
-        if (ctx) {
-          const existing = (ctx.getState(SESSION_HANDLES_KEY) as string[] | undefined) ?? []
-          ctx.setState(SESSION_HANDLES_KEY, [...existing, handle])
-          ctx.onClose(() => storage.delete(handle))
-        }
+        // Best-effort early cleanup for transports that actually have a session
+        // (stdio, legacy HTTP) — a no-op on stateless modern HTTP, where there is no
+        // session to close. The real, era-agnostic cleanup is the storage adapter's
+        // own TTL expiry (see makeInMemoryAdapter / FileUploadOptions.ttlMs).
+        contextStore.getStore()?.onClose(() => storage.delete(handle))
 
         const uri = `ui://files/${handle}`
         return { handle, uri }
@@ -117,11 +148,6 @@ export class FileUpload {
       (args: Record<string, unknown>) => {
         const handle = args.handle as string
         storage.delete(handle)
-        const ctx = contextStore.getStore()
-        if (ctx) {
-          const existing = (ctx.getState(SESSION_HANDLES_KEY) as string[] | undefined) ?? []
-          ctx.setState(SESSION_HANDLES_KEY, existing.filter((h) => h !== handle))
-        }
         return { deleted: handle }
       },
     )

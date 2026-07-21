@@ -21,6 +21,17 @@ export type {
   ElicitationResult,
   Root,
 } from './context'
+// Multi-round-trip requests (MRTR, protocol revision 2026-07-28) — see src/server/mrtr.ts
+export { inputRequired, acceptedContent, inputResponse, isInputRequiredResult } from './mrtr'
+export type {
+  InputRequiredResult,
+  InputRequiredSpec,
+  InputRequest,
+  InputRequests,
+  InputResponse,
+  InputResponses,
+  InputResponseView,
+} from './mrtr'
 export type { Middleware, MiddlewareContext, Next, CacheKeyFn } from './middleware'
 export {
   LoggingMiddleware,

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { Server, ServerContext } from '@modelcontextprotocol/server'
+import type { Server, ServerContext, RequestStateCodec } from '@modelcontextprotocol/server'
 import type { AccessToken } from './auth/types'
+import type { InputResponses } from './mrtr'
 
 // ---------------------------------------------------------------------------
 // Supporting types
@@ -108,6 +109,15 @@ export interface McpContext {
   /**
    * Ask the client to perform an LLM inference call and return the result.
    * Throws if the client has not advertised the `sampling` capability.
+   *
+   * @deprecated Sampling is deprecated as of protocol revision 2026-07-28 (SEP-2577)
+   * and this push-style call only works on a legacy (2025-era) connection — calling it
+   * on a modern request throws a clear error naming the replacement (return
+   * `inputRequired({ inputRequests: { id: inputRequired.createMessage({...}) } })` from
+   * the handler instead; see `fastmcp-ts/server`'s re-exported `inputRequired`). A
+   * handler written the `inputRequired` way serves both eras unchanged — the SDK's
+   * legacy shim fulfils it via a real server→client request on 2025-era connections, so
+   * there is rarely a reason to keep calling `ctx.sample()` directly in new code.
    */
   sample(params: SamplingParams): Promise<SamplingResult>
 
@@ -116,6 +126,11 @@ export interface McpContext {
   /**
    * Ask the client to collect input from the user via a form dialog.
    * Throws if the client has not advertised the `elicitation` capability.
+   *
+   * @deprecated Throws a clear error naming the replacement when called on a modern
+   * (2026-07-28) request — return `inputRequired({ inputRequests: { id:
+   * inputRequired.elicit({...}) } })` instead (see `ctx.sample`'s docs; the same
+   * write-once, serve-both-eras guidance applies).
    */
   elicit(message: string, schema: ElicitationSchema): Promise<ElicitationResult>
 
@@ -124,8 +139,43 @@ export interface McpContext {
   /**
    * Request the list of filesystem roots the client has declared.
    * Throws if the client has not advertised the `roots` capability.
+   *
+   * @deprecated Roots is deprecated as of protocol revision 2026-07-28 (SEP-2577) —
+   * prefer passing paths via tool parameters, resource URIs, or server configuration.
+   * Throws a clear error naming `inputRequired(...)` as the multi-round-trip
+   * replacement when called on a modern request (see `ctx.sample`'s docs).
    */
   listRoots(): Promise<Root[]>
+
+  // --- Multi-round-trip requests (MRTR, protocol revision 2026-07-28) ---
+
+  /**
+   * The current round's embedded input responses, when this request is a retry of an
+   * earlier `inputRequired(...)` return. `undefined` on the flow's first call (no
+   * prior round to respond to). Read with the SDK's `acceptedContent(ctx.inputResponses,
+   * key)` / `inputResponse(ctx.inputResponses, key)` (re-exported from
+   * `fastmcp-ts/server`) rather than indexing this object directly — those readers
+   * validate shape and, for `acceptedContent`, optionally the content against a schema.
+   */
+  inputResponses: InputResponses | undefined
+
+  /**
+   * Reads the current round's `requestState`, already verified and decoded when
+   * `FastMCPOptions.requestState` is configured (the payload `verify` resolved with);
+   * the raw, unverified wire string when it is not configured — treat that case as
+   * attacker-controlled input. `undefined` when the round carried no state.
+   */
+  requestState<T = unknown>(): T | undefined
+
+  /**
+   * Seals `payload` into the opaque `requestState` string to return from
+   * `inputRequired({ requestState })`. HMAC-signed via `FastMCPOptions.requestState`
+   * when configured; otherwise a plain `JSON.stringify(payload)` with a one-time
+   * console warning — the resulting state is unsigned and MUST NOT be trusted for
+   * anything that influences authorization, resource access, or business logic (the
+   * client can read and tamper with it) unless `FastMCPOptions.requestState` is set.
+   */
+  mintRequestState<T = unknown>(payload: T): Promise<string>
 
   // --- Session state ---
 
@@ -184,12 +234,17 @@ export const SESSION_CLOSE_CALLBACKS_KEY = '__fastmcp_session_close_callbacks'
  *                 or SSE stream) rather than pushed as a request-agnostic notification.
  * @param auth     The verified access token, if any.
  * @param sessionState  The per-session state Map (shared across requests in the same session).
+ * @param requestStateCodec  The HMAC codec built from `FastMCPOptions.requestState`, if
+ *   configured. Backs `ctx.mintRequestState()`; `ctx.requestState()` itself always reads
+ *   through `sdkCtx.mcpReq.requestState()`, which already reflects whatever
+ *   `ServerOptions.requestState.verify` (built from this same codec) resolved.
  */
 export function createContext(
   server: Server,
   sdkCtx: ServerContext,
   auth: AccessToken | undefined,
   sessionState: Map<string, unknown>,
+  requestStateCodec?: RequestStateCodec,
 ): McpContext {
   const requestId = String(sdkCtx.mcpReq.id)
   const progressToken = (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)
@@ -279,6 +334,20 @@ export function createContext(
       }
       const result = await server.listRoots()
       return result.roots
+    },
+
+    inputResponses: sdkCtx.mcpReq.inputResponses as InputResponses | undefined,
+
+    requestState: <T = unknown>() => sdkCtx.mcpReq.requestState<T>(),
+
+    async mintRequestState<T = unknown>(payload: T): Promise<string> {
+      if (requestStateCodec) return requestStateCodec.mint(payload, sdkCtx)
+      console.warn(
+        '[fastmcp] ctx.mintRequestState() called without FastMCPOptions.requestState configured — ' +
+          'the resulting requestState is unsigned. Configure FastMCPOptions.requestState for any ' +
+          'state that influences authorization, resource access, or business logic.',
+      )
+      return JSON.stringify(payload)
     },
 
     getState: (key) => sessionState.get(key),
