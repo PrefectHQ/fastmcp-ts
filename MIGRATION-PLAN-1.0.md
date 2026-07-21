@@ -174,26 +174,71 @@ Each workstream owns its own doc updates (see W10 for the cross-cutting docs pas
   the v2 client ships browser shims (package.json:16–39).
 - [ ] **Gate:** `tsc --noEmit` clean; unit suite compiles and runs (failures triaged).
 
-### W1 — Server core
+### W1 — Server core ✅ (done, committed on this branch)
 
-- [ ] Construct low-level `Server` from `@modelcontextprotocol/server`; declare capabilities;
+- [x] Construct low-level `Server` from `@modelcontextprotocol/server`; declare capabilities;
   verify `server/discover` output (tools/resources/prompts listChanged, extensions map).
-- [ ] HTTP: replace both serve paths (src/server/FastMCP.ts:1294 express, :1368 node:http)
-  with the hybrid router; delete `_sessions`-based modern routing (:227); keep the sessionful
-  map only for the legacy branch; `mcp.address` unchanged; CORS updated — drop
-  `Mcp-Session-Id`, allow `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`.
-- [ ] stdio: swap `server.connect(StdioServerTransport)` for `serveStdio(factory)`
-  (src/server/FastMCP.ts:1296); **verify** the `stdin`/`stdout` stream-injection override
-  still works (tests depend on it) — else adapt the harness to child-process spawning.
-- [ ] Cache fields: emit `ttlMs`/`cacheScope`; add `FastMCPOptions.cacheHints` and
-  `ResourceConfig.cacheHint`.
-- [ ] Errors: assert resource-not-found is `-32602`; review middleware `ProtocolError`
-  re-throw; document `CachingMiddleware` private-scope default.
-- [ ] Deterministic list ordering test (Map insertion order).
-- [ ] Logging: on modern requests gate `ctx.log` on the `_meta` `logLevel` key; document
-  "absent = suppressed".
-- [ ] Proxy/composition (`createProxy`, `mount`): update SDK `Client` usage; pass new result
-  shapes through unchanged (src/server/proxy.ts).
+  Verified via a raw stdio `server/discover` test — capabilities and `supportedVersions`
+  come back correctly from the same `_makeServer()` factory used by every era/transport.
+- [x] HTTP: replaced both serve paths with a shared hybrid router (`_dispatchHttp` /
+  `_dispatchLegacyHttp` / `_getModernHandler` in `src/server/FastMCP.ts`) — `isLegacyRequest`
+  classifies each request; legacy routes to the existing sessionful `NodeStreamableHTTPServerTransport`
+  code (unchanged behavior, now shared instead of duplicated between the OAuth and
+  non-OAuth paths), modern routes to `createMcpHandler(factory, { legacy: 'reject' })` via
+  `toNodeHandler`. **Deviation from the plan text above:** CORS now *adds*
+  `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` rather than dropping `Mcp-Session-Id` —
+  since the locked decision is dual-era serving, legacy sessions (which still use
+  `Mcp-Session-Id`) had to keep working. `Mcp-Param-*` is deliberately not listed: browser
+  clients skip that header mirroring entirely, so no browser ever needs to send it.
+  Verified end-to-end with real HTTP clients (modern pinned to 2026-07-28, and legacy
+  default) hitting the same running server/port.
+- [x] stdio: swapped `connect(new StdioServerTransport(...))` for
+  `serveStdio(factory, { transport })`, passing a `StdioServerTransport(stdin, stdout)`
+  built from `RunOptions` as the `transport` option. **Stream-injection override confirmed
+  working** — both the existing legacy stdio test (raw `initialize` over `PassThrough`
+  streams) and a new modern-era test (raw `server/discover` over the same streams) pass.
+  `_stdioServer` tracks the pinned instance for notification fan-out (see below).
+- [x] Cache fields: `FastMCPOptions.cacheHints` implemented and wired into the `Server`
+  constructor's `cacheHints` option; verified end-to-end via a raw modern `tools/list`
+  request asserting `ttlMs`/`cacheScope` on the wire. **`ResourceConfig.cacheHint`
+  (per-resource override) not implemented** — the SDK's per-registration cache-hint
+  precedence only exists on `McpServer.registerResource`'s metadata; the mechanism
+  low-level `Server` users would need (`RESULT_CACHE_HINT_FALLBACK` /
+  `attachCacheHintFallback`) is core-internal only, not exported publicly. Per-operation
+  hints via `cacheHints` are the full extent of what's cleanly achievable without adopting
+  `McpServer`. Documented as a limitation on `FastMCPOptions.cacheHints`.
+- [x] Errors: added an explicit test asserting resource-not-found is `-32602`, not the
+  old MCP-custom `-32002` (SEP-2164) — was already correct (fastmcp always used
+  `ProtocolErrorCode.InvalidParams`), now regression-guarded.
+- [x] Deterministic list ordering test added (Map insertion order) for `tools/list`.
+- [x] Logging: refactored `createContext()` to delegate `ctx.log`/`reportProgress` to the
+  SDK's own `sdkCtx.mcpReq.log` / `sdkCtx.mcpReq.notify` (instead of calling
+  `server.sendLoggingMessage` / `server.notification` directly) — this is what actually
+  implements the "absent `_meta.logLevel` ⇒ suppressed" gating and per-era request-stream
+  routing; reimplementing that ourselves would have duplicated SDK-internal logic. Verified
+  a modern-era tool handler calling `ctx.info(...)` completes normally without a client-side
+  `logLevel` opt-in (silently suppressed, not an error). `createContext`'s signature changed
+  from `(server, requestId, progressToken, auth, sessionState)` to `(server, sdkCtx, auth,
+  sessionState)`, deriving `requestId`/`progressToken` from `sdkCtx.mcpReq` internally — one
+  now-impossible unit test (`createContext` with an `undefined` requestId) was removed,
+  since `sdkCtx.mcpReq.id` is always present by type.
+- [x] Proxy/composition (`createProxy`, `mount`): reviewed and simplified. The manual
+  `do...while(cursor)` pagination loops in `resyncTools`/`resyncResources`/`resyncPrompts`
+  were harmless-but-redundant after v2's client auto-aggregation change (discovered in
+  W0) — simplified to single calls. `mount()`/mirroring logic untouched (no SDK surface
+  changes affected it).
+- **Also discovered and documented (not fixed — flagged as follow-up):**
+  `CancellationMiddleware` only reacts to legacy `notifications/cancelled`; modern HTTP
+  cancellation is signaled via response-stream closure (`ctx.mcpReq.signal`, present on
+  every era), which this middleware doesn't yet observe. A handler keeps running
+  server-side to completion on the modern path even though the client is correctly told
+  the call was cancelled. Documented in a code comment on the class; unifying the two
+  paths is real work (threading `sdkCtx.mcpReq.signal` through `McpContext`) — worth a
+  dedicated follow-up rather than folding into W1.
+  `getClientCapabilities()`/`getClientVersion()` (used for UI-capability detection) were
+  verified by SDK source inspection to work correctly on modern-era instances too (the SDK
+  backfills them per-request from the validated envelope) — no code change needed, but
+  worth a real test when W4 (Apps) does a fuller audit.
 
 ### W2 — MRTR + state
 

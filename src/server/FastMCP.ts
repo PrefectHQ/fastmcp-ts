@@ -1,11 +1,21 @@
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
-import { ProtocolError, ProtocolErrorCode, Server } from "@modelcontextprotocol/server";
-import type { Transport, AuthInfo, ListToolsResult, GetPromptResult } from "@modelcontextprotocol/server";
+import { ProtocolError, ProtocolErrorCode, Server, createMcpHandler, isLegacyRequest, isJsonContentType } from "@modelcontextprotocol/server";
+import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, CacheHint } from "@modelcontextprotocol/server";
+
+// Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
+// mirrors its CACHEABLE_RESULT_METHODS literal union (SEP-2549 cacheable operations).
+type CacheableResultMethod =
+  | 'tools/list'
+  | 'prompts/list'
+  | 'resources/list'
+  | 'resources/templates/list'
+  | 'resources/read'
+  | 'server/discover'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
-import type { Server as HttpServer, IncomingMessage } from 'node:http'
+import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { AuthorizationError } from './auth/types'
 import type { TokenVerifier, AccessToken } from './auth/types'
@@ -64,6 +74,18 @@ export interface FastMCPOptions {
   middleware?: Middleware[]
   /** Transforms applied to component list responses in registration order. */
   transforms?: Transform[]
+  /**
+   * Cache hints (`ttlMs` / `cacheScope`) for the 2026-07-28 protocol revision's
+   * cacheable results (`tools/list`, `prompts/list`, `resources/list`,
+   * `resources/templates/list`, `resources/read`, `server/discover`), keyed by
+   * operation. Only affects modern (2026-07-28) responses — 2025-era responses
+   * never carry these fields. Omitted operations (or omitting this option
+   * entirely) keep the conservative defaults (`ttlMs: 0`, `cacheScope: 'private'`).
+   * Applies uniformly per operation; per-resource cache hints are not currently
+   * supported (that per-registration override is only available through the
+   * SDK's high-level `McpServer.registerResource`, which FastMCP does not use).
+   */
+  cacheHints?: Partial<Record<CacheableResultMethod, CacheHint>>
 }
 
 export interface RunOptions {
@@ -209,12 +231,20 @@ export class FastMCP {
   private _promptsPageSize: number
   private _middleware: Middleware[]
   private _transforms: Transform[]
+  private _cacheHints: Partial<Record<CacheableResultMethod, CacheHint>> | undefined
   private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
   private _sessions = new Map<string, Session>()
-  // Primary server used by connect() and stdio
+  // Primary server used by connect() (in-process transports — always 2025-era)
   private _primaryServer: Server
+  // The pinned Server instance for a run({transport:'stdio'}) connection (2025- or
+  // 2026-era, decided by serveStdio's opening handshake). Null unless serving stdio.
+  private _stdioServer: Server | null = null
+  private _stdioHandle: { close(): Promise<void> } | null = null
+  // Modern (2026-07-28) HTTP handler — one per FastMCP instance, lazily created.
+  // Builds a fresh Server (via _makeServer) per request; see createMcpHandler.
+  private _modernHandler: McpHttpHandler | null = null
 
   private _toolRegisteredCallbacks: Array<(tool: RegisteredTool) => void> = []
   private _resourceRegisteredCallbacks: Array<(resource: RegisteredResource) => void> = []
@@ -232,6 +262,7 @@ export class FastMCP {
     this._promptsPageSize = options.promptsPageSize ?? 50
     this._middleware = options.middleware ? [...options.middleware] : []
     this._transforms = options.transforms ? [...options.transforms] : []
+    this._cacheHints = options.cacheHints
     this._primaryServer = this._makeServer()
   }
 
@@ -254,7 +285,10 @@ export class FastMCP {
     const extensions = this._hasUiComponents() ? { [UI_EXTENSION_KEY]: {} } : undefined
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {}, ...(extensions ? { extensions } : {}) } },
+      {
+        capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {}, ...(extensions ? { extensions } : {}) },
+        ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
+      },
     )
     for (const mw of this._middleware) mw.setup?.(server)
     this._setupHandlers(server, state)
@@ -268,7 +302,7 @@ export class FastMCP {
   private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
     server.setRequestHandler('tools/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, String(sdkCtx.mcpReq.id), undefined, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
           const clientIsUiCapable = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
@@ -376,13 +410,7 @@ export class FastMCP {
       const synthTool = synthesizedList.find((s) => s.name === requestedName)
       if (synthTool) {
         if (synthTool.auth) await runAuthCheck(synthTool.auth, token)
-        const ctx = createContext(
-          server,
-          String(sdkCtx.mcpReq.id),
-          (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)?.progressToken,
-          token,
-          sessionState,
-        )
+        const ctx = createContext(server, sdkCtx, token, sessionState)
         try {
           return await contextStore.run(ctx, () =>
             runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
@@ -436,13 +464,7 @@ export class FastMCP {
 
       const resolvedTool = tool
       const rawArgs: unknown = req.params.arguments ?? {}
-      const ctx = createContext(
-        server,
-        String(sdkCtx.mcpReq.id),
-        (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)?.progressToken,
-        token,
-        sessionState,
-      )
+      const ctx = createContext(server, sdkCtx, token, sessionState)
 
       try {
         return await contextStore.run(ctx, () =>
@@ -489,7 +511,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, String(sdkCtx.mcpReq.id), undefined, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
           const allVisible = (
@@ -541,7 +563,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/templates/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, String(sdkCtx.mcpReq.id), undefined, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
@@ -639,13 +661,7 @@ export class FastMCP {
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(
-        server,
-        String(sdkCtx.mcpReq.id),
-        (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)?.progressToken,
-        token,
-        sessionState,
-      )
+      const ctx = createContext(server, sdkCtx, token, sessionState)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
@@ -673,7 +689,7 @@ export class FastMCP {
 
     server.setRequestHandler('prompts/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, String(sdkCtx.mcpReq.id), undefined, token, sessionState)
+      const ctx = createContext(server, sdkCtx, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
           const allVisible = (
@@ -751,13 +767,7 @@ export class FastMCP {
         }
       }
 
-      const ctx = createContext(
-        server,
-        String(sdkCtx.mcpReq.id),
-        (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)?.progressToken,
-        token,
-        sessionState,
-      )
+      const ctx = createContext(server, sdkCtx, token, sessionState)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/get', req.params, ctx, async () => {
@@ -786,13 +796,19 @@ export class FastMCP {
 
   private _notifyToolListChanged(): void {
     this._primaryServer.sendToolListChanged().catch(() => {})
+    this._stdioServer?.sendToolListChanged().catch(() => {})
     for (const { server } of this._sessions.values()) {
       server.sendToolListChanged().catch(() => {})
     }
+    // NOTE: modern (2026-07-28) HTTP requests are stateless per-request — there is no
+    // live connection to push an unsolicited notification to. list_changed delivery for
+    // modern HTTP clients goes through subscriptions/listen (this._modernHandler.notify),
+    // which lands in W3.
   }
 
   private _notifyResourceListChanged(): void {
     this._primaryServer.sendResourceListChanged().catch(() => {})
+    this._stdioServer?.sendResourceListChanged().catch(() => {})
     for (const { server } of this._sessions.values()) {
       server.sendResourceListChanged().catch(() => {})
     }
@@ -800,6 +816,7 @@ export class FastMCP {
 
   private _notifyPromptListChanged(): void {
     this._primaryServer.sendPromptListChanged().catch(() => {})
+    this._stdioServer?.sendPromptListChanged().catch(() => {})
     for (const { server } of this._sessions.values()) {
       server.sendPromptListChanged().catch(() => {})
     }
@@ -1276,8 +1293,20 @@ export class FastMCP {
     const path = options?.path ?? process.env.MCP_PATH ?? '/mcp'
 
     if (transport === 'stdio') {
-      const { StdioServerTransport } = await import('@modelcontextprotocol/server/stdio')
-      await this.connect(new StdioServerTransport(options?.stdin, options?.stdout))
+      const { StdioServerTransport, serveStdio } = await import('@modelcontextprotocol/server/stdio')
+      const stdioTransport = new StdioServerTransport(options?.stdin, options?.stdout)
+      // serveStdio owns the connection's era decision (from the opening exchange) and
+      // pins one instance from the factory for the connection's lifetime — unlike
+      // connect(), which is always 2025-era (used by in-process/test transports).
+      // The factory may be invoked twice (a discarded server/discover probe instance,
+      // then the real pinned one); _stdioServer always ends up holding the latter.
+      this._stdioHandle = serveStdio(
+        () => {
+          this._stdioServer = this._makeServer(new Map())
+          return this._stdioServer
+        },
+        { transport: stdioTransport },
+      )
     } else if (this._oauth) {
       await this._runHttpOAuth(port, host, path)
     } else {
@@ -1285,10 +1314,94 @@ export class FastMCP {
     }
   }
 
+  /** Lazily builds the modern (2026-07-28) HTTP handler. One per FastMCP instance;
+   * builds a fresh Server (via _makeServer) per request, matching createMcpHandler's
+   * per-request-factory model. Modern-only (legacy: 'reject') — legacy (2025-era)
+   * traffic is routed to the existing sessionful transport by _dispatchHttp instead
+   * of createMcpHandler's own stateless legacy fallback, so session state and the
+   * legacy server-initiated-request shim keep working for 2025-era clients. */
+  private _getModernHandler(): McpHttpHandler {
+    if (!this._modernHandler) {
+      this._modernHandler = createMcpHandler(() => this._makeServer(new Map()), { legacy: 'reject' })
+    }
+    return this._modernHandler
+  }
+
+  /**
+   * Dual-era HTTP dispatch shared by the OAuth and non-OAuth serve paths. Assumes CORS
+   * and auth have already been handled by the caller (req.auth already set, if any —
+   * both the legacy transport and the modern handler read it as pass-through authInfo).
+   */
+  private async _dispatchHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const { toNodeHandler, toWebRequest } = await import('@modelcontextprotocol/node')
+
+    // Drains the raw Node req stream and builds a web-standard Request from the
+    // buffered bytes; req cannot be re-read as a stream after this.
+    const request = await toWebRequest(req)
+
+    if (req.method === 'POST' && !isJsonContentType(request.headers.get('content-type'))) {
+      res
+        .writeHead(415, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ error: 'Unsupported Media Type: expected application/json' }))
+      return
+    }
+
+    // No parsedBody passed here, so isLegacyRequest reads from an internal clone —
+    // `request` itself stays fully unread, so we can still read its body below.
+    const legacy = await isLegacyRequest(request)
+
+    const parsedBody = req.method === 'POST' ? await request.json().catch(() => undefined) : undefined
+
+    if (legacy) {
+      await this._dispatchLegacyHttp(req, res, parsedBody)
+    } else {
+      await toNodeHandler(this._getModernHandler())(req, res, parsedBody)
+    }
+  }
+
+  /** Existing sessionful Streamable HTTP handling for 2025-era clients — unchanged
+   * behavior from before the dual-era split, just shared between the OAuth and
+   * non-OAuth serve paths instead of duplicated. */
+  private async _dispatchLegacyHttp(
+    req: IncomingMessage,
+    res: ServerResponse,
+    parsedBody: unknown,
+  ): Promise<void> {
+    const { NodeStreamableHTTPServerTransport } = await import('@modelcontextprotocol/node')
+    const sessionId = req.headers['mcp-session-id'] as string | undefined
+    let mcpTransport: NodeStreamableHTTPServerTransport
+
+    if (sessionId) {
+      const existing = this._sessions.get(sessionId)
+      if (!existing) {
+        res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Session not found' }))
+        return
+      }
+      mcpTransport = existing.transport
+    } else {
+      const sessionState = new Map<string, unknown>()
+      const sessionServer = this._makeServer(sessionState)
+      mcpTransport = new NodeStreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (id) => {
+          this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
+        },
+        onsessionclosed: (id) => {
+          const session = this._sessions.get(id)
+          if (session) {
+            const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
+            for (const cb of callbacks) cb()
+          }
+          this._sessions.delete(id)
+        },
+      })
+      await sessionServer.connect(mcpTransport)
+    }
+
+    await mcpTransport.handleRequest(req, res, parsedBody)
+  }
+
   private async _runHttpOAuth(port: number, host: string, path: string): Promise<void> {
-    const { NodeStreamableHTTPServerTransport } = await import(
-      '@modelcontextprotocol/node'
-    )
     const express = (await import('express')).default
     const { mcpAuthRouter } = await import('@modelcontextprotocol/server-legacy/auth')
     const { requireBearerAuth } = await import(
@@ -1316,42 +1429,13 @@ export class FastMCP {
       }),
     )
 
-    // MCP endpoint — protected by bearer auth
+    // MCP endpoint — protected by bearer auth; requireBearerAuth sets req.auth, which
+    // both the legacy transport and the modern handler read as pass-through authInfo.
     app.all(
       path,
       requireBearerAuth({ verifier: oauth.provider }),
-      async (req, res, _next) => {
-        const sessionId = req.headers['mcp-session-id'] as string | undefined
-        let mcpTransport: NodeStreamableHTTPServerTransport
-
-        if (sessionId) {
-          const existing = this._sessions.get(sessionId)
-          if (!existing) {
-            res.status(404).json({ error: 'Session not found' })
-            return
-          }
-          mcpTransport = existing.transport
-        } else {
-          const sessionState = new Map<string, unknown>()
-          const sessionServer = this._makeServer(sessionState)
-          mcpTransport = new NodeStreamableHTTPServerTransport({
-            sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => {
-              this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
-            },
-            onsessionclosed: (id) => {
-              const session = this._sessions.get(id)
-              if (session) {
-                const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
-                for (const cb of callbacks) cb()
-              }
-              this._sessions.delete(id)
-            },
-          })
-          await sessionServer.connect(mcpTransport)
-        }
-
-        await mcpTransport.handleRequest(req, res)
+      async (req, res) => {
+        await this._dispatchHttp(req, res)
       },
     )
 
@@ -1360,9 +1444,6 @@ export class FastMCP {
   }
 
   private async _runHttpSimple(port: number, host: string, path: string): Promise<void> {
-    const { NodeStreamableHTTPServerTransport } = await import(
-      '@modelcontextprotocol/node'
-    )
     const { createServer } = await import('node:http')
 
     const auth = this._auth
@@ -1370,7 +1451,14 @@ export class FastMCP {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
+      // Mcp-Session-Id: legacy (2025-era) session routing, still served alongside
+      // modern traffic. MCP-Protocol-Version/Mcp-Method/Mcp-Name: required standard
+      // headers for 2026-07-28 requests (SEP-2243). Mcp-Param-* (tool-argument
+      // mirroring) is deliberately not listed: browser clients skip that mirroring
+      // entirely (dynamically named headers cannot be statically allow-listed for
+      // credentialed CORS), so no browser ever needs to send it.
+      'Access-Control-Allow-Headers':
+        'Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name',
     }
 
     const httpServer = createServer(async (req, res) => {
@@ -1423,40 +1511,7 @@ export class FastMCP {
         }
       }
 
-      // Session routing: each client connection gets its own transport + server
-      const sessionId = req.headers['mcp-session-id'] as string | undefined
-      let mcpTransport: NodeStreamableHTTPServerTransport
-
-      if (sessionId) {
-        const existing = this._sessions.get(sessionId)
-        if (!existing) {
-          res
-            .writeHead(404, { 'Content-Type': 'application/json' })
-            .end(JSON.stringify({ error: 'Session not found' }))
-          return
-        }
-        mcpTransport = existing.transport
-      } else {
-        const sessionState = new Map<string, unknown>()
-        const sessionServer = this._makeServer(sessionState)
-        mcpTransport = new NodeStreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (id) => {
-            this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
-          },
-          onsessionclosed: (id) => {
-            const session = this._sessions.get(id)
-            if (session) {
-              const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
-              for (const cb of callbacks) cb()
-            }
-            this._sessions.delete(id)
-          },
-        })
-        await sessionServer.connect(mcpTransport)
-      }
-
-      await mcpTransport.handleRequest(req, res)
+      await this._dispatchHttp(req, res)
     })
 
     this._httpServer = httpServer
@@ -1478,6 +1533,17 @@ export class FastMCP {
       [...this._sessions.values()].map(({ transport }) => transport.close().catch(() => {})),
     )
     this._sessions.clear()
+
+    if (this._modernHandler) {
+      await this._modernHandler.close()
+      this._modernHandler = null
+    }
+
+    if (this._stdioHandle) {
+      await this._stdioHandle.close()
+      this._stdioHandle = null
+      this._stdioServer = null
+    }
 
     if (this._httpServer) {
       await new Promise<void>((resolve, reject) => {

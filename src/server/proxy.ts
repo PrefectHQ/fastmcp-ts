@@ -52,13 +52,9 @@ export async function buildProxyFromClient(
   const lastSync = { tools: 0, resources: 0, prompts: 0 }
 
   async function resyncTools(): Promise<void> {
-    const tools: Awaited<ReturnType<typeof client.listTools>>['tools'] = []
-    let cursor: string | undefined
-    do {
-      const page = await client.listTools({ cursor })
-      tools.push(...page.tools)
-      cursor = page.nextCursor
-    } while (cursor)
+    // client.listTools() with no cursor auto-aggregates every page for us (v2 SDK
+    // behavior — see ClientOptions.listMaxPages, default cap 64 pages).
+    const { tools } = await client.listTools()
 
     const incoming = new Set(tools.map((t) => t.name))
 
@@ -101,13 +97,8 @@ export async function buildProxyFromClient(
     const incoming = new Set<string>()
 
     try {
-      const resources: Awaited<ReturnType<typeof client.listResources>>['resources'] = []
-      let cursor: string | undefined
-      do {
-        const page = await client.listResources({ cursor })
-        resources.push(...page.resources)
-        cursor = page.nextCursor
-      } while (cursor)
+      // client.listResources() with no cursor auto-aggregates every page for us.
+      const { resources } = await client.listResources()
 
       for (const resource of resources) {
         incoming.add(resource.uri)
@@ -139,13 +130,8 @@ export async function buildProxyFromClient(
     }
 
     try {
-      const resourceTemplates: Awaited<ReturnType<typeof client.listResourceTemplates>>['resourceTemplates'] = []
-      let templateCursor: string | undefined
-      do {
-        const page = await client.listResourceTemplates({ cursor: templateCursor })
-        resourceTemplates.push(...page.resourceTemplates)
-        templateCursor = page.nextCursor
-      } while (templateCursor)
+      // client.listResourceTemplates() with no cursor auto-aggregates every page for us.
+      const { resourceTemplates } = await client.listResourceTemplates()
 
       for (const template of resourceTemplates) {
         const uriTemplate = template.uriTemplate
@@ -192,13 +178,8 @@ export async function buildProxyFromClient(
   }
 
   async function resyncPrompts(): Promise<void> {
-    const prompts: Awaited<ReturnType<typeof client.listPrompts>>['prompts'] = []
-    let cursor: string | undefined
-    do {
-      const page = await client.listPrompts({ cursor })
-      prompts.push(...page.prompts)
-      cursor = page.nextCursor
-    } while (cursor)
+    // client.listPrompts() with no cursor auto-aggregates every page for us.
+    const { prompts } = await client.listPrompts()
 
     const incoming = new Set(prompts.map((p) => p.name))
 

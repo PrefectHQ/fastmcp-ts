@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { Server } from '@modelcontextprotocol/server'
+import type { Server, ServerContext } from '@modelcontextprotocol/server'
 import type { AccessToken } from './auth/types'
 
 // ---------------------------------------------------------------------------
@@ -171,25 +171,32 @@ export const SESSION_CLOSE_CALLBACKS_KEY = '__fastmcp_session_close_callbacks'
 /**
  * Builds a McpContext for a single request.
  *
- * @param server      The SDK Server instance for this session.
- * @param requestId   The MCP request ID from the incoming message.
- * @param progressToken  The progress token from `req.params._meta.progressToken`, if any.
- * @param auth        The verified access token, if any.
+ * @param server   The SDK Server instance for this session.
+ * @param sdkCtx   The SDK's own per-request ServerContext (the second argument passed to
+ *                 every `server.setRequestHandler` callback). Supplies the request ID,
+ *                 progress token, and — critically — `mcpReq.log` / `mcpReq.notify`, which
+ *                 route era-appropriately: on a legacy (2025-era) connection they behave
+ *                 exactly like the old `server.sendLoggingMessage` / `server.notification`
+ *                 push; on a modern (2026-07-28) request, logging is gated on the
+ *                 per-request `_meta` `logLevel` envelope key (absent = suppressed, not
+ *                 unfiltered — see `ctx.log`'s own docs) and progress/related messages are
+ *                 correctly attached to the current request's response (single JSON body
+ *                 or SSE stream) rather than pushed as a request-agnostic notification.
+ * @param auth     The verified access token, if any.
  * @param sessionState  The per-session state Map (shared across requests in the same session).
  */
 export function createContext(
   server: Server,
-  requestId: string | undefined,
-  progressToken: string | number | undefined,
+  sdkCtx: ServerContext,
   auth: AccessToken | undefined,
   sessionState: Map<string, unknown>,
 ): McpContext {
+  const requestId = String(sdkCtx.mcpReq.id)
+  const progressToken = (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)
+    ?.progressToken
+
   async function log(level: LogLevel, message: string, loggerName?: string): Promise<void> {
-    await server.sendLoggingMessage({
-      level,
-      data: message,
-      ...(loggerName !== undefined ? { logger: loggerName } : {}),
-    })
+    await sdkCtx.mcpReq.log(level, message, loggerName)
   }
 
   return {
@@ -208,7 +215,7 @@ export function createContext(
 
     async reportProgress(progress, total, message) {
       if (progressToken === undefined) return
-      await server.notification({
+      await sdkCtx.mcpReq.notify({
         method: 'notifications/progress',
         params: {
           progressToken,

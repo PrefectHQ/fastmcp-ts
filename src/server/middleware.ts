@@ -235,6 +235,16 @@ export class ErrorNormalizationMiddleware implements Middleware {
 /**
  * Intercepts `notifications/cancelled` from the client and aborts the matching
  * in-flight handler via Promise.race + AbortController.
+ *
+ * KNOWN GAP (2026-07-28): this only covers legacy (2025-era) and stdio cancellation.
+ * On a modern Streamable HTTP connection, the SDK signals cancellation by closing the
+ * request's response stream rather than sending `notifications/cancelled` — the client
+ * is correctly told the call was cancelled either way, but a handler registered here
+ * keeps running server-side to completion on the modern path, since this middleware
+ * never observes that stream closure. The SDK exposes it per-request as
+ * `ctx.mcpReq.signal` (a `BaseContext` field, present on every era) — unifying this
+ * middleware with that signal (so long-running handlers actually stop executing on
+ * both eras) is tracked as follow-up work, not yet implemented here.
  */
 export class CancellationMiddleware implements Middleware {
   private readonly _inFlight = new Map<string, AbortController>()

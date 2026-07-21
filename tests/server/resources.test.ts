@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { ProtocolError } from '@modelcontextprotocol/client'
 import { FastMCP, ResourceResult } from 'fastmcp-ts/server'
 import { createTestClient } from '../helpers/createTestClient'
 
@@ -347,6 +348,21 @@ describe('Server — Resources', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         await expect(client.readResource({ uri: 'unknown://nope' })).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+
+    it('reading an unknown URI fails with -32602 (Invalid Params), not -32002', async () => {
+      // SEP-2164 (2026-07-28): the resource-not-found error code moves from the
+      // MCP-custom -32002 to the JSON-RPC standard -32602 Invalid Params — the URI
+      // is a request parameter, not an unknown method.
+      const mcp = new FastMCP({ name: 'test' })
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const error = await client.readResource({ uri: 'unknown://nope' }).catch((e: unknown) => e)
+        expect(error).toBeInstanceOf(ProtocolError)
+        expect((error as ProtocolError).code).toBe(-32602)
       } finally {
         await close()
       }

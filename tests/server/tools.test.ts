@@ -183,6 +183,30 @@ describe('Server — Tools', () => {
     })
   })
 
+  describe('ordering', () => {
+    it('tools/list returns tools in registration order, deterministically, across repeated calls', async () => {
+      // The 2026-07-28 spec: servers SHOULD return tools/list in a deterministic
+      // order to enable client-side caching and improve LLM prompt cache hit rates.
+      // Registration order relies on Map iteration order (insertion order in JS),
+      // which is not itself spec-mandated behavior — this test pins it down as a
+      // regression guard.
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'zebra', description: 'test tool' }, () => 1)
+      mcp.tool({ name: 'apple', description: 'test tool' }, () => 2)
+      mcp.tool({ name: 'mango', description: 'test tool' }, () => 3)
+
+      const { client, close } = await setup(mcp)
+      try {
+        const first = await client.listTools()
+        const second = await client.listTools()
+        expect(first.tools.map((t) => t.name)).toEqual(['zebra', 'apple', 'mango'])
+        expect(second.tools.map((t) => t.name)).toEqual(['zebra', 'apple', 'mango'])
+      } finally {
+        await close()
+      }
+    })
+  })
+
   describe('execution', () => {
     it('a synchronous handler executes and returns its result to the client', async () => {
       const mcp = new FastMCP({ name: 'test' })
