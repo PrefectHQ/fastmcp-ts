@@ -1,5 +1,6 @@
 import type { LoggingLevel, RequestOptions as SdkRequestOptions } from "@modelcontextprotocol/server";
 import { Client as SdkClient } from '@modelcontextprotocol/client'
+import type { McpSubscription } from '@modelcontextprotocol/client'
 import type { BearerAuth, OAuth, ClientCredentials } from './auth.js'
 import type { ClientHandlers, LogHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
@@ -53,6 +54,11 @@ export class MultiServerClient implements IClient {
   private readonly _roots: string[] | undefined
   private readonly _defaultOptions: ClientDefaultOptions
   private _resourceSubscriptions: Map<string, ResourceUpdateHandler> = new Map()
+  /** Modern-era (2026-07-28) subscriptions/listen streams, one per server that
+   * currently has active resource subscriptions — see Client's own field of the
+   * same purpose for the full rationale. Keyed by server name since each
+   * connected server negotiates its own era independently. */
+  private _resourceListenSubscriptions: Map<string, McpSubscription> = new Map()
 
   constructor(config: McpConfig, options?: MultiServerOptions) {
     this._config = config
@@ -120,6 +126,12 @@ export class MultiServerClient implements IClient {
     if (!this._connected) return
     this._connected = false
     this._uriMap.clear()
+    // Close explicitly (and first) so each closure reason is 'local', not 'remote' —
+    // see Client.close()'s equivalent ordering for the full rationale.
+    await Promise.allSettled(
+      [...this._resourceListenSubscriptions.values()].map((sub) => sub.close()),
+    )
+    this._resourceListenSubscriptions.clear()
     await Promise.allSettled([...this._clients.values()].map((sdk) => sdk.close()))
     this._clients.clear()
   }
@@ -330,6 +342,8 @@ export class MultiServerClient implements IClient {
   // Resource subscriptions
   // -------------------------------------------------------------------------
 
+  /** See Client.subscribeResource's docs — the same era-routing applies here,
+   * per server, since each connected server negotiates its own era. */
   async subscribeResource(
     uri: string,
     handler: ResourceUpdateHandler,
@@ -339,19 +353,31 @@ export class MultiServerClient implements IClient {
     this._resourceSubscriptions.set(uri, handler)
     const serverName = this._uriMap.get(uri)
     if (serverName) {
-      await this._clients.get(serverName)!.subscribeResource(
-        { uri },
-        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
-      )
+      const sdk = this._clients.get(serverName)!
+      if (sdk.getProtocolEra() === 'modern') {
+        await this._refreshResourceListenSubscriptionForServer(serverName)
+      } else {
+        await sdk.subscribeResource(
+          { uri },
+          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+        )
+      }
       return
     }
+    // Fallback: the URI's owning server isn't known yet (listResources() was never
+    // called). Only legacy-era servers can be probed this way — the validating
+    // resources/subscribe RPC either succeeds (that server owns the URI) or throws;
+    // listen() has no equivalent per-URI validation, so a modern-era server can't be
+    // ruled in or out by trying it, and is skipped in this fallback.
     const errors: unknown[] = []
-    for (const sdk of this._clients.values()) {
+    for (const [name, sdk] of this._clients) {
+      if (sdk.getProtocolEra() === 'modern') continue
       try {
         await sdk.subscribeResource(
           { uri },
           this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
         )
+        this._uriMap.set(uri, name)
         return
       } catch (err) {
         errors.push(err)
@@ -365,20 +391,52 @@ export class MultiServerClient implements IClient {
     this._resourceSubscriptions.delete(uri)
     const serverName = this._uriMap.get(uri)
     if (serverName) {
-      await this._clients.get(serverName)!.unsubscribeResource(
-        { uri },
-        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
-      )
+      const sdk = this._clients.get(serverName)!
+      if (sdk.getProtocolEra() === 'modern') {
+        await this._refreshResourceListenSubscriptionForServer(serverName)
+      } else {
+        await sdk.unsubscribeResource(
+          { uri },
+          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+        )
+      }
       return
     }
     await Promise.allSettled(
-      [...this._clients.values()].map((sdk) =>
-        sdk.unsubscribeResource(
-          { uri },
-          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      [...this._clients.values()]
+        .filter((sdk) => sdk.getProtocolEra() !== 'modern')
+        .map((sdk) =>
+          sdk.unsubscribeResource(
+            { uri },
+            this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+          ),
         ),
-      ),
     )
+  }
+
+  /** Re-opens server-scoped listen stream for its currently-subscribed URIs — see
+   * Client's own private method of the same purpose for the full rationale. */
+  private async _refreshResourceListenSubscriptionForServer(serverName: string): Promise<void> {
+    const existing = this._resourceListenSubscriptions.get(serverName)
+    if (existing) {
+      await existing.close()
+      this._resourceListenSubscriptions.delete(serverName)
+    }
+    const uris = [...this._resourceSubscriptions.keys()].filter(
+      (uri) => this._uriMap.get(uri) === serverName,
+    )
+    if (uris.length === 0) return
+
+    const sdk = this._clients.get(serverName)!
+    const subscription = await sdk.listen({ resourceSubscriptions: uris })
+    this._resourceListenSubscriptions.set(serverName, subscription)
+
+    void subscription.closed.then((reason) => {
+      if (reason === 'remote' && this._resourceListenSubscriptions.get(serverName) === subscription) {
+        this._resourceListenSubscriptions.delete(serverName)
+        void this._refreshResourceListenSubscriptionForServer(serverName).catch(() => {})
+      }
+    })
   }
 
   // -------------------------------------------------------------------------

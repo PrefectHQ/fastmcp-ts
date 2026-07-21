@@ -300,16 +300,58 @@ Each workstream owns its own doc updates (see W10 for the cross-cutting docs pas
   4. A tampered `requestState` is rejected with the frozen `-32602` error
      (`"Invalid or expired requestState"`) before the handler ever runs.
 
-### W3 — Notifications & subscriptions
+### W3 — Notifications & subscriptions ✅ (done, committed on this branch)
 
-- [ ] Server: route `_notify*ListChanged` to `handler.notify.{toolsChanged,…}` (modern) and
-  existing notifications (legacy); `resourceUpdated(uri)`; expose a `ServerEventBus` option
-  for multi-process deployments.
-- [ ] Client: era-route `subscribeResource`/`unsubscribeResource` (legacy RPCs vs
-  `subscriptions/listen` `resourceSubscriptions` filter); list-changed handlers via
-  `ClientOptions.listChanged`; keep `autoRefresh`/`debounceMs`; handle
-  `McpSubscription.closed` (`'graceful'` vs `'remote'` + re-listen)
-  (src/client/client.ts:377–513, src/client/multi-server.ts:345–517).
+- [x] Server: `_notifyToolListChanged`/`_notifyResourceListChanged`/`_notifyPromptListChanged`
+  now also call `this._modernHandler?.notify.{toolsChanged,resourcesChanged,promptsChanged}()`
+  alongside the existing legacy/stdio push (optional chaining — a no-op, not a forced
+  creation, until the first modern HTTP request actually builds the handler). Added
+  `FastMCPOptions.eventBus` (`ServerEventBus`, re-exported from `fastmcp-ts/server`),
+  threaded into `createMcpHandler`'s own `bus` option, for multi-process deployments
+  where a `subscriptions/listen` stream and the request that changed the list it cares
+  about may land on different processes.
+  **`resourceUpdated(uri)` intentionally not wired to anything** — confirmed by grep
+  and by three pre-existing `it.todo(...)` markers in `tests/server/resources.test.ts`
+  that FastMCP's own server has never implemented `resources/subscribe`/`unsubscribe`
+  at all (a separately-tracked feature gap, unrelated to the protocol migration). The
+  plumbing (`_modernHandler.notify.resourceUpdated`) is ready for whenever that lands.
+- [x] Client: `subscribeResource`/`unsubscribeResource` era-routed in both `Client`
+  (src/client/client.ts) and `MultiServerClient` (src/client/multi-server.ts, per
+  server — each connected server negotiates its own era independently). Legacy era:
+  unchanged `resources/subscribe`/`unsubscribe` RPCs. Modern era: maintains one
+  `McpSubscription` (`client.listen({ resourceSubscriptions: [...] })`) per
+  subscribed-URI-set, re-opening (`listen()` has no in-place filter update) on every
+  subscribe/unsubscribe. `McpSubscription.closed` is handled: `'remote'` (unexpected
+  disconnect) triggers an automatic re-listen; `'graceful'` (deliberate server-side
+  close) and `'local'` (our own close, including `Client.close()`/`MultiServerClient.close()`
+  itself, reordered to close the listen subscription first) are respected with no
+  action. **`ClientOptions.listChanged` needed no changes at all** — it was already
+  implemented (`_buildListChangedConfig()` already existed and was already passed to
+  the SDK client constructor), and its shape already matched our own
+  `ListChangedHandler<T>` field-for-field, so it was already era-transparent before
+  this workstream started.
+  **`MultiServerClient`'s existing gap not addressed**: it never wired
+  `onToolsListChanged`/`onResourcesListChanged`/`onPromptsListChanged` at all (only
+  `log`/`progress`/`sampling`/`elicitation`) — a pre-existing limitation, not something
+  this workstream introduced or was asked to fix.
+  **Scope note — pulled forward from W7**: testing the modern-era client code above
+  required `ClientOptions.versionNegotiation` passthrough and a public `getProtocolEra()`
+  on `Client`, which didn't exist yet (explicitly W7 scope). Added the minimal slice
+  needed to make this workstream testable; the rest of W7 (SSE fallback posture,
+  in-process modern transport, response cache, `MultiServerClient` per-entry
+  `versionNegotiation`, era-aware `ping`/`setLogLevel`) remains for that workstream.
+- [x] Tests: `tests/server/subscriptions.test.ts` (new, 4 tests) — modern clients receive
+  `list_changed` for tools/resources/prompts registered after connecting, plus a custom
+  `FastMCPOptions.eventBus` observing published events (the multi-process hook).
+  `tests/client/subscriptions.test.ts` extended with a modern-era describe block
+  (4 new tests, mirroring the 4 existing legacy ones) — since FastMCP doesn't implement
+  server-side resource subscriptions (see above) and `InMemoryTransport` pairs are
+  2025-era only, these exercise the client against a hand-built `createMcpHandler`
+  server, the same way the existing legacy tests exercise it against a hand-built
+  `Server`. Discovered along the way: the modern listen router only honors a
+  `resourceSubscriptions` filter entry when the server's capabilities declare
+  `resources.subscribe: true` — the same flag the legacy RPC path gates on, just
+  consulted by a different mechanism now.
 
 ### W4 — Apps / extensions
 

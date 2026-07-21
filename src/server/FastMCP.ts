@@ -1,7 +1,7 @@
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
 import { ProtocolError, ProtocolErrorCode, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec } from "@modelcontextprotocol/server";
-import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, CacheHint, RequestStateCodec, ServerContext } from "@modelcontextprotocol/server";
+import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
 
 // Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
 // mirrors its CACHEABLE_RESULT_METHODS literal union (SEP-2549 cacheable operations).
@@ -123,6 +123,16 @@ export interface FastMCPOptions {
      * request fails loudly instead of being bridged. Default: true. */
     legacyShim?: boolean
   }
+  /**
+   * The change-event bus modern (2026-07-28) `subscriptions/listen` streams
+   * subscribe to, and `tool()`/`resource()`/`prompt()` registration publishes
+   * change events onto. Defaults to an in-process bus, which is correct for a
+   * single server process. Supply your own `ServerEventBus` implementation over a
+   * shared pub/sub backend (e.g. Redis) for a horizontally-scaled deployment,
+   * where a `subscriptions/listen` stream and the request that changed the list it
+   * cares about may land on different processes.
+   */
+  eventBus?: ServerEventBus
 }
 
 export interface RunOptions {
@@ -271,6 +281,7 @@ export class FastMCP {
   private _cacheHints: Partial<Record<CacheableResultMethod, CacheHint>> | undefined
   private _requestStateCodec: RequestStateCodec | undefined
   private _inputRequiredOptions: FastMCPOptions['inputRequired']
+  private _eventBus: ServerEventBus | undefined
   private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
@@ -306,6 +317,7 @@ export class FastMCP {
       ? createRequestStateCodec(options.requestState)
       : undefined
     this._inputRequiredOptions = options.inputRequired
+    this._eventBus = options.eventBus
     this._primaryServer = this._makeServer()
   }
 
@@ -847,10 +859,14 @@ export class FastMCP {
     for (const { server } of this._sessions.values()) {
       server.sendToolListChanged().catch(() => {})
     }
-    // NOTE: modern (2026-07-28) HTTP requests are stateless per-request — there is no
-    // live connection to push an unsolicited notification to. list_changed delivery for
-    // modern HTTP clients goes through subscriptions/listen (this._modernHandler.notify),
-    // which lands in W3.
+    // Modern (2026-07-28) HTTP requests are stateless per-request — there is no live
+    // connection to push an unsolicited notification to. Delivery for subscribed
+    // modern clients instead goes through the shared modern handler's own
+    // subscriptions/listen bus (see _getModernHandler / FastMCPOptions.eventBus).
+    // Optional chaining: a no-op until the first modern HTTP request creates the
+    // handler — nothing to notify before then, so there is no reason to force it
+    // into existence just to publish to an empty bus.
+    this._modernHandler?.notify.toolsChanged()
   }
 
   private _notifyResourceListChanged(): void {
@@ -859,6 +875,7 @@ export class FastMCP {
     for (const { server } of this._sessions.values()) {
       server.sendResourceListChanged().catch(() => {})
     }
+    this._modernHandler?.notify.resourcesChanged()
   }
 
   private _notifyPromptListChanged(): void {
@@ -867,6 +884,7 @@ export class FastMCP {
     for (const { server } of this._sessions.values()) {
       server.sendPromptListChanged().catch(() => {})
     }
+    this._modernHandler?.notify.promptsChanged()
   }
 
   // Overload: typed handler inferred from input schema
@@ -1376,7 +1394,10 @@ export class FastMCP {
    * legacy server-initiated-request shim keep working for 2025-era clients. */
   private _getModernHandler(): McpHttpHandler {
     if (!this._modernHandler) {
-      this._modernHandler = createMcpHandler(() => this._makeServer(new Map()), { legacy: 'reject' })
+      this._modernHandler = createMcpHandler(() => this._makeServer(new Map()), {
+        legacy: 'reject',
+        ...(this._eventBus ? { bus: this._eventBus } : {}),
+      })
     }
     return this._modernHandler
   }

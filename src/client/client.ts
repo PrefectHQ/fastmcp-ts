@@ -1,5 +1,5 @@
 import { UnauthorizedError, Client as SdkClient } from "@modelcontextprotocol/client";
-import type { RequestOptions as SdkRequestOptions } from "@modelcontextprotocol/client";
+import type { RequestOptions as SdkRequestOptions, McpSubscription, VersionNegotiationOptions, ProtocolEra } from "@modelcontextprotocol/client";
 import { BearerAuth, OAuth } from './auth.js'
 import type { ClientCredentials } from './auth.js'
 import type { ClientHandlers, ListChangedHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
@@ -79,6 +79,16 @@ export interface ClientOptions {
    */
   autoInitialize?: boolean
   defaultOptions?: ClientDefaultOptions
+  /**
+   * Opt-in protocol version negotiation (protocol revision 2026-07-28 and later).
+   * The default is `'legacy'`: connect() runs the plain 2025 sequence, byte-identical
+   * to today's behavior (no probe, no new headers). Pass `{ mode: 'auto' }` to probe
+   * with `server/discover` and use the modern era when the server supports it
+   * (falling back to legacy otherwise), or `{ mode: { pin: '2026-07-28' } }` to
+   * require the modern era outright. See `getProtocolEra()` to read the negotiated
+   * result after connecting.
+   */
+  versionNegotiation?: VersionNegotiationOptions
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +107,11 @@ export class Client implements IClient {
   private _refCount = 0
   private _connectPromise: Promise<void> | null = null
   private readonly _resourceSubscriptions = new Map<string, ResourceUpdateHandler>()
+  /** The modern-era (2026-07-28) `subscriptions/listen` stream backing all active
+   * resource subscriptions — resources/subscribe and resources/unsubscribe are
+   * 2025-only RPCs, physically absent from the modern method registry. Unused
+   * (stays undefined) on a legacy connection. */
+  private _resourceListenSubscription: McpSubscription | undefined
 
   private readonly _input: ClientTransportInput
   private readonly _auth: BearerAuth | OAuth | ClientCredentials | undefined
@@ -104,6 +119,7 @@ export class Client implements IClient {
     Pick<ClientHandlers, OptionalHandlerKeys>
   private readonly _roots: (() => Promise<Root[]>) | undefined
   private readonly _autoInitialize: boolean
+  private readonly _versionNegotiation: VersionNegotiationOptions | undefined
   private readonly _defaultOptions: ClientDefaultOptions
 
   constructor(input: ClientTransportInput, options?: ClientOptions) {
@@ -120,6 +136,7 @@ export class Client implements IClient {
     }
     this._roots = options?.roots ? normalizeRootsOption(options.roots) : undefined
     this._autoInitialize = options?.autoInitialize ?? true
+    this._versionNegotiation = options?.versionNegotiation
     this._defaultOptions = options?.defaultOptions ?? {}
   }
 
@@ -157,6 +174,7 @@ export class Client implements IClient {
       {
         capabilities: this._buildCapabilities(),
         listChanged: this._buildListChangedConfig(),
+        ...(this._versionNegotiation ? { versionNegotiation: this._versionNegotiation } : {}),
       },
     )
 
@@ -229,6 +247,14 @@ export class Client implements IClient {
     this._refCount = Math.max(0, this._refCount - 1)
     if (this._refCount > 0) return
 
+    // Close explicitly (and first) so its closure reason is 'local', not 'remote' —
+    // otherwise the resource-subscription robustness handler above would try to
+    // re-listen through a client that is already torn down.
+    if (this._resourceListenSubscription) {
+      await this._resourceListenSubscription.close().catch(() => {})
+      this._resourceListenSubscription = undefined
+    }
+
     const sdk = this._sdkClient
     this._sdkClient = null
     if (sdk) await sdk.close()
@@ -270,6 +296,15 @@ export class Client implements IClient {
   async ping(options?: RequestOptions): Promise<boolean> {
     await this._sdk().ping(this._toSdkOptions(options))
     return true
+  }
+
+  /**
+   * The protocol era negotiated at connect(): `'modern'` for 2026-07-28 (per-request
+   * envelope), `'legacy'` for 2025-11-25 and earlier (the `initialize` handshake).
+   * `undefined` before connect(). See `ClientOptions.versionNegotiation`.
+   */
+  getProtocolEra(): ProtocolEra | undefined {
+    return this._sdkClient?.getProtocolEra()
   }
 
   // -------------------------------------------------------------------------
@@ -362,24 +397,73 @@ export class Client implements IClient {
     )
   }
 
+  /**
+   * Subscribes to change notifications for a resource URI. `handler` fires whenever
+   * the server sends a matching update, on either protocol era: on a legacy
+   * (2025-era) connection via the `resources/subscribe` RPC and unsolicited
+   * `notifications/resources/updated` push, or on a modern (2026-07-28) connection
+   * via a `subscriptions/listen` stream opted into `resourceSubscriptions` — both
+   * dispatch to the same `notifications/resources/updated` handler registered in
+   * `_registerHandlers`, so this method is the only era-aware part.
+   */
   async subscribeResource(
     uri: string,
     handler: ResourceUpdateHandler,
     options?: RequestOptions,
   ): Promise<void> {
     this._resourceSubscriptions.set(uri, handler)
-    await this._sdk().subscribeResource(
-      { uri },
-      this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
-    )
+    if (this._sdk().getProtocolEra() === 'modern') {
+      await this._refreshResourceListenSubscription()
+    } else {
+      await this._sdk().subscribeResource(
+        { uri },
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      )
+    }
   }
 
   async unsubscribeResource(uri: string, options?: RequestOptions): Promise<void> {
     this._resourceSubscriptions.delete(uri)
-    await this._sdk().unsubscribeResource(
-      { uri },
-      this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
-    )
+    if (this._sdk().getProtocolEra() === 'modern') {
+      await this._refreshResourceListenSubscription()
+    } else {
+      await this._sdk().unsubscribeResource(
+        { uri },
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      )
+    }
+  }
+
+  /**
+   * Re-opens the modern-era resource-subscription listen stream with the current
+   * set of subscribed URIs. `listen()` has no in-place filter update, so every
+   * subscribe/unsubscribe on a modern connection closes the existing stream (if
+   * any) and opens a fresh one — `subscribeResource`/`unsubscribeResource` are not
+   * expected to be called at a high frequency, so this is not a hot path.
+   */
+  private async _refreshResourceListenSubscription(): Promise<void> {
+    if (this._resourceListenSubscription) {
+      await this._resourceListenSubscription.close()
+      this._resourceListenSubscription = undefined
+    }
+    const uris = [...this._resourceSubscriptions.keys()]
+    if (uris.length === 0) return
+
+    const subscription = await this._sdk().listen({ resourceSubscriptions: uris })
+    this._resourceListenSubscription = subscription
+
+    // Robustness: an unexpected disconnect ('remote') re-establishes the stream so
+    // resource-update delivery survives a dropped connection. A deliberate
+    // server-side close ('graceful') is respected — the server chose to end it, and
+    // re-listening would fight that decision. A close we triggered ourselves
+    // ('local' — e.g. this same method superseding it above) needs no action; the
+    // subscription-identity check also protects against acting on a stale handle.
+    void subscription.closed.then((reason) => {
+      if (reason === 'remote' && this._resourceListenSubscription === subscription) {
+        this._resourceListenSubscription = undefined
+        void this._refreshResourceListenSubscription().catch(() => {})
+      }
+    })
   }
 
   // -------------------------------------------------------------------------
