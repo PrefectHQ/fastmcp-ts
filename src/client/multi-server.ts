@@ -1,14 +1,5 @@
-import { Client as SdkClient } from '@modelcontextprotocol/sdk/client'
-import {
-  CompatibilityCallToolResultSchema,
-  LoggingMessageNotificationSchema,
-  ResourceUpdatedNotificationSchema,
-  CreateMessageRequestSchema,
-  ElicitRequestSchema,
-  ListRootsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js'
-import type { LoggingLevel } from '@modelcontextprotocol/sdk/types.js'
-
+import type { LoggingLevel, RequestOptions as SdkRequestOptions } from "@modelcontextprotocol/server";
+import { Client as SdkClient } from '@modelcontextprotocol/client'
 import type { BearerAuth, OAuth, ClientCredentials } from './auth.js'
 import type { ClientHandlers, LogHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
@@ -29,8 +20,6 @@ import type { McpConfig, McpServerValue } from './transports.js'
 import { resolveEntryTransport } from './transports.js'
 import type { ClientDefaultOptions } from './client.js'
 import { ToolCallError } from './client.js'
-import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js'
-
 // ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
@@ -215,7 +204,6 @@ export class MultiServerClient implements IClient {
     )
     const result = await sdk.callTool(
       { name: localName, arguments: args ?? {} },
-      CompatibilityCallToolResultSchema,
       sdkOptions,
     )
     return {
@@ -506,7 +494,7 @@ export class MultiServerClient implements IClient {
   }
 
   private _registerHandlers(sdk: SdkClient): void {
-    sdk.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
+    sdk.setNotificationHandler('notifications/message', (notification) => {
       void this._handlers.log({
         level: notification.params.level,
         logger: notification.params.logger ?? undefined,
@@ -514,24 +502,24 @@ export class MultiServerClient implements IClient {
       })
     })
 
-    sdk.setNotificationHandler(ResourceUpdatedNotificationSchema, (notification) => {
+    sdk.setNotificationHandler('notifications/resources/updated', (notification) => {
       const handler = this._resourceSubscriptions.get(notification.params.uri)
       if (handler) void handler(notification.params.uri)
     })
 
     if (this._handlers.sampling) {
       const h = this._handlers.sampling
-      sdk.setRequestHandler(CreateMessageRequestSchema, async (req) => h(req.params))
+      sdk.setRequestHandler('sampling/createMessage', async (req) => h(req.params))
     }
 
     if (this._handlers.elicitation) {
       const h = this._handlers.elicitation
-      sdk.setRequestHandler(ElicitRequestSchema, async (req) => h(req.params))
+      sdk.setRequestHandler('elicitation/create', async (req) => h(req.params))
     }
 
     if (this._roots) {
       const roots = this._roots
-      sdk.setRequestHandler(ListRootsRequestSchema, async () => ({
+      sdk.setRequestHandler('roots/list', async () => ({
         roots: roots.map((uri) => ({ uri })),
       }))
     }

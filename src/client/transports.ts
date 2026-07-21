@@ -1,8 +1,5 @@
-import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { InMemoryTransport, StreamableHTTPClientTransport, SSEClientTransport } from "@modelcontextprotocol/client";
+import type { OAuthClientProvider, Transport } from "@modelcontextprotocol/client";
 import { OAuth, BearerAuth, type ClientCredentials } from './auth.js'
 
 // ---------------------------------------------------------------------------
@@ -18,7 +15,7 @@ async function createStdioTransport(opts: {
   cwd?: string
 }): Promise<Transport> {
   const { StdioClientTransport } = await import(
-    '@modelcontextprotocol/sdk/client/stdio.js'
+    '@modelcontextprotocol/client/stdio'
   )
   return new StdioClientTransport(opts)
 }

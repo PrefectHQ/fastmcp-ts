@@ -26,7 +26,7 @@ const FORBIDDEN = [
   'node:tls',
   'node:path',
   'node:url',
-  '@modelcontextprotocol/sdk/client/stdio.js',
+  '@modelcontextprotocol/client/stdio',
 ]
 
 let result

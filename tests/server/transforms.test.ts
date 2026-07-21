@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { FastMCP } from '../../src/server/FastMCP'
-import { Client } from '@modelcontextprotocol/sdk/client/index'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import {
   renameTool,
   redescribeTool,

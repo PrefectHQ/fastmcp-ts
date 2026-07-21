@@ -35,7 +35,7 @@
     "node:net": false,
     "tls": false,
     "node:tls": false,
-    "@modelcontextprotocol/sdk/client/stdio.js": false
+    "@modelcontextprotocol/client/stdio": false
   },
   "sideEffects": false,
   "bin": {
@@ -126,7 +126,11 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/client": "2.0.0-beta.5",
+    "@modelcontextprotocol/core": "2.0.0-beta.5",
+    "@modelcontextprotocol/node": "2.0.0-beta.5",
+    "@modelcontextprotocol/server": "2.0.0-beta.5",
+    "@modelcontextprotocol/server-legacy": "2.0.0-beta.5",
     "@standard-schema/spec": "^1.1.0",
     "@types/express": "^5.0.6",
     "chalk": "^5.6.2",

@@ -1,21 +1,6 @@
-/**
- * Fixture HTTP MCP server for CLI integration tests.
- * Uses the MCP SDK directly with explicit .js imports so it runs cleanly
- * under `node` without a bundle step.
- *
- * Reads MCP_PORT from the environment (0 = OS-assigned ephemeral port).
- * Writes "listening on http://localhost:PORT/mcp" to stderr once ready so
- * the test harness can read the actual bound port.
- */
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { Server } from "@modelcontextprotocol/server";
 import { createServer } from 'node:http'
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListPromptsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js'
 import { randomUUID } from 'node:crypto'
 
 const port = parseInt(process.env.MCP_PORT ?? '0', 10)
@@ -30,7 +15,7 @@ function makeServer() {
     { capabilities: { tools: {}, resources: {}, prompts: {} } },
   )
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  server.setRequestHandler('tools/list', async () => ({
     tools: [
       {
         name: 'echo',
@@ -45,15 +30,15 @@ function makeServer() {
     ],
   }))
 
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  server.setRequestHandler('tools/call', async (req) => {
     const { name, arguments: args } = req.params
     if (name === 'echo') return { content: [{ type: 'text', text: String(args?.message ?? '') }] }
     if (name === 'add') return { content: [{ type: 'text', text: String(Number(args?.a ?? 0) + Number(args?.b ?? 0)) }] }
     throw new Error(`Unknown tool: ${name}`)
   })
 
-  server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [] }))
-  server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: [] }))
+  server.setRequestHandler('resources/list', async () => ({ resources: [] }))
+  server.setRequestHandler('prompts/list', async () => ({ prompts: [] }))
 
   return server
 }
@@ -67,7 +52,7 @@ const httpServer = createServer(async (req, res) => {
   if (sessionId && sessions.has(sessionId)) {
     transport = sessions.get(sessionId)
   } else {
-    transport = new StreamableHTTPServerTransport({
+    transport = new NodeStreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => sessions.set(id, transport),
       onsessionclosed: (id) => sessions.delete(id),

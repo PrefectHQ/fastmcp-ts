@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod/v4'
 import { FastMCP } from 'fastmcp-ts/server'
 import { Client, MultiServerClient } from 'fastmcp-ts/client'
-import type { TextResourceContents } from '@modelcontextprotocol/sdk/types'
+import type { TextResourceContents } from "@modelcontextprotocol/server";
 
 // ---------------------------------------------------------------------------
 // Helpers

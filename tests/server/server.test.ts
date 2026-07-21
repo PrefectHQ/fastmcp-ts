@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { PassThrough } from 'node:stream'
-import { Client } from '@modelcontextprotocol/sdk/client'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { Client } from '@modelcontextprotocol/client'
 import { FastMCP } from 'fastmcp-ts/server'
 import { contextStore } from '../../src/server/context.js'
 import { createTestClient } from '../helpers/createTestClient.js'

@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { StreamableHTTPClientTransport, SSEClientTransport, InMemoryTransport } from "@modelcontextprotocol/client";
 import { BearerAuth, OAuth } from 'fastmcp-ts/client'
 import { StdioTransport, resolveTransport } from '../../src/client/transports.js'
 

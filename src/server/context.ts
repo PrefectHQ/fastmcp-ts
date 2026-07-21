@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { Server } from '@modelcontextprotocol/sdk/server'
+import type { Server } from '@modelcontextprotocol/server'
 import type { AccessToken } from './auth/types'
 
 // ---------------------------------------------------------------------------

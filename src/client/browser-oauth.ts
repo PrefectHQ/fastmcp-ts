@@ -1,3 +1,5 @@
+import type { OAuthClientMetadata } from "@modelcontextprotocol/server";
+
 // ---------------------------------------------------------------------------
 // BrowserOAuth — OAuth authorization-code + PKCE flow for the browser.
 //
@@ -9,8 +11,6 @@
 // (redirect). Because it `instanceof OAuth`, the Client connect flow
 // (connect → waitForCallback → finishAuth → reconnect) drives it unchanged.
 // ---------------------------------------------------------------------------
-
-import type { OAuthClientMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { OAuth, type OAuthOptions } from './auth.js'
 
 /** postMessage payload sent by {@link handleOAuthCallback} back to the opener. */

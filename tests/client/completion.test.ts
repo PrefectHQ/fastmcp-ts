@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { Server } from '@modelcontextprotocol/sdk/server'
-import { CompleteRequestSchema } from '@modelcontextprotocol/sdk/types'
-import type { CompleteRequest } from '@modelcontextprotocol/sdk/types'
+import type { CompleteRequest } from "@modelcontextprotocol/server";
+import { Server } from '@modelcontextprotocol/server'
 import { Client } from 'fastmcp-ts/client'
 
 function makeCompletionServer(
@@ -11,7 +10,7 @@ function makeCompletionServer(
     { name: 'test', version: '1.0.0' },
     { capabilities: { completions: {} } },
   )
-  server.setRequestHandler(CompleteRequestSchema, async (req) => ({
+  server.setRequestHandler('completion/complete', async (req) => ({
     completion: handler(req),
   }))
   return server

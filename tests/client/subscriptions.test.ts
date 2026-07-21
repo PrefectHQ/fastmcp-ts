@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Server } from '@modelcontextprotocol/sdk/server'
-import { SubscribeRequestSchema, UnsubscribeRequestSchema } from '@modelcontextprotocol/sdk/types'
+import { Server } from '@modelcontextprotocol/server'
 import { Client } from 'fastmcp-ts/client'
 
 /** Build a minimal SDK Server that advertises resource subscription support. */
@@ -9,8 +8,8 @@ function makeSubscriptionServer() {
     { name: 'test', version: '1.0.0' },
     { capabilities: { resources: { subscribe: true } } },
   )
-  server.setRequestHandler(SubscribeRequestSchema, async () => ({}))
-  server.setRequestHandler(UnsubscribeRequestSchema, async () => ({}))
+  server.setRequestHandler('resources/subscribe', async () => ({}))
+  server.setRequestHandler('resources/unsubscribe', async () => ({}))
   return server
 }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod'
-import { McpError, ErrorCode, ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
+import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
 import { FastMCP, Image, File, ToolResult } from 'fastmcp-ts/server'
 import { createTestClient } from '../helpers/createTestClient'
 
@@ -136,13 +136,15 @@ describe('Server — Tools', () => {
 
       const { client, close } = await setup(mcp)
       try {
-        // First page
-        const page1 = await client.listTools()
+        // client.listTools() now auto-aggregates every page (v2 SDK behavior) — use
+        // the low-level request() to observe a single raw page, matching what this
+        // test is actually asserting about server-side pagination.
+        const page1 = await client.request({ method: 'tools/list', params: {} })
         expect(page1.tools.map((t) => t.name)).toEqual(['alpha', 'beta'])
         expect(page1.nextCursor).toBeDefined()
 
         // Second page
-        const page2 = await client.listTools({ cursor: page1.nextCursor! })
+        const page2 = await client.request({ method: 'tools/list', params: { cursor: page1.nextCursor! } })
         expect(page2.tools.map((t) => t.name)).toEqual(['gamma'])
         expect(page2.nextCursor).toBeUndefined()
       } finally {
@@ -306,9 +308,9 @@ describe('Server — Tools', () => {
       const { client, close } = await setup(mcp)
       try {
         const err = await client.callTool({ name: 'typed', arguments: { x: 42 } }).catch((e: unknown) => e)
-        expect(err).toBeInstanceOf(McpError)
-        expect((err as McpError).code).toBe(ErrorCode.InvalidParams)
-        expect((err as McpError).message).toMatch(/Validation failed/)
+        expect(err).toBeInstanceOf(ProtocolError)
+        expect((err as ProtocolError).code).toBe(ProtocolErrorCode.InvalidParams)
+        expect((err as ProtocolError).message).toMatch(/Validation failed/)
       } finally {
         await close()
       }
@@ -565,7 +567,7 @@ describe('Server — Tools', () => {
 
       try {
         const notified = new Promise<void>((resolve) => {
-          client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+          client.setNotificationHandler('notifications/tools/list_changed', () => {
             resolve()
           })
         })

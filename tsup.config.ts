@@ -1,5 +1,4 @@
 import { defineConfig } from 'tsup'
-import type { Plugin } from 'esbuild'
 import { readFileSync } from 'node:fs'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8')) as {
@@ -7,34 +6,15 @@ const pkg = JSON.parse(readFileSync('./package.json', 'utf8')) as {
   dependencies: Record<string, string>
 }
 
-const sdkVersion = pkg.dependencies['@modelcontextprotocol/sdk'] ?? 'unknown'
+// The v2 MCP SDK packages all share one version number during the beta
+// (see migration guide: "As of 2.0.0-beta.1 all v2 packages share one version
+// number"), so @modelcontextprotocol/server is representative of the whole set.
+const sdkVersion = pkg.dependencies['@modelcontextprotocol/server'] ?? 'unknown'
 
-// esbuild can't resolve extensionless sub-path imports from the MCP SDK.
-// The wildcard export maps './*' to './dist/esm/*' without '.js'.
-// This plugin appends '.js' to deep sub-path imports so esbuild can find them.
-const MCP_SDK_NAMED_EXPORTS = new Set([
-  '@modelcontextprotocol/sdk/client',
-  '@modelcontextprotocol/sdk/server',
-  '@modelcontextprotocol/sdk/validation',
-  '@modelcontextprotocol/sdk/validation/ajv',
-  '@modelcontextprotocol/sdk/validation/cfworker',
-  '@modelcontextprotocol/sdk/experimental',
-  '@modelcontextprotocol/sdk/experimental/tasks',
-])
-
-const mcpSdkPlugin: Plugin = {
-  name: 'mcp-sdk-resolve',
-  setup(build) {
-    build.onResolve({ filter: /^@modelcontextprotocol\/sdk\// }, (args) => {
-      if (MCP_SDK_NAMED_EXPORTS.has(args.path)) return undefined
-      if (/\.[cm]?js$/.test(args.path)) return undefined
-      return build.resolve(args.path + '.js', {
-        resolveDir: args.resolveDir,
-        kind: args.kind,
-      })
-    })
-  },
-}
+// v2 packages ship well-formed package.json "exports" maps (explicit
+// import/require conditions, fully-extensioned files) for every public
+// subpath, so esbuild resolves them natively. Unlike v1, no resolution
+// workaround is needed here.
 
 export default defineConfig([
   {
@@ -57,7 +37,6 @@ export default defineConfig([
     banner: { js: '#!/usr/bin/env node' },
     splitting: false,
     noExternal: [/.*/],
-    esbuildPlugins: [mcpSdkPlugin],
     outExtension: () => ({ js: '.cjs' }),
     define: {
       __FASTMCP_VERSION__: JSON.stringify(pkg.version),

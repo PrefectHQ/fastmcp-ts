@@ -1,16 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { Client } from '@modelcontextprotocol/sdk/client'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
-import {
-  LoggingMessageNotificationSchema,
-  ProgressNotificationSchema,
-  CreateMessageRequestSchema,
-  ElicitRequestSchema,
-  ListRootsRequestSchema,
-} from '@modelcontextprotocol/sdk/types'
+import { InMemoryTransport } from "@modelcontextprotocol/server";
+import { Client } from '@modelcontextprotocol/client'
 import { FastMCP } from 'fastmcp-ts/server'
 import { createContext } from '../../src/server/context'
-import { Server } from '@modelcontextprotocol/sdk/server'
+import { Server } from '@modelcontextprotocol/server'
 import { createTestClient } from '../helpers/createTestClient'
 
 // ---------------------------------------------------------------------------
@@ -129,7 +122,7 @@ describe('Server — Context', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const received: unknown[] = []
-        client.setNotificationHandler(LoggingMessageNotificationSchema, (n) => {
+        client.setNotificationHandler('notifications/message', (n) => {
           received.push(n.params)
         })
         await client.callTool({ name: 'logger', arguments: {} })
@@ -159,7 +152,7 @@ describe('Server — Context', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const received: string[] = []
-        client.setNotificationHandler(LoggingMessageNotificationSchema, (n) => {
+        client.setNotificationHandler('notifications/message', (n) => {
           received.push(n.params.level)
         })
         await client.callTool({ name: 'allLevels', arguments: {} })
@@ -182,7 +175,7 @@ describe('Server — Context', () => {
         // Ask server to only send warning and above
         await client.setLoggingLevel('warning')
         const received: string[] = []
-        client.setNotificationHandler(LoggingMessageNotificationSchema, (n) => {
+        client.setNotificationHandler('notifications/message', (n) => {
           received.push(n.params.level)
         })
         await client.callTool({ name: 'logger', arguments: {} })
@@ -207,12 +200,11 @@ describe('Server — Context', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const received: unknown[] = []
-        client.setNotificationHandler(ProgressNotificationSchema, (n) => {
+        client.setNotificationHandler('notifications/progress', (n) => {
           received.push(n.params)
         })
         await client.callTool(
           { name: 'progressor', arguments: {} },
-          undefined,
           // onprogress causes the SDK to inject a progressToken into _meta
           { onprogress: () => {} },
         )
@@ -237,7 +229,7 @@ describe('Server — Context', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const received: unknown[] = []
-        client.setNotificationHandler(ProgressNotificationSchema, (n) => {
+        client.setNotificationHandler('notifications/progress', (n) => {
           received.push(n.params)
         })
         await client.callTool({ name: 'noToken', arguments: {} })
@@ -264,7 +256,7 @@ describe('Server — Context', () => {
       const { client, close } = await createCapableTestClient(mcp, { sampling: {} })
       try {
         const samplingRequests: unknown[] = []
-        client.setRequestHandler(CreateMessageRequestSchema, (req) => {
+        client.setRequestHandler('sampling/createMessage', (req) => {
           samplingRequests.push(req.params)
           return {
             role: 'assistant',
@@ -293,7 +285,7 @@ describe('Server — Context', () => {
       })
       const { client, close } = await createCapableTestClient(mcp, { sampling: {} })
       try {
-        client.setRequestHandler(CreateMessageRequestSchema, () => ({
+        client.setRequestHandler('sampling/createMessage', () => ({
           role: 'assistant',
           content: { type: 'text', text: 'Hello from LLM!' },
           model: 'test-model',
@@ -330,7 +322,7 @@ describe('Server — Context', () => {
       })
       try {
         const elicitRequests: unknown[] = []
-        client.setRequestHandler(ElicitRequestSchema, (req) => {
+        client.setRequestHandler('elicitation/create', (req) => {
           elicitRequests.push(req.params)
           return { action: 'accept', content: { env: 'staging' } }
         })
@@ -356,7 +348,7 @@ describe('Server — Context', () => {
         elicitation: { form: {} },
       })
       try {
-        client.setRequestHandler(ElicitRequestSchema, () => ({
+        client.setRequestHandler('elicitation/create', () => ({
           action: 'decline',
         }))
         await client.callTool({ name: 'elicitor', arguments: {} })
@@ -383,7 +375,7 @@ describe('Server — Context', () => {
         roots: { listChanged: false },
       })
       try {
-        client.setRequestHandler(ListRootsRequestSchema, () => ({
+        client.setRequestHandler('roots/list', () => ({
           roots: [
             { uri: 'file:///home/user/project', name: 'My Project' },
             { uri: 'file:///home/user/docs' },
@@ -408,7 +400,7 @@ describe('Server — Context', () => {
         roots: { listChanged: false },
       })
       try {
-        client.setRequestHandler(ListRootsRequestSchema, () => ({ roots: [] }))
+        client.setRequestHandler('roots/list', () => ({ roots: [] }))
         await client.callTool({ name: 'getRoots', arguments: {} })
         expect(roots).toEqual([])
       } finally {
@@ -456,9 +448,9 @@ describe('Server — Context', () => {
       await mcp.run({ transport: 'http', port: 0 })
       const addr = mcp.address!
 
-      const { Client: SdkClient } = await import('@modelcontextprotocol/sdk/client')
+      const { Client: SdkClient } = await import('@modelcontextprotocol/client')
       const { StreamableHTTPClientTransport } = await import(
-        '@modelcontextprotocol/sdk/client/streamableHttp'
+        '@modelcontextprotocol/client'
       )
 
       const makeClient = async () => {

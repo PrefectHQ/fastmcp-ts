@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
-import { Client } from '@modelcontextprotocol/sdk/client'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
+import { StreamableHTTPClientTransport, InMemoryTransport } from "@modelcontextprotocol/client";
+import { Client } from '@modelcontextprotocol/client'
 import { FastMCP, Approval, Choice, FileUpload, FormInput } from 'fastmcp-ts/server'
 import type { FileStorageAdapter } from '../../src/server/apps/providers/FileUpload.js'
 import { createUiTestClient } from '../helpers/createUiTestClient'

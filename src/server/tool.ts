@@ -1,5 +1,5 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js'
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 export class Image {
@@ -117,7 +117,7 @@ export async function validateInput<S extends StandardSchemaV1>(
   if (result.issues) {
     const messages = result.issues.map((i) => i.message).join('; ')
     if (throwAsProtocolError) {
-      throw new McpError(ErrorCode.InvalidParams, `Validation failed: ${messages}`)
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Validation failed: ${messages}`)
     }
     throw new Error(`Validation failed: ${messages}`)
   }

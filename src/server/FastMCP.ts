@@ -1,19 +1,7 @@
-import { Server } from '@modelcontextprotocol/sdk/server'
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListResourceTemplatesRequestSchema,
-  ReadResourceRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
-  McpError,
-  ErrorCode,
-} from '@modelcontextprotocol/sdk/types.js'
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
-import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider.js'
-import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
+import { ProtocolError, ProtocolErrorCode, Server } from "@modelcontextprotocol/server";
+import type { Transport, AuthInfo, ListToolsResult, GetPromptResult } from "@modelcontextprotocol/server";
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
@@ -151,7 +139,7 @@ interface RegisteredPrompt {
 }
 
 interface Session {
-  transport: StreamableHTTPServerTransport
+  transport: NodeStreamableHTTPServerTransport
   server: Server
   state: Map<string, unknown>
 }
@@ -195,12 +183,12 @@ async function resolveCliEnvToken(verifier: TokenVerifier | undefined): Promise<
 }
 
 async function runAuthCheck(check: AuthCheck, token: AccessToken | undefined): Promise<void> {
-  if (!token) throw new McpError(ErrorCode.InvalidRequest, 'Authentication required')
+  if (!token) throw new ProtocolError(ProtocolErrorCode.InvalidRequest, 'Authentication required')
   try {
     await check(token)
   } catch (err) {
     if (err instanceof AuthorizationError) {
-      throw new McpError(ErrorCode.InvalidRequest, err.message)
+      throw new ProtocolError(ProtocolErrorCode.InvalidRequest, err.message)
     }
     throw err
   }
@@ -278,9 +266,9 @@ export class FastMCP {
   }
 
   private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
-    server.setRequestHandler(ListToolsRequestSchema, async (req, extra) => {
-      const token = await this._resolveToken(extra.authInfo)
-      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
+    server.setRequestHandler('tools/list', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, String(sdkCtx.mcpReq.id), undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
           const clientIsUiCapable = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
@@ -322,7 +310,7 @@ export class FastMCP {
           let startIdx = 0
           if (cursorName !== null) {
             const idx = allEntries.findIndex((e) => e.name === cursorName)
-            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            if (idx < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
           const page = allEntries.slice(startIdx, startIdx + pageSize)
@@ -369,14 +357,18 @@ export class FastMCP {
             }),
           )
 
-          return { tools, ...(nextCursor ? { nextCursor } : {}) }
+          // Cast: our JSON Schema generation (toJsonSchema / user-supplied inputSchema) is
+          // typed loosely as Record<string, unknown>, while the SDK's Tool type is inferred
+          // from a strict Zod schema requiring a literal `type: 'object'` root. The generated
+          // schemas satisfy this at runtime (see tool.ts); this is a static-typing gap only.
+          return { tools, ...(nextCursor ? { nextCursor } : {}) } as ListToolsResult
         }),
       )
     })
 
-    server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+    server.setRequestHandler('tools/call', async (req, sdkCtx) => {
       const requestedName = req.params.name
-      const token = await this._resolveToken(extra.authInfo)
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
 
       // Check synthesized tools first
       const { resourceViews, promptViews } = await this._getVisibleViews(token)
@@ -386,8 +378,8 @@ export class FastMCP {
         if (synthTool.auth) await runAuthCheck(synthTool.auth, token)
         const ctx = createContext(
           server,
-          extra.requestId !== undefined ? String(extra.requestId) : undefined,
-          extra._meta?.progressToken,
+          String(sdkCtx.mcpReq.id),
+          (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)?.progressToken,
           token,
           sessionState,
         )
@@ -414,7 +406,7 @@ export class FastMCP {
             }),
           )
         } catch (err) {
-          if (err instanceof McpError) throw err
+          if (err instanceof ProtocolError) throw err
           return {
             content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
             isError: true,
@@ -437,7 +429,7 @@ export class FastMCP {
       if (!tool) tool = this._tools.get(requestedName)
 
       if (!tool || tool.config.disabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Unknown tool: "${requestedName}"`)
+        throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown tool: "${requestedName}"`)
       }
 
       if (tool.config.auth) await runAuthCheck(tool.config.auth, token)
@@ -446,8 +438,8 @@ export class FastMCP {
       const rawArgs: unknown = req.params.arguments ?? {}
       const ctx = createContext(
         server,
-        extra.requestId !== undefined ? String(extra.requestId) : undefined,
-        extra._meta?.progressToken,
+        String(sdkCtx.mcpReq.id),
+        (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)?.progressToken,
         token,
         sessionState,
       )
@@ -487,7 +479,7 @@ export class FastMCP {
           }),
         )
       } catch (err) {
-        if (err instanceof McpError) throw err
+        if (err instanceof ProtocolError) throw err
         return {
           content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
           isError: true,
@@ -495,9 +487,9 @@ export class FastMCP {
       }
     })
 
-    server.setRequestHandler(ListResourcesRequestSchema, async (req, extra) => {
-      const token = await this._resolveToken(extra.authInfo)
-      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
+    server.setRequestHandler('resources/list', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, String(sdkCtx.mcpReq.id), undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
           const allVisible = (
@@ -520,7 +512,7 @@ export class FastMCP {
           let startIdx = 0
           if (cursorUri !== null) {
             const idx = transformedResources.findIndex((r) => r.uri === cursorUri)
-            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            if (idx < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
           const page = transformedResources.slice(startIdx, startIdx + pageSize)
@@ -547,9 +539,9 @@ export class FastMCP {
       )
     })
 
-    server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req, extra) => {
-      const token = await this._resolveToken(extra.authInfo)
-      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
+    server.setRequestHandler('resources/templates/list', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, String(sdkCtx.mcpReq.id), undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
@@ -572,7 +564,7 @@ export class FastMCP {
           let startIdx = 0
           if (cursorUri !== null) {
             const idx = transformedTemplates.findIndex((r) => r.uri === cursorUri)
-            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            if (idx < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
           const page = transformedTemplates.slice(startIdx, startIdx + pageSize)
@@ -596,9 +588,9 @@ export class FastMCP {
       )
     })
 
-    server.setRequestHandler(ReadResourceRequestSchema, async (req, extra) => {
+    server.setRequestHandler('resources/read', async (req, sdkCtx) => {
       const requestedUri = req.params.uri
-      const token = await this._resolveToken(extra.authInfo)
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
 
       let resource: RegisteredResource | undefined = this._staticResources.get(requestedUri)
       let templateParams: Record<string, string> | undefined
@@ -642,15 +634,15 @@ export class FastMCP {
       }
 
       if (!resource || resource.config.disabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Unknown resource: "${requestedUri}"`)
+        throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown resource: "${requestedUri}"`)
       }
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
       const ctx = createContext(
         server,
-        extra.requestId !== undefined ? String(extra.requestId) : undefined,
-        extra._meta?.progressToken,
+        String(sdkCtx.mcpReq.id),
+        (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)?.progressToken,
         token,
         sessionState,
       )
@@ -679,9 +671,9 @@ export class FastMCP {
       )
     })
 
-    server.setRequestHandler(ListPromptsRequestSchema, async (req, extra) => {
-      const token = await this._resolveToken(extra.authInfo)
-      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
+    server.setRequestHandler('prompts/list', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, String(sdkCtx.mcpReq.id), undefined, token, sessionState)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
           const allVisible = (
@@ -704,7 +696,7 @@ export class FastMCP {
           let startIdx = 0
           if (cursorName !== null) {
             const idx = transformedPrompts.findIndex((p) => p.name === cursorName)
-            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            if (idx < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
           const page = transformedPrompts.slice(startIdx, startIdx + pageSize)
@@ -726,7 +718,7 @@ export class FastMCP {
       )
     })
 
-    server.setRequestHandler(GetPromptRequestSchema, async (req, extra) => {
+    server.setRequestHandler('prompts/get', async (req, sdkCtx) => {
       const requestedName = req.params.name
       let prompt: RegisteredPrompt | undefined
       if (this._transforms.length > 0) {
@@ -742,18 +734,18 @@ export class FastMCP {
       if (!prompt) prompt = this._prompts.get(requestedName)
 
       if (!prompt || prompt.config.disabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${requestedName}"`)
+        throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown prompt: "${requestedName}"`)
       }
 
       const resolvedPrompt = prompt
-      const token = await this._resolveToken(extra.authInfo)
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
       if (resolvedPrompt.config.auth) await runAuthCheck(resolvedPrompt.config.auth, token)
 
       const suppliedArgs = req.params.arguments ?? {}
       for (const arg of resolvedPrompt.config.arguments ?? []) {
         if (arg.required && !(arg.name in suppliedArgs)) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
             `Missing required argument "${arg.name}" for prompt "${requestedName}"`,
           )
         }
@@ -761,8 +753,8 @@ export class FastMCP {
 
       const ctx = createContext(
         server,
-        extra.requestId !== undefined ? String(extra.requestId) : undefined,
-        extra._meta?.progressToken,
+        String(sdkCtx.mcpReq.id),
+        (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)?.progressToken,
         token,
         sessionState,
       )
@@ -783,7 +775,10 @@ export class FastMCP {
               clearTimeout(timer),
             )
           }
-          return convertPromptResult(await executePromise)
+          // Cast: the SDK infers the handler's return type as GetPromptResult |
+          // InputRequiredResult (multi-round-trip); this handler only returns the
+          // "complete" shape today. inputRequired(...) support lands separately.
+          return convertPromptResult(await executePromise) as GetPromptResult
         }),
       )
     })
@@ -893,7 +888,7 @@ export class FastMCP {
   ) {
     const tool = this._tools.get(name)
     if (!tool || tool.config.disabled) {
-      throw new McpError(ErrorCode.InvalidParams, `Unknown tool: "${name}"`)
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown tool: "${name}"`)
     }
     if (tool.config.auth) await runAuthCheck(tool.config.auth, ctx.auth)
 
@@ -925,7 +920,7 @@ export class FastMCP {
         }),
       )
     } catch (err) {
-      if (err instanceof McpError) throw err
+      if (err instanceof ProtocolError) throw err
       return {
         content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
         isError: true,
@@ -948,7 +943,7 @@ export class FastMCP {
       : this._staticResources.get(uri)
 
     if (!resource || resource.config.disabled) {
-      throw new McpError(ErrorCode.InvalidParams, `Unknown resource: "${uri}"`)
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown resource: "${uri}"`)
     }
     if (resource.config.auth) await runAuthCheck(resource.config.auth, ctx.auth)
 
@@ -983,14 +978,14 @@ export class FastMCP {
   ) {
     const prompt = this._prompts.get(name)
     if (!prompt || prompt.config.disabled) {
-      throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${name}"`)
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown prompt: "${name}"`)
     }
     if (prompt.config.auth) await runAuthCheck(prompt.config.auth, ctx.auth)
 
     for (const arg of prompt.config.arguments ?? []) {
       if (arg.required && !(arg.name in args)) {
-        throw new McpError(
-          ErrorCode.InvalidParams,
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
           `Missing required argument "${arg.name}" for prompt "${name}"`,
         )
       }
@@ -1281,7 +1276,7 @@ export class FastMCP {
     const path = options?.path ?? process.env.MCP_PATH ?? '/mcp'
 
     if (transport === 'stdio') {
-      const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js')
+      const { StdioServerTransport } = await import('@modelcontextprotocol/server/stdio')
       await this.connect(new StdioServerTransport(options?.stdin, options?.stdout))
     } else if (this._oauth) {
       await this._runHttpOAuth(port, host, path)
@@ -1291,13 +1286,13 @@ export class FastMCP {
   }
 
   private async _runHttpOAuth(port: number, host: string, path: string): Promise<void> {
-    const { StreamableHTTPServerTransport } = await import(
-      '@modelcontextprotocol/sdk/server/streamableHttp.js'
+    const { NodeStreamableHTTPServerTransport } = await import(
+      '@modelcontextprotocol/node'
     )
     const express = (await import('express')).default
-    const { mcpAuthRouter } = await import('@modelcontextprotocol/sdk/server/auth/router.js')
+    const { mcpAuthRouter } = await import('@modelcontextprotocol/server-legacy/auth')
     const { requireBearerAuth } = await import(
-      '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js'
+      '@modelcontextprotocol/server-legacy/auth'
     )
 
     const oauth = this._oauth!
@@ -1327,7 +1322,7 @@ export class FastMCP {
       requireBearerAuth({ verifier: oauth.provider }),
       async (req, res, _next) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined
-        let mcpTransport: StreamableHTTPServerTransport
+        let mcpTransport: NodeStreamableHTTPServerTransport
 
         if (sessionId) {
           const existing = this._sessions.get(sessionId)
@@ -1339,7 +1334,7 @@ export class FastMCP {
         } else {
           const sessionState = new Map<string, unknown>()
           const sessionServer = this._makeServer(sessionState)
-          mcpTransport = new StreamableHTTPServerTransport({
+          mcpTransport = new NodeStreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (id) => {
               this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
@@ -1365,8 +1360,8 @@ export class FastMCP {
   }
 
   private async _runHttpSimple(port: number, host: string, path: string): Promise<void> {
-    const { StreamableHTTPServerTransport } = await import(
-      '@modelcontextprotocol/sdk/server/streamableHttp.js'
+    const { NodeStreamableHTTPServerTransport } = await import(
+      '@modelcontextprotocol/node'
     )
     const { createServer } = await import('node:http')
 
@@ -1430,7 +1425,7 @@ export class FastMCP {
 
       // Session routing: each client connection gets its own transport + server
       const sessionId = req.headers['mcp-session-id'] as string | undefined
-      let mcpTransport: StreamableHTTPServerTransport
+      let mcpTransport: NodeStreamableHTTPServerTransport
 
       if (sessionId) {
         const existing = this._sessions.get(sessionId)
@@ -1444,7 +1439,7 @@ export class FastMCP {
       } else {
         const sessionState = new Map<string, unknown>()
         const sessionServer = this._makeServer(sessionState)
-        mcpTransport = new StreamableHTTPServerTransport({
+        mcpTransport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (id) => {
             this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })

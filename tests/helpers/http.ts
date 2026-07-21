@@ -1,5 +1,5 @@
-import { Client } from '@modelcontextprotocol/sdk/client'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp'
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { Client } from '@modelcontextprotocol/client'
 
 export interface HttpTestClient {
   client: Client

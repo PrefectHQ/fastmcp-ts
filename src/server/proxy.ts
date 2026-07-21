@@ -1,11 +1,5 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import {
-  CallToolResultSchema,
-  type CallToolResult,
-  ToolListChangedNotificationSchema,
-  ResourceListChangedNotificationSchema,
-  PromptListChangedNotificationSchema,
-} from '@modelcontextprotocol/sdk/types.js'
+import { Client } from "@modelcontextprotocol/client";
+import type { CallToolResult } from "@modelcontextprotocol/client";
 import { parseTemplate } from 'url-template'
 import { FastMCP } from './FastMCP'
 import { ToolResult } from './tool'
@@ -90,8 +84,7 @@ export async function buildProxyFromClient(
         },
         async (args: unknown) => {
           const result = await client.callTool(
-            { name: tool.name, arguments: args as Record<string, unknown> },
-            CallToolResultSchema,
+            { name: tool.name, arguments: args as Record<string, unknown> }
           )
           // Zod infers _meta on content items as Record<string,unknown> but
           // CallToolResult types it more specifically — identical at runtime.
@@ -244,13 +237,13 @@ export async function buildProxyFromClient(
   ])
 
   // Subscribe to backend change notifications for immediate resync.
-  client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+  client.setNotificationHandler('notifications/tools/list_changed', () => {
     resyncTools().catch(() => {})
   })
-  client.setNotificationHandler(ResourceListChangedNotificationSchema, () => {
+  client.setNotificationHandler('notifications/resources/list_changed', () => {
     resyncResources().catch(() => {})
   })
-  client.setNotificationHandler(PromptListChangedNotificationSchema, () => {
+  client.setNotificationHandler('notifications/prompts/list_changed', () => {
     resyncPrompts().catch(() => {})
   })
 
@@ -292,10 +285,10 @@ export async function buildProxyFromClient(
  *  - TTL-based lazy resync on each list request (configurable via `cacheTtl`, default 30 s)
  */
 export async function createProxy(config: ProxyTransport, name?: string): Promise<FastMCP> {
-  let transport: import('@modelcontextprotocol/sdk/shared/transport').Transport
+  let transport: import('@modelcontextprotocol/client').Transport
 
   if (config.type === 'stdio') {
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
+    const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio')
     transport = new StdioClientTransport({
       command: config.command,
       args: config.args,
@@ -304,7 +297,7 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
     })
   } else {
     const { StreamableHTTPClientTransport } = await import(
-      '@modelcontextprotocol/sdk/client/streamableHttp.js'
+      '@modelcontextprotocol/client'
     )
     transport = new StreamableHTTPClientTransport(new URL(config.url), {
       requestInit: config.requestInit,

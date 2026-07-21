@@ -1,9 +1,8 @@
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, it, expect, vi } from 'vitest'
-import { Server } from '@modelcontextprotocol/sdk/server'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
-import { RootsListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
+import { InMemoryTransport } from "@modelcontextprotocol/server";
+import { Server } from '@modelcontextprotocol/server'
 import { FastMCP } from 'fastmcp-ts/server'
 import { Client } from 'fastmcp-ts/client'
 import type { Root } from 'fastmcp-ts/client'
@@ -191,7 +190,7 @@ describe('Client — Roots', () => {
         { name: 'test', version: '1.0.0' },
         { capabilities: {} },
       )
-      server.setNotificationHandler(RootsListChangedNotificationSchema, () => {
+      server.setNotificationHandler('notifications/roots/list_changed', () => {
         notified = true
       })
 

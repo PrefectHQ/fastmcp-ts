@@ -335,7 +335,7 @@ describe('Server — Middleware', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const controller = new AbortController()
-        const callPromise = client.callTool({ name: 'slow', arguments: {} }, undefined, {
+        const callPromise = client.callTool({ name: 'slow', arguments: {} }, {
           signal: controller.signal,
         })
 

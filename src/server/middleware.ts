@@ -1,5 +1,4 @@
-import { McpError, ErrorCode, CancelledNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
-import type { Server } from '@modelcontextprotocol/sdk/server'
+import { ProtocolError, ProtocolErrorCode, Server } from "@modelcontextprotocol/server";
 import type { McpContext } from './context'
 
 // ---------------------------------------------------------------------------
@@ -172,7 +171,7 @@ export class RateLimitingMiddleware implements Middleware {
       this._lastRefill = now
     }
     if (this._tokens <= 0) {
-      throw new McpError(ErrorCode.InvalidRequest, 'Rate limit exceeded')
+      throw new ProtocolError(ProtocolErrorCode.InvalidRequest, 'Rate limit exceeded')
     }
     this._tokens--
     return next()
@@ -187,8 +186,8 @@ export class SizeLimitingMiddleware implements Middleware {
     const result = await next()
     const size = Buffer.byteLength(JSON.stringify(result), 'utf8')
     if (size > this.maxBytes) {
-      throw new McpError(
-        ErrorCode.InternalError,
+      throw new ProtocolError(
+        ProtocolErrorCode.InternalError,
         `Response size (${size} bytes) exceeds limit (${this.maxBytes} bytes)`,
       )
     }
@@ -212,7 +211,7 @@ export class ErrorNormalizationMiddleware implements Middleware {
     try {
       return await next()
     } catch (err) {
-      if (err instanceof McpError) throw err
+      if (err instanceof ProtocolError) throw err
       return {
         content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
         isError: true,
@@ -224,9 +223,9 @@ export class ErrorNormalizationMiddleware implements Middleware {
     try {
       return await next()
     } catch (err) {
-      if (err instanceof McpError) throw err
-      throw new McpError(
-        ErrorCode.InternalError,
+      if (err instanceof ProtocolError) throw err
+      throw new ProtocolError(
+        ProtocolErrorCode.InternalError,
         err instanceof Error ? err.message : String(err),
       )
     }
@@ -241,7 +240,7 @@ export class CancellationMiddleware implements Middleware {
   private readonly _inFlight = new Map<string, AbortController>()
 
   setup(server: Server): void {
-    server.setNotificationHandler(CancelledNotificationSchema, (notification) => {
+    server.setNotificationHandler('notifications/cancelled', (notification) => {
       const requestId = String(notification.params.requestId)
       this._inFlight.get(requestId)?.abort()
     })
@@ -256,7 +255,7 @@ export class CancellationMiddleware implements Middleware {
 
     const abortPromise = new Promise<never>((_, reject) => {
       controller.signal.addEventListener('abort', () =>
-        reject(new McpError(ErrorCode.InternalError, 'Request was cancelled by the client')),
+        reject(new ProtocolError(ProtocolErrorCode.InternalError, 'Request was cancelled by the client')),
       )
     })
 

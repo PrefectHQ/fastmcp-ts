@@ -1,7 +1,9 @@
+import type { CreateMessageResult, CreateMessageResultWithTools, ContentBlock } from "@modelcontextprotocol/server";
+
 export type {
   Tool,
   Resource,
-  ResourceTemplate,
+  ResourceTemplateType as ResourceTemplate,
   ResourceContents,
   TextResourceContents,
   BlobResourceContents,
@@ -22,15 +24,9 @@ export type {
   ElicitRequestParams,
   ElicitResult,
   Root,
-} from '@modelcontextprotocol/sdk/types.js'
-
-import type { CreateMessageResult, CreateMessageResultWithTools } from '@modelcontextprotocol/sdk/types.js'
-
+} from '@modelcontextprotocol/server'
 /** Union of the two sampling result shapes the MCP protocol defines. */
 export type AnySamplingResult = CreateMessageResult | CreateMessageResultWithTools
-
-import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js'
-
 /**
  * The SDK's CallToolResult with a typed generic for structuredContent.
  * Use TData to get typed access to structured tool output.

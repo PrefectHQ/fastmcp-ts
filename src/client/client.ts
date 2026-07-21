@@ -1,16 +1,5 @@
-
-import { Client as SdkClient } from '@modelcontextprotocol/sdk/client'
-import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
-import {
-  CompatibilityCallToolResultSchema,
-  CreateMessageRequestSchema,
-  ElicitRequestSchema,
-  ListRootsRequestSchema,
-  LoggingMessageNotificationSchema,
-  ResourceUpdatedNotificationSchema,
-} from '@modelcontextprotocol/sdk/types.js'
-import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js'
-
+import { UnauthorizedError, Client as SdkClient } from "@modelcontextprotocol/client";
+import type { RequestOptions as SdkRequestOptions } from "@modelcontextprotocol/client";
 import { BearerAuth, OAuth } from './auth.js'
 import type { ClientCredentials } from './auth.js'
 import type { ClientHandlers, ListChangedHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
@@ -325,7 +314,6 @@ export class Client implements IClient {
     )
     const result = await this._sdk().callTool(
       { name, arguments: args ?? {} },
-      CompatibilityCallToolResultSchema,
       sdkOptions,
     )
     return {
@@ -501,7 +489,7 @@ export class Client implements IClient {
 
   private _registerHandlers(sdk: SdkClient): void {
     // Log notifications from the server
-    sdk.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
+    sdk.setNotificationHandler('notifications/message', (notification) => {
       void this._handlers.log({
         level: notification.params.level,
         logger: notification.params.logger ?? undefined,
@@ -510,7 +498,7 @@ export class Client implements IClient {
     })
 
     // Resource update notifications (for active subscriptions)
-    sdk.setNotificationHandler(ResourceUpdatedNotificationSchema, (notification) => {
+    sdk.setNotificationHandler('notifications/resources/updated', (notification) => {
       const handler = this._resourceSubscriptions.get(notification.params.uri)
       if (handler) void handler(notification.params.uri)
     })
@@ -518,7 +506,7 @@ export class Client implements IClient {
     // Sampling: server requests an LLM completion from the client
     if (this._handlers.sampling) {
       const samplingHandler = this._handlers.sampling
-      sdk.setRequestHandler(CreateMessageRequestSchema, async (request) => {
+      sdk.setRequestHandler('sampling/createMessage', async (request) => {
         return samplingHandler(request.params)
       })
     }
@@ -526,7 +514,7 @@ export class Client implements IClient {
     // Elicitation: server requests structured user input
     if (this._handlers.elicitation) {
       const elicitationHandler = this._handlers.elicitation
-      sdk.setRequestHandler(ElicitRequestSchema, async (request) => {
+      sdk.setRequestHandler('elicitation/create', async (request) => {
         return elicitationHandler(request.params)
       })
     }
@@ -534,7 +522,7 @@ export class Client implements IClient {
     // Roots: server requests the client's accessible filesystem roots
     if (this._roots) {
       const getRoots = this._roots
-      sdk.setRequestHandler(ListRootsRequestSchema, async () => ({
+      sdk.setRequestHandler('roots/list', async () => ({
         roots: await getRoots(),
       }))
     }

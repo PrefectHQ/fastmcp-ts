@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { FastMCP, ResourceResult } from 'fastmcp-ts/server'
-import { ResourceListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
 import { createTestClient } from '../helpers/createTestClient'
 
 // ---------------------------------------------------------------------------
@@ -253,7 +252,10 @@ describe('Server — Resources', () => {
       mcp.resource({ uri: 'r://c' }, () => 'c')
       const { client, close } = await createTestClient(mcp)
       try {
-        const page1 = await client.listResources()
+        // client.listResources() now auto-aggregates every page (v2 SDK behavior) —
+        // use the low-level request() to observe a single raw page, matching what
+        // this test is actually asserting about server-side pagination.
+        const page1 = await client.request({ method: 'resources/list', params: {} })
         expect(page1.resources).toHaveLength(2)
         expect(page1.resources.map((r) => r.uri)).toEqual(['r://a', 'r://b'])
         expect(page1.nextCursor).toBeDefined()
@@ -269,8 +271,8 @@ describe('Server — Resources', () => {
       mcp.resource({ uri: 'r://c' }, () => 'c')
       const { client, close } = await createTestClient(mcp)
       try {
-        const page1 = await client.listResources()
-        const page2 = await client.listResources({ cursor: page1.nextCursor })
+        const page1 = await client.request({ method: 'resources/list', params: {} })
+        const page2 = await client.request({ method: 'resources/list', params: { cursor: page1.nextCursor } })
         expect(page2.resources).toHaveLength(1)
         expect(page2.resources[0].uri).toBe('r://c')
         expect(page2.nextCursor).toBeUndefined()
@@ -286,11 +288,11 @@ describe('Server — Resources', () => {
       mcp.resource({ uri: 'r://{c}' }, () => 'c')
       const { client, close } = await createTestClient(mcp)
       try {
-        const page1 = await client.listResourceTemplates()
+        const page1 = await client.request({ method: 'resources/templates/list', params: {} })
         expect(page1.resourceTemplates).toHaveLength(2)
         expect(page1.nextCursor).toBeDefined()
 
-        const page2 = await client.listResourceTemplates({ cursor: page1.nextCursor })
+        const page2 = await client.request({ method: 'resources/templates/list', params: { cursor: page1.nextCursor } })
         expect(page2.resourceTemplates).toHaveLength(1)
         expect(page2.nextCursor).toBeUndefined()
       } finally {
@@ -432,7 +434,7 @@ describe('Server — Resources', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const notified = new Promise<void>((resolve) => {
-          client.setNotificationHandler(ResourceListChangedNotificationSchema, () => resolve())
+          client.setNotificationHandler('notifications/resources/list_changed', () => resolve())
         })
         mcp.resource({ uri: 'dynamic://new' }, () => 'new')
         await notified

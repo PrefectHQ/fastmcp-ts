@@ -1,7 +1,5 @@
-import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js'
-import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js'
-import type { OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
+import type { OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthTokens, AuthInfo } from "@modelcontextprotocol/server";
+import type { OAuthServerProvider, AuthorizationParams, OAuthRegisteredClientsStore } from "@modelcontextprotocol/server-legacy/auth";
 
 export interface OAuthProxyOptions {
   /** Pre-registered credentials this proxy uses when talking to the upstream server. */

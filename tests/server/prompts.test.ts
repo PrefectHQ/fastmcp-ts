@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { FastMCP, PromptResult } from 'fastmcp-ts/server'
 import type { PromptMessage } from 'fastmcp-ts/server'
-import { PromptListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
 import { createTestClient } from '../helpers/createTestClient'
 
 // ---------------------------------------------------------------------------
@@ -275,7 +274,10 @@ describe('Server — Prompts', () => {
       mcp.prompt({ name: 'c', description: 'test' }, () => 'c')
       const { client, close } = await createTestClient(mcp)
       try {
-        const page1 = await client.listPrompts()
+        // client.listPrompts() now auto-aggregates every page (v2 SDK behavior) —
+        // use the low-level request() to observe a single raw page, matching what
+        // this test is actually asserting about server-side pagination.
+        const page1 = await client.request({ method: 'prompts/list', params: {} })
         expect(page1.prompts).toHaveLength(2)
         expect(page1.prompts.map((p) => p.name)).toEqual(['a', 'b'])
         expect(page1.nextCursor).toBeDefined()
@@ -291,8 +293,8 @@ describe('Server — Prompts', () => {
       mcp.prompt({ name: 'c', description: 'test' }, () => 'c')
       const { client, close } = await createTestClient(mcp)
       try {
-        const page1 = await client.listPrompts()
-        const page2 = await client.listPrompts({ cursor: page1.nextCursor })
+        const page1 = await client.request({ method: 'prompts/list', params: {} })
+        const page2 = await client.request({ method: 'prompts/list', params: { cursor: page1.nextCursor } })
         expect(page2.prompts).toHaveLength(1)
         expect(page2.prompts[0].name).toBe('c')
         expect(page2.nextCursor).toBeUndefined()
@@ -336,7 +338,7 @@ describe('Server — Prompts', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         const notified = new Promise<void>((resolve) => {
-          client.setNotificationHandler(PromptListChangedNotificationSchema, () => resolve())
+          client.setNotificationHandler('notifications/prompts/list_changed', () => resolve())
         })
         mcp.prompt({ name: 'new', description: 'test' }, () => 'hi')
         await notified

@@ -1,10 +1,5 @@
-import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js'
-import type { OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js'
-import type {
-  OAuthClientInformationMixed,
-  OAuthClientMetadata,
-  OAuthTokens,
-} from '@modelcontextprotocol/sdk/shared/auth.js'
+import type { OAuthClientProvider, OAuthDiscoveryState, OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/client";
+
 // ---------------------------------------------------------------------------
 // OAuthToken — internal type used by ClientCredentials for expiry tracking.
 // Not the SDK's OAuthTokens: we track expires_at in milliseconds.
