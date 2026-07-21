@@ -392,7 +392,7 @@ Each workstream owns its own doc updates (see W10 for the cross-cutting docs pas
 - [x] Tests: 3 new tests in `tests/apps/apps.test.ts` (see above). Full suite: 648/648 passing
   (13 pre-existing `it.todo`, unrelated to this workstream).
 
-### W5 — Tasks extension (spike-gated; must not block core 1.0)
+### W5 — Tasks extension (spike-gated; must not block core 1.0) ⏸ Deferred to post-1.0 (corrected finding)
 
 **Day-1 timeboxed spike (1 day):** verify on beta.5 that (a) the server can dispatch inbound
 `tasks/get|update|cancel` registered via the custom 3-arg `setRequestHandler` form on a
@@ -402,31 +402,170 @@ Each workstream owns its own doc updates (see W10 for the cross-cutting docs pas
 for HTTP; a dispatch shim for stdio; client-side raw `request()` with explicit schemas) and file
 SDK issues.
 
+- [x] **Spike run, both named conditions confirmed blocked — but the original write-up of this
+  section mis-framed *why*, and has been corrected below.** The first pass concluded "SDK gap /
+  bug." That was wrong. The real situation, confirmed by reading the actual 2026-07-28 core spec
+  and the separate Tasks extension repo (not just the SDK):
+
+  **Tasks is not a core 2026-07-28 feature at all — it is an optional extension, and that
+  extension is still an unfinalized draft.**
+  - The core spec (`modelcontextprotocol/modelcontextprotocol`, `schema/draft/schema.ts`,
+    `LATEST_PROTOCOL_VERSION = "2026-07-28"`) has no task primitives. `ServerCapabilities.extensions`
+    gives exactly one worked example: `"io.modelcontextprotocol/tasks"`. This is architecturally
+    identical to the MCP Apps extension (`io.modelcontextprotocol/ui`), which fastmcp already
+    implements as a consumer-owned extension. SEP-2577 deliberately slimmed 2026-07-28 core
+    further, also deprecating `roots`, `sampling`, `logging`, and `logging/setLevel` — in-session
+    long-running work is covered by core MRTR (`input_required` + `requestState`), progress
+    notifications, and `subscriptions/listen`; only the durable *call-now, disconnect, fetch-later*
+    pattern is extension territory.
+  - The extension itself (`modelcontextprotocol/ext-tasks`, tracking **SEP-2663**, an open PR) is
+    explicitly labelled **"⚠️ Experimental Extension — not an official extension and may change
+    significantly or be discontinued."** No releases. Schema lives under `schema/draft`.
+  - Pulling that extension's `schema.ts` (source of truth) gives the actual wire surface: capability
+    `io.modelcontextprotocol/tasks`; task creation replies with **`resultType: "task"`**
+    (`CreateTaskResult = Result & Task`); methods `tasks/get`, `tasks/update`, `tasks/cancel`;
+    notification `notifications/tasks`; `subscriptions/listen` gains a `taskIds` filter field.
+  - Checked against SDK 2.0.0-beta.5, live: the beta *does not implement this draft extension*, and
+    three of its existing 2026-wire guards happen to collide with the draft's current shape —
+    confirmed live against a real server/client pair, not just by reading source:
+    - `resultType: "task"` is rejected by the client's 2026 result decoder
+      (`SdkError(UNSUPPORTED_RESULT_TYPE)`) — it only accepts `'complete'`/`'input_required'`.
+    - `tasks/get` / `tasks/cancel` collide with method names the SDK reserves as **deprecated
+      2025-11-25-era vocabulary** (`wire/rev2025-11-25/buildSchemas.ts`), so they're era-gated off
+      the 2026 wire in both directions (`-32601` inbound; `SdkError(MethodNotSupportedByProtocolVersion)`
+      outbound) — not because the SDK forbids extensions, but because these particular strings
+      are already spoken-for as legacy spec method names.
+    - `tasks/update` and `notifications/tasks` don't collide with anything and would pass through
+      untouched as ordinary consumer-owned extension methods.
+  - **This is not an SDK bug.** The reference SDK correctly declines to implement an experimental,
+    pre-SEP-merge extension. Implementing it in fastmcp today would mean building against a spec
+    that may still change shape, and working around the two real collisions above would require
+    intercepting below the SDK's JSON-RPC router/result-decoder on both the client and server, on
+    every transport (`handler.fetch` for HTTP, a stdio dispatch shim, raw client-side `request()`)
+    — a second, parallel, hand-maintained RPC pipeline running alongside the SDK's own, for a
+    still-moving spec target. That is exactly the kind of hand-rolled reimplementation this
+    migration otherwise avoids in favor of SDK-native mechanisms.
+  - **Correction note:** the original version of this section tested the mechanism as if `tasks/*`
+    were core RPC methods and concluded "SDK excludes tasks from the 2026 registry" was itself the
+    problem. The registry exclusion is expected and correct — tasks was never in core 2026-07-28 to
+    begin with.
 - [ ] Advertise `io.modelcontextprotocol/tasks`; honor per-request client capability (never
-  return a task to a non-declaring client).
+  return a task to a non-declaring client). — **deferred to post-1.0.**
 - [ ] `ToolConfig.task` (`true | { mode: 'optional'|'required', pollInterval, ttl }`), adapted to
-  server-directed creation.
+  server-directed creation. — **deferred; API shape should be revisited against ext-tasks'
+  `Task`/`TaskCreationParams` fields (`ttlMs`, `pollIntervalMs`) once that schema stabilizes,
+  rather than the superseded SEP-1686 shape this line originally described.**
 - [ ] `TaskStore` interface + in-memory default; durable create-before-respond; statuses
   `working|input_required|completed|failed|cancelled`; `tasks/get`, `tasks/update`
   (inputResponses), `tasks/cancel` (cooperative); `notifications/tasks` over the listen stream.
+  — **deferred.** (Status enum matches ext-tasks' `TaskStatus` exactly, so this line was already
+  accurate.)
 - [ ] Client: task-aware `callTool` (opt-in) — poll loop honoring `pollIntervalMs`, task-handle
-  API, `tasks/update` for `input_required`, persistence hook for task IDs.
+  API, `tasks/update` for `input_required`, persistence hook for task IDs. — **deferred.**
 - [ ] Align wire shapes with the `modelcontextprotocol/ext-tasks` repo; adopt its conformance
-  scenarios when published.
-- [ ] **Fallback (pre-agreed):** if the spike fails or the window closes, ship 1.0 without tasks
-  (docs page pulled from nav), land tasks in 1.1.
+  scenarios when published. — **deferred; this is now the primary gate for revisiting W5** (see
+  triggers below).
+- [x] **Fallback (pre-agreed): invoked, for the corrected reason above.** Shipping 1.0 without
+  tasks. Removed `servers/tasks` from `docs/docs.json`'s nav (the "Advanced Servers" group).
+  Rewrote `docs/servers/tasks.mdx` itself, which had described a **superseded** design (SEP-1686
+  core-tasks: `task: true`, `TaskStore`, `tasks/result` — none of it ever built, confirmed by grep
+  of `src/`) — it now accurately states tasks is a planned, experimental extension deferred
+  post-1.0, with a pointer to SEP-2663 / `modelcontextprotocol/ext-tasks`. Kept off-nav either way.
+  - **Revisit W5 in a later release when:** SEP-2663 merges/stabilizes, `ext-tasks` cuts a tagged
+    release (schema stops living under `schema/draft`), and the reference SDK ships extension-method
+    dispatch + `resultType` extensibility that doesn't require bypassing its router/decoder — at
+    that point this should look like a normal consumer-owned extension (same pattern as MCP Apps),
+    not a workaround.
 
-### W6 — Auth
+### W6 — Auth ✅ (done, not yet committed)
 
-- [ ] Server AS: re-point `OAuthProvider`/proxy imports to `@modelcontextprotocol/server-legacy/auth`;
-  verify express 5 compat; RS bearer verification stays on our jose/introspection verifiers;
-  metadata endpoints via `@modelcontextprotocol/server` helpers or existing code
-  (src/server/auth/oauth/*, src/server/auth/verifiers/*).
-- [ ] Client hardening (2026 conformance opt-ins): pass callback `URLSearchParams` to `finishAuth`
-  (RFC 9207 `iss` validation); key persisted credentials by issuer + implement `discoveryState()`;
-  handle `InsufficientScopeError` / step-up; declare `application_type` in DCR; add CIMD (SEP-991)
-  with DCR fallback (src/client/auth.ts, src/client/browser-oauth.ts, src/client/browser-stores.ts).
-- [ ] Browser OAuth stores updated for issuer-keyed storage; Playwright e2e updated.
+- [x] **Server AS: confirmed already correct, no code changes needed.** Verified by direct read of
+  `src/server/FastMCP.ts`'s `_runHttpOAuth` (not by trusting a prior report — an exploratory
+  sub-agent's first pass on this workstream falsely claimed `src/client/auth.ts` and the auth test
+  files didn't exist; re-verified everything below by hand after catching that). `oauthProvider`/
+  `oauthProxy` (`src/server/auth/oauth/provider.ts`, `proxy.ts`) already import
+  `OAuthServerProvider`/`AuthorizationParams`/`UnsupportedGrantTypeError` from
+  `@modelcontextprotocol/server-legacy/auth` (done in an earlier workstream). `_runHttpOAuth` mounts
+  `mcpAuthRouter({ provider, issuerUrl, scopesSupported })` — confirmed via the package's own type
+  defs that this already advertises RFC 9728 protected-resource metadata (`resourceServerUrl`/
+  `resourceName`, defaulting to AS=RS when omitted, which matches this server's combined-role
+  deployment) alongside RFC 8414 AS metadata and DCR — no separate `mcpAuthMetadataRouter` needed.
+  Express is `5.2.1` (declared and installed); no v4/v5-sensitive code found. RS bearer verification
+  is unchanged (`requireBearerAuth({ verifier: oauth.provider })` backed by our own jose/introspection
+  verifiers, as planned). Existing `tests/server/auth.test.ts` (886 lines: token validation,
+  `WWW-Authenticate`, introspection, DCR, proxy, scope-based auth, per-component auth, multi-source
+  auth) passes unchanged — 9 describe blocks, all green.
+- [x] **Client hardening — implemented in `src/client/auth.ts`, `browser-oauth.ts`:**
+  - **RFC 9207 `iss` validation via `finishAuth(URLSearchParams)`:** the previous code only ever
+    extracted `code` from the OAuth callback and called `finishAuth(code)` — the `iss` query
+    parameter was silently discarded, so RFC 9207 authorization-response validation never ran.
+    Changed `OAuth`'s internal callback plumbing (`waitForCallback()`, `_armCallbackPromise`,
+    `_resolveCallback`, `_awaitCallback`) to carry the full `URLSearchParams` from the callback
+    instead of a bare code string, and `client.ts`'s reconnect path now calls
+    `transport.finishAuth(callbackParams)` — the SDK's preferred overload, which extracts `code`
+    and `iss` itself and validates `iss` against the recorded issuer (RFC 9207 §2.4) via
+    `validateAuthorizationResponseIssuer` **before** redeeming the code. `BrowserOAuth` (popup
+    postMessage handler, `waitForCallback`, `resumeFromRedirect`) and `handleOAuthCallback()` updated
+    the same way, so the browser popup/redirect flows carry `iss` through too.
+  - **Per-issuer credential keying (SEP-2352):** confirmed via the SDK's own type defs that
+    `clientInformation`/`saveClientInformation`/`tokens`/`saveTokens` on `OAuthClientProvider` now
+    take an optional `ctx: { issuer }`, and confirmed live (reading `authInternal`'s source) that
+    the `auth()` orchestrator always supplies it once discovery resolves the issuer — except the
+    per-request bearer-token bridge (`adaptOAuthProvider`), which calls `tokens()` with **no** ctx
+    at all and, per the SDK's own doc comment, must still resolve to "the most-recently-saved token
+    set." Implemented: `_key(type, issuer?)` now keys by issuer when known, falling back to the
+    original `serverUrl`-scoped key when no issuer is known yet (preserves back-compat with the
+    pre-SEP-2352 shape and with existing no-ctx test usage); a small "last issuer seen for this
+    server" pointer (`_rememberIssuer`/`_lastIssuer`, itself stored under the old serverUrl-scoped
+    key) is updated on every `save*` call that receives a `ctx.issuer`, and consulted by the no-ctx
+    read paths. `invalidateCredentials` deletes under both the last-known-issuer key and the legacy
+    key defensively. `browser-stores.ts` needed **no changes** — it's a plain `KeyValueStore` backend
+    (localStorage/IndexedDB), agnostic to key semantics; the keying logic lives entirely in `OAuth`.
+  - **`discoveryState()`/`saveDiscoveryState()`: already implemented, no changes needed** — this
+    plan line was already satisfied before this workstream started (confirmed by reading the
+    existing code and its passing tests).
+  - **`InsufficientScopeError` / step-up: already handled for free, no changes needed.** Read the
+    SDK's `_stepUpAuthorize` source directly: with the default `onInsufficientScope: 'reauthorize'`
+    and a full `OAuthClientProvider` (which `OAuth` is), a `403 insufficient_scope` response makes
+    the transport call `auth()` internally with the unioned scope, and — if that requires a fresh
+    redirect — throws the **same** `UnauthorizedError` our existing `client.ts` catch block already
+    handles for the initial-401 case. `InsufficientScopeError` itself is only thrown when a host
+    opts into `onInsufficientScope: 'throw'` or supplies a bare `AuthProvider` with no OAuth
+    provider to drive step-up — neither applies to fastmcp's default setup, so no new API surface
+    was added for this.
+  - **`application_type` in DCR: already free, verified live (not just read).** Ran
+    `resolveClientMetadata(oauth)` directly against an `OAuth` instance and confirmed
+    `application_type: 'native'` is auto-derived from the loopback `redirect_uris`, exactly as the
+    SDK's SEP-837 default describes — no code needed, since `OAuth.clientMetadata` never sets this
+    field itself.
+  - **Related fix found while verifying the above:** `OAuth.clientMetadata` was explicitly setting
+    `grant_types: ['authorization_code']`. Because "a field the consumer set explicitly is never
+    overwritten," this **suppressed** the SDK's own SEP-2207 default of
+    `['authorization_code', 'refresh_token']` for interactive providers — meaning authorization
+    servers that gate refresh-token issuance on the registered grant types would never issue one
+    during DCR, even though this class fully supports using a refresh token once present. Removed
+    the explicit `grant_types` line entirely so the SDK's default applies; verified live
+    (`resolveClientMetadata` now returns both grant types). `response_types: ['code']` was left as
+    an explicit, intentional restriction (this library only implements the authorization-code flow).
+  - **CIMD (SEP-991) with DCR fallback: implemented as a thin passthrough, confirmed the fallback is
+    entirely SDK-native.** Added `OAuthOptions.clientMetadataUrl`, exposed as a readonly
+    `clientMetadataUrl` property (the `OAuthClientProvider` interface field), validated eagerly in
+    the constructor via the SDK's own `validateClientMetadataUrl()`. Read `authInternal`'s source
+    directly: when `clientMetadataUrl` is set **and** the resolved AS metadata advertises
+    `client_id_metadata_document_supported`, `auth()` uses the URL as `client_id` and skips DCR
+    entirely on its own; when either condition is false, it falls through to the existing DCR path
+    unchanged. No orchestration code needed on the fastmcp side beyond exposing the property.
+  - **Playwright e2e** (`tests/browser/oauth-e2e.spec.ts`): unchanged and re-run — passes with all
+    of the above (the real popup + postMessage + token-exchange + reconnect + `listTools()` flow
+    completes end-to-end through the new `URLSearchParams`-based callback plumbing).
+- [x] **Not addressed, out of scope for this workstream:** `MultiServerClient` has no OAuth
+  interactive-flow handling at all (no `UnauthorizedError` catch, no `_bind()`/issuer plumbing) —
+  confirmed by grep, a pre-existing gap. Matches the plan's own W7 item ("`MultiServerClient`:
+  per-entry `versionNegotiation`/auth"); left for that workstream rather than expanded here.
+- [x] Tests: 12 new tests across `tests/client/auth.test.ts` (issuer-scoped storage / SEP-2352,
+  CIMD/`clientMetadataUrl` validation, `iss` capture in the Node callback server) and
+  `tests/client/browser-oauth.test.ts` (`iss` through postMessage and `resumeFromRedirect`). Full
+  suite: 660/660 passing (13 pre-existing `it.todo`, unrelated). Playwright OAuth e2e: 1/1 passing.
 
 ### W7 — Client core
 

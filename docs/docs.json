@@ -51,8 +51,7 @@
             "pages": [
               "servers/middleware",
               "servers/transforms",
-              "servers/composition",
-              "servers/tasks"
+              "servers/composition"
             ]
           },
           {

@@ -196,17 +196,20 @@ export class Client implements IClient {
     } catch (err) {
       if (err instanceof UnauthorizedError && this._auth instanceof OAuth) {
         // The SDK opened the browser and is waiting for the user to authorize.
-        // Wait for the callback to receive the code, then finish auth on the
+        // Wait for the callback to receive the full callback params (code +,
+        // when present, the RFC 9207 `iss` parameter), then finish auth on the
         // original transport (it holds the discovery/PKCE context) to exchange
-        // the code for tokens.
-        const code = await this._auth.waitForCallback()
+        // the code for tokens. Passing URLSearchParams (rather than a bare
+        // code string) lets the SDK validate `iss` against the recorded
+        // issuer before redeeming the code.
+        const callbackParams = await this._auth.waitForCallback()
         if (
           'finishAuth' in transport &&
           typeof (transport as Record<string, unknown>).finishAuth === 'function'
         ) {
-          await (transport as { finishAuth(code: string): Promise<void> }).finishAuth(
-            code,
-          )
+          await (
+            transport as { finishAuth(params: URLSearchParams): Promise<void> }
+          ).finishAuth(callbackParams)
         }
         // The original transport is already started and cannot be reconnected;
         // build a fresh one for the authenticated attempt. It reads the tokens

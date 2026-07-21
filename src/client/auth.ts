@@ -1,4 +1,12 @@
-import type { OAuthClientProvider, OAuthDiscoveryState, OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/client";
+import {
+  validateClientMetadataUrl,
+  type OAuthClientProvider,
+  type OAuthClientInformationContext,
+  type OAuthDiscoveryState,
+  type OAuthClientMetadata,
+  type StoredOAuthClientInformation,
+  type StoredOAuthTokens,
+} from "@modelcontextprotocol/client";
 
 // ---------------------------------------------------------------------------
 // OAuthToken — internal type used by ClientCredentials for expiry tracking.
@@ -135,6 +143,16 @@ export interface OAuthOptions {
    * system browser is launched. Inject a no-op or mock here for testing.
    */
   onRedirect?: (url: URL) => void | Promise<void>
+  /**
+   * Client ID Metadata Document URL (SEP-991 / CIMD) — an HTTPS URL, with a
+   * non-root path, that serves this client's metadata document. When the
+   * authorization server advertises `client_id_metadata_document_supported`,
+   * the SDK's `auth()` orchestrator uses this URL directly as the `client_id`
+   * and skips Dynamic Client Registration entirely. Falls back to normal DCR
+   * (or `clientId`, if set) when the server doesn't support CIMD. Validated
+   * eagerly in the constructor.
+   */
+  clientMetadataUrl?: string
 }
 
 export class OAuth implements OAuthClientProvider {
@@ -146,10 +164,11 @@ export class OAuth implements OAuthClientProvider {
   private readonly _store: KeyValueStore
   private readonly _callbackPort: number
   private readonly _onRedirect?: (url: URL) => void | Promise<void>
+  readonly clientMetadataUrl?: string
 
   private _codeVerifier: string | undefined
-  protected _callbackPromise: Promise<string> | null = null
-  protected _callbackResolve: ((code: string) => void) | null = null
+  protected _callbackPromise: Promise<URLSearchParams> | null = null
+  protected _callbackResolve: ((params: URLSearchParams) => void) | null = null
   protected _callbackReject: ((err: Error) => void) | null = null
   private _callbackServer: { close(): void } | null = null
   private _actualCallbackPort: number | null = null
@@ -164,6 +183,10 @@ export class OAuth implements OAuthClientProvider {
     this._store = options.store ?? new InMemoryStore()
     this._callbackPort = options.callbackPort ?? 8765
     this._onRedirect = options.onRedirect
+    // SEP-991: validated eagerly so a malformed clientMetadataUrl fails fast
+    // at construction rather than deep inside the auth() flow.
+    validateClientMetadataUrl(options.clientMetadataUrl)
+    this.clientMetadataUrl = options.clientMetadataUrl
   }
 
   /**
@@ -186,38 +209,57 @@ export class OAuth implements OAuthClientProvider {
     return {
       redirect_uris: [`http://localhost:${port}/callback`],
       token_endpoint_auth_method: this._clientSecret ? 'client_secret_post' : 'none',
-      grant_types: ['authorization_code'],
+      // grant_types is intentionally omitted: the SDK's resolveClientMetadata()
+      // defaults interactive providers (those with a redirectUrl, like this one)
+      // to ['authorization_code', 'refresh_token'] (SEP-2207) — authorization
+      // servers that gate refresh-token issuance on the registered grant types
+      // need 'refresh_token' present to ever issue one during DCR. Setting this
+      // explicitly here would suppress that default (an explicit field is never
+      // overwritten) and could silently prevent refresh tokens from being
+      // issued, even though this class fully supports using one once present.
       response_types: ['code'],
       client_name: this._clientName,
       ...(this._scopes ? { scope: this._scopes } : {}),
     }
   }
 
-  async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
+  async clientInformation(
+    ctx?: OAuthClientInformationContext,
+  ): Promise<StoredOAuthClientInformation | undefined> {
     if (this._clientId) {
       return {
         client_id: this._clientId,
         ...(this._clientSecret ? { client_secret: this._clientSecret } : {}),
       }
     }
-    const raw = await this._store.get(this._key('client_info'))
+    const issuer = ctx?.issuer ?? (await this._lastIssuer())
+    const raw = await this._store.get(this._key('client_info', issuer))
     if (!raw) return undefined
-    return JSON.parse(raw) as OAuthClientInformationMixed
+    return JSON.parse(raw) as StoredOAuthClientInformation
   }
 
-  async saveClientInformation(info: OAuthClientInformationMixed): Promise<void> {
+  async saveClientInformation(
+    info: StoredOAuthClientInformation,
+    ctx?: OAuthClientInformationContext,
+  ): Promise<void> {
     if (this._clientId) return  // pre-registered — never overwrite with DCR response
-    await this._store.set(this._key('client_info'), JSON.stringify(info))
+    if (ctx?.issuer) await this._rememberIssuer(ctx.issuer)
+    await this._store.set(this._key('client_info', ctx?.issuer), JSON.stringify(info))
   }
 
-  async tokens(): Promise<OAuthTokens | undefined> {
-    const raw = await this._store.get(this._key('tokens'))
+  async tokens(ctx?: OAuthClientInformationContext): Promise<StoredOAuthTokens | undefined> {
+    // Per SEP-2352: the per-request bearer-token read (adaptOAuthProvider's
+    // token() bridge) calls this with no ctx at all, so it must resolve the
+    // most-recently-saved token set rather than returning undefined.
+    const issuer = ctx?.issuer ?? (await this._lastIssuer())
+    const raw = await this._store.get(this._key('tokens', issuer))
     if (!raw) return undefined
-    return JSON.parse(raw) as OAuthTokens
+    return JSON.parse(raw) as StoredOAuthTokens
   }
 
-  async saveTokens(tokens: OAuthTokens): Promise<void> {
-    await this._store.set(this._key('tokens'), JSON.stringify(tokens))
+  async saveTokens(tokens: StoredOAuthTokens, ctx?: OAuthClientInformationContext): Promise<void> {
+    if (ctx?.issuer) await this._rememberIssuer(ctx.issuer)
+    await this._store.set(this._key('tokens', ctx?.issuer), JSON.stringify(tokens))
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
@@ -235,7 +277,7 @@ export class OAuth implements OAuthClientProvider {
    * Subclasses (e.g. BrowserOAuth) call this before opening their own redirect.
    */
   protected _armCallbackPromise(): void {
-    this._callbackPromise = new Promise<string>((resolve, reject) => {
+    this._callbackPromise = new Promise<URLSearchParams>((resolve, reject) => {
       this._callbackResolve = resolve
       this._callbackReject = reject
     })
@@ -243,9 +285,9 @@ export class OAuth implements OAuthClientProvider {
     this._callbackPromise.catch(() => {})
   }
 
-  /** Resolves the pending callback with an authorization code. */
-  protected _resolveCallback(code: string): void {
-    this._callbackResolve?.(code)
+  /** Resolves the pending callback with the full authorization callback params. */
+  protected _resolveCallback(params: URLSearchParams): void {
+    this._callbackResolve?.(params)
   }
 
   /** Rejects the pending callback with an error. */
@@ -257,7 +299,7 @@ export class OAuth implements OAuthClientProvider {
    * Races the pending callback promise against a timeout and clears the
    * promise state. Subclasses reuse this and add their own teardown.
    */
-  protected async _awaitCallback(timeoutMs: number): Promise<string> {
+  protected async _awaitCallback(timeoutMs: number): Promise<URLSearchParams> {
     if (!this._callbackPromise) {
       throw new Error('No pending OAuth callback — call redirectToAuthorization() first')
     }
@@ -290,10 +332,13 @@ export class OAuth implements OAuthClientProvider {
   async invalidateCredentials(
     scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery',
   ): Promise<void> {
+    const issuer = await this._lastIssuer()
     if (scope === 'all' || scope === 'tokens') {
-      await this._store.delete(this._key('tokens'))
+      await this._store.delete(this._key('tokens', issuer))
+      await this._store.delete(this._key('tokens'))  // pre-issuer-keying entries, if any
     }
     if (scope === 'all' || scope === 'client') {
+      await this._store.delete(this._key('client_info', issuer))
       await this._store.delete(this._key('client_info'))
     }
     if (scope === 'all' || scope === 'verifier') {
@@ -326,11 +371,13 @@ export class OAuth implements OAuthClientProvider {
 
   /**
    * Waits for the OAuth authorization code to arrive via the callback server,
-   * then stops the server and resolves with the code.
+   * then stops the server and resolves with the full callback `URLSearchParams`
+   * (including `code` and, when present, the RFC 9207 `iss` parameter).
    *
    * Must be called after the UnauthorizedError thrown by connect() is caught.
+   * Pass the result directly to the transport's `finishAuth(callbackParams)`.
    */
-  async waitForCallback(timeoutMs = 5 * 60 * 1000): Promise<string> {
+  async waitForCallback(timeoutMs = 5 * 60 * 1000): Promise<URLSearchParams> {
     try {
       return await this._awaitCallback(timeoutMs)
     } finally {
@@ -338,8 +385,26 @@ export class OAuth implements OAuthClientProvider {
     }
   }
 
-  private _key(type: string): string {
-    return `${this._serverUrl}/${type}`
+  private _key(type: string, issuer?: string): string {
+    return issuer ? `${issuer}/${type}` : `${this._serverUrl}/${type}`
+  }
+
+  /** Storage key for the "last issuer seen for this server" pointer (SEP-2352). */
+  private _issuerPointerKey(): string {
+    return `${this._serverUrl}/issuer`
+  }
+
+  /**
+   * Remembers the resolved authorization-server issuer for this MCP server,
+   * so later no-ctx reads (e.g. the transport's per-request bearer-token read)
+   * know which issuer-keyed credential set to return.
+   */
+  private async _rememberIssuer(issuer: string): Promise<void> {
+    await this._store.set(this._issuerPointerKey(), issuer)
+  }
+
+  private async _lastIssuer(): Promise<string | undefined> {
+    return (await this._store.get(this._issuerPointerKey())) ?? undefined
   }
 
   private async _startCallbackServer(): Promise<void> {
@@ -360,7 +425,7 @@ export class OAuth implements OAuthClientProvider {
         }
         const code = url.searchParams.get('code')
         if (code && this._callbackResolve) {
-          this._callbackResolve(code)
+          this._callbackResolve(url.searchParams)
           res.writeHead(200, { 'content-type': 'text/html' })
           res.end(
             '<html><body><h1>Authorization complete</h1><p>You may close this tab.</p></body></html>',

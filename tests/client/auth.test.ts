@@ -271,6 +271,92 @@ describe('OAuth', () => {
     })
   })
 
+  // -------------------------------------------------------------------------
+  // Per-issuer credential keying (SEP-2352) — the auth() orchestrator passes
+  // { issuer } as ctx to clientInformation/saveClientInformation/tokens/
+  // saveTokens once the authorization server's issuer is resolved.
+  // -------------------------------------------------------------------------
+  describe('issuer-scoped storage (SEP-2352)', () => {
+    const ISSUER_A = 'https://auth-a.example.com'
+    const ISSUER_B = 'https://auth-b.example.com'
+
+    it('tokens saved under one issuer do not leak into a read for a different issuer', async () => {
+      const oauth = makeOAuth()
+      await oauth.saveTokens({ access_token: 'tok-a', token_type: 'Bearer' }, { issuer: ISSUER_A })
+      await oauth.saveTokens({ access_token: 'tok-b', token_type: 'Bearer' }, { issuer: ISSUER_B })
+
+      expect(await oauth.tokens({ issuer: ISSUER_A })).toMatchObject({ access_token: 'tok-a' })
+      expect(await oauth.tokens({ issuer: ISSUER_B })).toMatchObject({ access_token: 'tok-b' })
+    })
+
+    it('reading tokens() with no ctx returns the most-recently-saved (last issuer) entry', async () => {
+      const oauth = makeOAuth()
+      await oauth.saveTokens({ access_token: 'tok-a', token_type: 'Bearer' }, { issuer: ISSUER_A })
+      await oauth.saveTokens({ access_token: 'tok-b', token_type: 'Bearer' }, { issuer: ISSUER_B })
+
+      // No ctx — this is the shape of adaptOAuthProvider's per-request bearer
+      // token read, which must resolve rather than return undefined.
+      expect(await oauth.tokens()).toMatchObject({ access_token: 'tok-b' })
+    })
+
+    it('clientInformation saved under an issuer round-trips when read with the same issuer ctx', async () => {
+      const oauth = makeOAuth()
+      await oauth.saveClientInformation(
+        { client_id: 'dcr-a', redirect_uris: [] },
+        { issuer: ISSUER_A },
+      )
+      expect(await oauth.clientInformation({ issuer: ISSUER_A })).toMatchObject({ client_id: 'dcr-a' })
+      expect(await oauth.clientInformation({ issuer: ISSUER_B })).toBeUndefined()
+    })
+
+    it('saving/reading with no ctx at all still works exactly as before (back-compat)', async () => {
+      const oauth = makeOAuth()
+      await oauth.saveTokens({ access_token: 'plain', token_type: 'Bearer' })
+      expect(await oauth.tokens()).toMatchObject({ access_token: 'plain' })
+    })
+
+    it('invalidateCredentials("tokens") removes the last-known-issuer entry', async () => {
+      const oauth = makeOAuth()
+      await oauth.saveTokens({ access_token: 'tok-a', token_type: 'Bearer' }, { issuer: ISSUER_A })
+      await oauth.invalidateCredentials('tokens')
+      expect(await oauth.tokens({ issuer: ISSUER_A })).toBeUndefined()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // CIMD — Client ID Metadata Documents (SEP-991)
+  // -------------------------------------------------------------------------
+  describe('clientMetadataUrl (CIMD / SEP-991)', () => {
+    it('exposes the configured clientMetadataUrl on the provider', () => {
+      const oauth = new OAuth({
+        clientMetadataUrl: 'https://app.example.com/oauth/client-metadata.json',
+        onRedirect: vi.fn(),
+      })
+      expect(oauth.clientMetadataUrl).toBe('https://app.example.com/oauth/client-metadata.json')
+    })
+
+    it('is undefined when not configured (DCR fallback path)', () => {
+      const oauth = makeOAuth()
+      expect(oauth.clientMetadataUrl).toBeUndefined()
+    })
+
+    it('throws eagerly on a non-HTTPS clientMetadataUrl', () => {
+      expect(
+        () =>
+          new OAuth({
+            clientMetadataUrl: 'http://app.example.com/oauth/client-metadata.json',
+            onRedirect: vi.fn(),
+          }),
+      ).toThrow()
+    })
+
+    it('throws eagerly on a root-path clientMetadataUrl', () => {
+      expect(
+        () => new OAuth({ clientMetadataUrl: 'https://app.example.com/', onRedirect: vi.fn() }),
+      ).toThrow()
+    })
+  })
+
   describe('callback server', () => {
     // Use callbackPort: 0 to let the OS pick a free port, then read the
     // actual port from callbackServerPort after redirectToAuthorization starts the server.
@@ -289,7 +375,7 @@ describe('OAuth', () => {
       await oauth.waitForCallback(10).catch(() => {/* timeout expected */})
     })
 
-    it('waitForCallback resolves with the code delivered to the callback server', async () => {
+    it('waitForCallback resolves with the callback params delivered to the callback server', async () => {
       const oauth = new OAuth({ callbackPort: 0, onRedirect: vi.fn() })
       oauth._bind(SERVER_URL)
 
@@ -303,8 +389,25 @@ describe('OAuth', () => {
       const res = await fetch(`http://localhost:${port}/callback?code=auth-code-123&state=xyz`)
       expect(res.status).toBe(200)
 
-      const code = await callbackPromise
-      expect(code).toBe('auth-code-123')
+      const params = await callbackPromise
+      expect(params.get('code')).toBe('auth-code-123')
+    })
+
+    it('waitForCallback resolves with the RFC 9207 iss parameter when the server includes it', async () => {
+      const oauth = new OAuth({ callbackPort: 0, onRedirect: vi.fn() })
+      oauth._bind(SERVER_URL)
+
+      await oauth.redirectToAuthorization(new URL('https://auth.example.com/authorize'))
+
+      const port = oauth.callbackServerPort!
+      const callbackPromise = oauth.waitForCallback()
+      await fetch(
+        `http://localhost:${port}/callback?code=auth-code-123&iss=${encodeURIComponent('https://auth.example.com')}`,
+      )
+
+      const params = await callbackPromise
+      expect(params.get('code')).toBe('auth-code-123')
+      expect(params.get('iss')).toBe('https://auth.example.com')
     })
 
     it('callback server returns 400 when no code is present', async () => {
