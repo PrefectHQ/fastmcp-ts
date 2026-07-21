@@ -8,6 +8,8 @@ import {
   Input, Select, Button,
   If, ForEach, Rx,
 } from 'fastmcp-ts/server'
+import { Client } from '@modelcontextprotocol/client'
+import { InMemoryTransport } from '@modelcontextprotocol/server'
 import { createTestClient } from '../helpers/createTestClient'
 import { createUiTestClient } from '../helpers/createUiTestClient'
 
@@ -126,6 +128,55 @@ describe('Apps', () => {
         expect(caps?.extensions?.['io.modelcontextprotocol/ui']).toBeDefined()
       } finally {
         await close()
+      }
+    })
+
+    it("the server's own advertised extension value includes mimeTypes (SEP-1865 REQUIRED field)", async () => {
+      const mcp = makeUiServer()
+      const { client, close } = await createUiTestClient(mcp)
+      try {
+        const caps = client.getServerCapabilities()
+        const ui = caps?.extensions?.['io.modelcontextprotocol/ui'] as { mimeTypes?: string[] } | undefined
+        expect(ui?.mimeTypes).toContain('text/html;profile=mcp-app')
+      } finally {
+        await close()
+      }
+    })
+
+    it('a client that declares the extension key without mimeTypes is treated as not UI-capable (SEP-1865 requires mimeTypes on the declaration)', async () => {
+      const mcp = makeUiServer()
+      const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
+      await mcp.connect(serverTransport)
+      const client = new Client(
+        { name: 'bare-extension-client', version: '0.0.0' },
+        // No mimeTypes on the extension value — spec-non-compliant declaration.
+        { capabilities: { extensions: { 'io.modelcontextprotocol/ui': {} } } },
+      )
+      await client.connect(clientTransport)
+      try {
+        const result = await client.callTool({ name: 'show_dashboard', arguments: {} })
+        expect(result.structuredContent).toBeUndefined()
+      } finally {
+        await client.close()
+        await mcp.close()
+      }
+    })
+
+    it('a client whose mimeTypes list does not include text/html;profile=mcp-app is treated as not UI-capable', async () => {
+      const mcp = makeUiServer()
+      const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
+      await mcp.connect(serverTransport)
+      const client = new Client(
+        { name: 'mismatched-mime-client', version: '0.0.0' },
+        { capabilities: { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/plain'] } } } },
+      )
+      await client.connect(clientTransport)
+      try {
+        const result = await client.callTool({ name: 'show_dashboard', arguments: {} })
+        expect(result.structuredContent).toBeUndefined()
+      } finally {
+        await client.close()
+        await mcp.close()
       }
     })
 

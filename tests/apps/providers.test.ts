@@ -215,7 +215,15 @@ describe('Apps — Built-in Providers', () => {
 
       const client = new Client(
         { name: 'test', version: '1' },
-        { capabilities: { extensions: { 'io.modelcontextprotocol/ui': {} } } },
+        // mimeTypes is REQUIRED on the extension declaration per SEP-1865 — without
+        // it, this tool's structuredContent (which the assertions below rely on)
+        // would be stripped by graceful degradation as if the client were not
+        // UI-capable at all.
+        {
+          capabilities: {
+            extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } },
+          },
+        },
       )
       const transport = new StreamableHTTPClientTransport(
         new URL(`http://127.0.0.1:${port}/mcp`),

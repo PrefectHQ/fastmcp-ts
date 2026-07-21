@@ -35,7 +35,7 @@ import {
   ResourceResult,
 } from './resource'
 import type { ResourceConfig } from './resource'
-import { UI_EXTENSION_KEY } from './apps/types'
+import { UI_EXTENSION_KEY, UI_RESOURCE_MIME_TYPE, isUiCapable } from './apps/types'
 import type { UiToolMeta } from './apps/types'
 import { convertPromptResult, PromptResult } from './prompt'
 import type { PromptConfig } from './prompt'
@@ -337,7 +337,11 @@ export class FastMCP {
   /** Create a new Server instance with all request handlers wired up. */
   private _makeServer(sessionState?: Map<string, unknown>): Server {
     const state = sessionState ?? this._primaryState
-    const extensions = this._hasUiComponents() ? { [UI_EXTENSION_KEY]: {} } : undefined
+    // mimeTypes announces what fastmcp can serve, symmetric with the mimeTypes the
+    // client is required to declare on its own extension entry (SEP-1865).
+    const extensions = this._hasUiComponents()
+      ? { [UI_EXTENSION_KEY]: { mimeTypes: [UI_RESOURCE_MIME_TYPE] } }
+      : undefined
     const server = new Server(
       { name: this.name, version: this.version },
       {
@@ -364,7 +368,7 @@ export class FastMCP {
       const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
-          const clientIsUiCapable = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
+          const clientIsUiCapable = isUiCapable(server.getClientCapabilities())
 
           const allVisible = (
             await Promise.all(
@@ -551,7 +555,7 @@ export class FastMCP {
             const callResult = convertResult(resultValue)
             // Graceful degradation: strip structuredContent for non-UI clients calling UI tools
             if (resolvedTool.config.ui) {
-              const clientIsUi = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
+              const clientIsUi = isUiCapable(server.getClientCapabilities())
               if (!clientIsUi && callResult.structuredContent !== undefined) {
                 return { content: [{ type: 'text' as const, text: '[UI not available in this client]' }] }
               }
@@ -602,7 +606,7 @@ export class FastMCP {
               ? Buffer.from(page[page.length - 1].uri).toString('base64url')
               : undefined
 
-          const clientIsUiCapableRes = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
+          const clientIsUiCapableRes = isUiCapable(server.getClientCapabilities())
           return {
             resources: page.map((r) => ({
               uri: r.uri,

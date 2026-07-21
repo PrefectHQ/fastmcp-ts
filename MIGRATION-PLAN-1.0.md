@@ -353,15 +353,44 @@ Each workstream owns its own doc updates (see W10 for the cross-cutting docs pas
   `resources.subscribe: true` — the same flag the legacy RPC path gates on, just
   consulted by a different mechanism now.
 
-### W4 — Apps / extensions
+### W4 — Apps / extensions ✅ (done, not yet committed)
 
-- [ ] Move the `io.modelcontextprotocol/ui` advertisement from `initialize` capabilities to
+- [x] Move the `io.modelcontextprotocol/ui` advertisement from `initialize` capabilities to
   `server/discover` capabilities (modern), keeping the initialize path (legacy)
-  (src/server/FastMCP.ts:269).
-- [ ] Detect UI capability per request from `ctx.mcpReq.envelope` clientCapabilities.extensions
-  (modern) vs handshake caps (legacy); update the graceful-degradation path.
-- [ ] Drift audit: diff fastmcp's `_meta.ui` shapes (CSP, permissions, visibility) against the
-  final SEP-1865 / ext-apps spec; fix divergences.
+  (src/server/FastMCP.ts:269). **Needed no code change** — confirmed by reading the SDK's
+  `discoverAdvertisedCapabilities`, which is a pure `{...capabilities}` passthrough of the same
+  `getCapabilities()` object `initialize` already uses. Both eras already advertise identically.
+- [x] Detect UI capability per request from `ctx.mcpReq.envelope` clientCapabilities.extensions
+  (modern) vs handshake caps (legacy); update the graceful-degradation path. **Also needed no
+  code change for era-detection itself** — confirmed the SDK's `seedClientIdentityFromEnvelope`
+  backfills `server.getClientCapabilities()` per-request from the modern envelope automatically,
+  so `server.getClientCapabilities()` (fastmcp's existing check) already returns the right value
+  on both eras with zero fastmcp-side branching.
+- [x] Drift audit: diff fastmcp's `_meta.ui` shapes (CSP, permissions, visibility) against the
+  final SEP-1865 / ext-apps spec; fix divergences. **Fetched the final SEP-1865 spec (Stable,
+  2026-01-26) and found real drift**, unrelated to the two items above:
+  - The spec requires a UI-capable client's declared extension *value* to include a REQUIRED
+    `mimeTypes: string[]` field, and servers SHOULD check
+    `mimeTypes.includes('text/html;profile=mcp-app')` — not just check that the extension key is
+    present. Fastmcp's three call sites (`FastMCP.ts`, tool listing / tool call graceful
+    degradation / resource listing) only did a bare truthy check on the key. Added
+    `isUiCapable(clientCapabilities)` (src/server/apps/types.ts) implementing the spec-correct
+    check and swapped all three call sites to use it.
+  - Symmetrically updated the server's own advertised extension value from `{}` to
+    `{ mimeTypes: ['text/html;profile=mcp-app'] }`, announcing what fastmcp can actually serve.
+  - Fixed `UiToolMeta.visibility`'s docstring: it said "Defaults to `['model']`" when the spec's
+    documented default (when the field is omitted) is `['model', 'app']`. Doc-only fix — the
+    runtime default was already correct; only the comment was wrong.
+  - **Test fallout**: two existing tests/helpers declared the extension with a bare `{}` value
+    (`tests/helpers/createUiTestClient.ts`, `tests/apps/providers.test.ts`'s FileUpload cleanup
+    test) — spec-non-compliant declarations that the *old*, looser truthy check happened to
+    accept. Updated both to declare `mimeTypes` so they represent genuinely spec-compliant
+    UI-capable clients. Added 3 new tests to `tests/apps/apps.test.ts` covering: the server's own
+    `mimeTypes` advertisement, a client declaring the extension without `mimeTypes` (correctly
+    treated as not UI-capable), and a client whose `mimeTypes` doesn't include the UI MIME type
+    (also correctly treated as not UI-capable).
+- [x] Tests: 3 new tests in `tests/apps/apps.test.ts` (see above). Full suite: 648/648 passing
+  (13 pre-existing `it.todo`, unrelated to this workstream).
 
 ### W5 — Tasks extension (spike-gated; must not block core 1.0)
 
