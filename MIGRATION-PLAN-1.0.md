@@ -658,38 +658,62 @@ SDK issues.
 
 ### W8 — CLI + examples
 
-- [ ] `connect.ts` / `list` / `call` / `inspect`: era flags; work against both eras; map
-  `-32020`/`-32021`/`-32022` (src/cli/utils/connect.ts, src/cli/commands/*).
-- [ ] Verify `@modelcontextprotocol/inspector` era support for `dev inspector` (already
-  known-buggy — fix or document) (src/cli/commands/dev/inspector.ts).
-- [ ] Update `examples/kitchen-sink`, `examples/unit-converter`; README quickstart.
+- [x] `connect.ts` / `list` / `call` / `inspect`: era flags; work against both eras; map
+  `-32020`/`-32021`/`-32022` (src/cli/utils/connect.ts, src/cli/commands/*). *(Done:
+  `--modern`/`--pin` + auto-for-HTTP default per §3; -32022 tests pin `2027-01-01` because
+  the SDK client rejects non-modern pin strings before contacting the server.)*
+- [x] Verify `@modelcontextprotocol/inspector` era support for `dev inspector` (already
+  known-buggy — fix or document) (src/cli/commands/dev/inspector.ts). *(Root cause: inspector
+  1.0 repurposed `--server` to select from `--config`; fixed to trailing positional args.
+  Inspector is legacy-era-only (bundles sdk 1.x) — documented in docs/cli.mdx with a pointer
+  to `fastmcp inspect --modern`; fastmcp stdio serves it fine via dual-era.)*
+- [x] Update `examples/kitchen-sink`, `examples/unit-converter`; README quickstart. *(Both
+  examples typecheck and run against the tree with captured evidence; kitchen-sink client.ts
+  gained a small `versionNegotiation: 'auto'` demo (reports modern era); README quickstart +
+  era flags + five pre-existing broken snippets fixed. Found CachingMiddleware×inputRequired
+  replay bug — fixed under the W9 product-fix task.)*
 
 ### W9 — Verification harness (the backbone)
 
-- [ ] **Conformance fixtures:** `tests/conformance/everything-server.ts` (fastmcp server covering
-  tools/resources/prompts/completion/elicitation/logging/apps/tasks) and
-  `tests/conformance/everything-client.ts` (drives the fastmcp `Client` from
-  `MCP_CONFORMANCE_SCENARIO` / `MCP_CONFORMANCE_PROTOCOL_VERSION`).
-- [ ] **Local scripts:** `npm run conformance:server` / `conformance:client` — boot the fixture,
-  run `npx @modelcontextprotocol/conformance {server|client}` with suites `active` and `draft`
-  (2026-07-28).
-- [ ] **Baseline:** committed `conformance-baseline.yml`, per-check entries only, burned down to
-  empty before `1.0.0` stable.
-- [ ] **CI:** new jobs in `.github/workflows/ci.yml` using `modelcontextprotocol/conformance@v0.1.x`
-  (server + client modes); PR-blocking via exit codes; a **nightly scheduled workflow** against
-  conformance `main` to catch newly-landed scenarios pre-GA.
-- [ ] **Interop matrix (vitest):** fastmcp server × official v2 SDK client in `legacy` / `auto` /
-  `pin 2026-07-28`; official `createMcpHandler` + `serveStdio` servers × fastmcp client in all
-  three modes; fastmcp × fastmcp both eras.
-- [ ] **Wire-level golden tests:** captured JSON-RPC/HTTP transcripts asserting `server/discover`
-  shape; per-request `_meta` envelope; `resultType` handling; `inputRequired` round-trip incl.
-  byte-exact `requestState` echo; `subscriptions/listen` open/close; required headers and
-  `-32020` mismatch rejection; `ttlMs`/`cacheScope` presence; `-32602` for unknown resources.
-- [ ] **Era-parametrized unit suites:** rework `tests/helpers/http.ts` (currently hardcodes a
-  2024-11-05 `initialize`) into a dual-era harness; run tools/resources/prompts/context suites
-  across {stdio-legacy, stdio-modern, http-legacy-sessionful, http-modern}.
-- [ ] Existing gates stay green: typecheck, vitest, build, `scripts/test-dist.mjs`,
-  `test:browser-bundle`, Playwright OAuth e2e.
+- [x] **Conformance fixtures:** `tests/conformance/everything-server.ts` (fastmcp server covering
+  tools/resources/prompts/completion/elicitation/logging/apps — tasks omitted per W5 deferral) and
+  `tests/conformance/everything-client.ts`. *(Real 0.1.16 client contract is
+  `MCP_CONFORMANCE_SCENARIO` + `MCP_CONFORMANCE_CONTEXT`; no `..._PROTOCOL_VERSION` env var.)*
+- [x] **Local scripts:** `npm run conformance:server` / `conformance:client`, pinned to
+  `conformance@0.1.16`. *(0.1.16 has no draft suite/scenarios — 2026-07-28 scenarios live on
+  conformance `main` only; the nightly job covers them. Client run narrowed to the 4 non-auth
+  core scenarios; auth conformance deferred behind an OAuth-configured client driver.)*
+- [x] **Baseline:** committed `conformance-baseline.yml` — per-SCENARIO entries (the tool's real
+  granularity). Client side: empty. Server side: 4 REAL product gaps to burn down before stable:
+  `completion-complete`, `resources-subscribe`, `resources-unsubscribe` (no such handlers on
+  either era), `dns-rebinding-protection` (no Host/Origin validation — security).
+- [x] **CI:** PR-blocking `conformance-server`/`conformance-client` jobs in ci.yml (wrap the
+  pinned npm scripts — the composite action wraps a single bare invocation, no boot/teardown,
+  so scripts won) + `.github/workflows/conformance-nightly.yml` (cron + dispatch) against
+  conformance `main`: server `--suite all` (main redefined `active` to exclude draft), client
+  derives the non-auth scenario set per run from `list --client` so newly-landed scenarios are
+  picked up automatically. *(Nightly is red-by-design pre-GA; known delta today:
+  `http-custom-headers` — everything-client doesn't emit SEP-2243 headers yet.)*
+- [x] **Interop matrix (vitest):** `tests/interop/interop.test.ts` — 13 cells: fastmcp server ×
+  official v2 SDK client (legacy/auto/pin), official `createMcpHandler` (modern-only; legacy
+  mode fails typed) + `serveStdio` (dual-era, era follows mode) × fastmcp client in all three
+  modes, fastmcp × fastmcp both eras over HTTP + stdio. Era asserted per cell via negotiated
+  version (non-tautological — server-response-driven).
+- [x] **Wire-level golden tests:** `tests/wire/golden.test.ts` — 8 blocks, raw fetch, exact-match
+  assertions, every non-obvious byte cited to SDK source/SEP (citations spot-verified in review).
+  16 pass + 1 `it.fails` pinning a real gap: unknown `resources/read` emits `-32602` but omits
+  `error.data.uri`, breaking the SDK's ResourceNotFoundError recognition (fix: throw
+  `ResourceNotFoundError(uri, msg)` at FastMCP.ts:722 and :1032 — scheduled as Task 9 Req 3).
+- [x] **Era-parametrized unit suites:** dual-era harness lives in `tests/helpers/eras.ts`
+  (`connectEra`/`describeEachEra`; pin-mode modern with per-combo era assertion — no silent
+  fallback possible); `tests/helpers/http.ts` de-hardcoded (named legacy constant + banner).
+  tools/resources/prompts/context run 108×4 combos (430 pass / 2 inapplicable skips / 16
+  pre-existing todos ×4). *(Surfaced 2 product bugs, pinned with KNOWN BUG markers pending
+  fix: modern-HTTP setState silently drops writes — §3 mandates a pointed error; modern-stdio
+  capability guard masks the era error on ctx.sample/elicit/listRoots.)*
+- [x] Existing gates stay green: typecheck, vitest, build, `scripts/test-dist.mjs`,
+  `test:browser-bundle`, Playwright OAuth e2e. *(All six green 2026-07-22 post-W8/W9:
+  1047 passed / 2 skipped / 25 todo across 39 files.)*
 - [ ] Optional: run the conformance repo's `tier-check` self-assessment before release.
 
 ### W10 — Documentation (Mintlify, ~35 pages)

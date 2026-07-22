@@ -1,18 +1,18 @@
 import { describe, it, expect, vi } from 'vitest'
 import { FastMCP, PromptResult } from 'fastmcp-ts/server'
 import type { PromptMessage } from 'fastmcp-ts/server'
-import { createTestClient } from '../helpers/createTestClient'
+import { connectEra, describeEachEra } from '../helpers/eras'
 
 // ---------------------------------------------------------------------------
-// Declaration
+// Declaration — every case runs across all four transport/era combos.
 // ---------------------------------------------------------------------------
 
-describe('Server — Prompts', () => {
+describeEachEra('Server — Prompts', (combo) => {
   describe('declaration', () => {
     it('a registered prompt is discoverable via prompts/list', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'greet', description: 'A greeting prompt' }, () => 'Hello!')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { prompts } = await client.listPrompts()
         expect(prompts).toHaveLength(1)
@@ -26,7 +26,7 @@ describe('Server — Prompts', () => {
     it('name is inferred from the handler function name when not provided in config', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({}, function reviewCode() { return 'Review this code' })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { prompts } = await client.listPrompts()
         expect(prompts[0].name).toBe('reviewCode')
@@ -38,7 +38,7 @@ describe('Server — Prompts', () => {
     it('description is inferred from the handler function name when not provided in config', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({}, function reviewCode() { return 'ok' })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { prompts } = await client.listPrompts()
         expect(prompts[0].description).toBe('review code')
@@ -50,7 +50,7 @@ describe('Server — Prompts', () => {
     it('title is forwarded in list responses when provided', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'greet', title: 'Greeting Prompt', description: 'desc' }, () => 'hi')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { prompts } = await client.listPrompts()
         expect((prompts[0] as Record<string, unknown>).title).toBe('Greeting Prompt')
@@ -72,7 +72,7 @@ describe('Server — Prompts', () => {
         },
         () => 'ok',
       )
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { prompts } = await client.listPrompts()
         expect(prompts[0].arguments).toMatchObject([
@@ -93,7 +93,7 @@ describe('Server — Prompts', () => {
     it('a string return is delivered as a single user text message', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'hello', description: 'test' }, () => 'Hello, world!')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'hello', arguments: {} })
         expect(result.messages).toHaveLength(1)
@@ -108,7 +108,7 @@ describe('Server — Prompts', () => {
       const mcp = new FastMCP({ name: 'test' })
       const msg: PromptMessage = { role: 'assistant', content: { type: 'text', text: 'I can help.' } }
       mcp.prompt({ name: 'assist', description: 'test' }, () => msg)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'assist', arguments: {} })
         expect(result.messages).toHaveLength(1)
@@ -126,7 +126,7 @@ describe('Server — Prompts', () => {
         { role: 'user', content: { type: 'text', text: 'Can you simplify it?' } },
       ]
       mcp.prompt({ name: 'explain', description: 'test' }, () => messages)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'explain', arguments: {} })
         expect(result.messages).toHaveLength(3)
@@ -146,7 +146,7 @@ describe('Server — Prompts', () => {
           'Rendered description',
         ),
       )
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'custom', arguments: {} })
         expect(result.description).toBe('Rendered description')
@@ -162,7 +162,7 @@ describe('Server — Prompts', () => {
         await new Promise((r) => setTimeout(r, 10))
         return 'async result'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'slow', arguments: {} })
         expect((result.messages[0].content as { text: string }).text).toBe('async result')
@@ -182,7 +182,7 @@ describe('Server — Prompts', () => {
         },
         spy,
       )
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.getPrompt({ name: 'review', arguments: {} })).rejects.toThrow()
         expect(spy).not.toHaveBeenCalled()
@@ -208,7 +208,7 @@ describe('Server — Prompts', () => {
           return 'ok'
         },
       )
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await client.getPrompt({ name: 'review', arguments: { code: 'x = 1' } })
         expect(received).toEqual({ code: 'x = 1' })
@@ -230,7 +230,7 @@ describe('Server — Prompts', () => {
         content: { type: 'image', data: 'abc123', mimeType: 'image/png' },
       }
       mcp.prompt({ name: 'img', description: 'test' }, () => msg)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'img', arguments: {} })
         expect(result.messages[0].content).toMatchObject({ type: 'image', mimeType: 'image/png' })
@@ -249,7 +249,7 @@ describe('Server — Prompts', () => {
         },
       }
       mcp.prompt({ name: 'doc', description: 'test' }, () => msg)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'doc', arguments: {} })
         expect(result.messages[0].content).toMatchObject({
@@ -272,7 +272,7 @@ describe('Server — Prompts', () => {
       mcp.prompt({ name: 'a', description: 'test' }, () => 'a')
       mcp.prompt({ name: 'b', description: 'test' }, () => 'b')
       mcp.prompt({ name: 'c', description: 'test' }, () => 'c')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         // client.listPrompts() now auto-aggregates every page (v2 SDK behavior) —
         // use the low-level request() to observe a single raw page, matching what
@@ -291,7 +291,7 @@ describe('Server — Prompts', () => {
       mcp.prompt({ name: 'a', description: 'test' }, () => 'a')
       mcp.prompt({ name: 'b', description: 'test' }, () => 'b')
       mcp.prompt({ name: 'c', description: 'test' }, () => 'c')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const page1 = await client.request({ method: 'prompts/list', params: {} })
         const page2 = await client.request({ method: 'prompts/list', params: { cursor: page1.nextCursor } })
@@ -313,7 +313,7 @@ describe('Server — Prompts', () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'hidden', description: 'test', disabled: true }, () => 'secret')
       mcp.prompt({ name: 'visible', description: 'test' }, () => 'public')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { prompts } = await client.listPrompts()
         expect(prompts.map((p) => p.name)).toEqual(['visible'])
@@ -325,7 +325,7 @@ describe('Server — Prompts', () => {
     it('calling a disabled prompt returns an error', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'hidden', description: 'test', disabled: true }, () => 'secret')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.getPrompt({ name: 'hidden', arguments: {} })).rejects.toThrow()
       } finally {
@@ -333,15 +333,32 @@ describe('Server — Prompts', () => {
       }
     })
 
-    it('clients are notified when the prompt list changes', async () => {
+    it('adding a prompt surfaces it to clients (list_changed on legacy)', async () => {
       const mcp = new FastMCP({ name: 'test' })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
-        const notified = new Promise<void>((resolve) => {
-          client.setNotificationHandler('notifications/prompts/list_changed', () => resolve())
-        })
-        mcp.prompt({ name: 'new', description: 'test' }, () => 'hi')
-        await notified
+        if (combo.era === 'legacy') {
+          // Legacy delivers list_changed as a server→client notification; over HTTP the
+          // client must first open the standalone SSE stream (an initial list), stdio's
+          // duplex is always open.
+          await client.listPrompts()
+          await new Promise((r) => setTimeout(r, 50))
+          const notified = new Promise<void>((resolve) => {
+            client.setNotificationHandler('notifications/prompts/list_changed', () => resolve())
+          })
+          mcp.prompt({ name: 'new', description: 'test' }, () => 'hi')
+          await notified
+        } else {
+          // Modern list_changed rides the subscriptions/listen bus, not a plain
+          // notification; a raw client observes the change by re-listing.
+          let fired = false
+          client.setNotificationHandler('notifications/prompts/list_changed', () => { fired = true })
+          mcp.prompt({ name: 'new', description: 'test' }, () => 'hi')
+          await new Promise((r) => setTimeout(r, 50))
+          expect(fired).toBe(false)
+          const { prompts } = await client.listPrompts()
+          expect(prompts.map((p) => p.name)).toContain('new')
+        }
       } finally {
         await close()
       }
@@ -360,7 +377,7 @@ describe('Server — Prompts', () => {
         content: { type: 'audio', data: 'abc123', mimeType: 'audio/wav' },
       }
       mcp.prompt({ name: 'aud', description: 'test' }, () => msg)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'aud', arguments: {} })
         expect(result.messages[0].content).toMatchObject({ type: 'audio', mimeType: 'audio/wav' })
@@ -376,7 +393,7 @@ describe('Server — Prompts', () => {
         content: { type: 'resource_link', uri: 'file://readme.md', name: 'README', mimeType: 'text/markdown' },
       }
       mcp.prompt({ name: 'link', description: 'test' }, () => msg)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'link', arguments: {} })
         expect(result.messages[0].content).toMatchObject({ type: 'resource_link', uri: 'file://readme.md' })
@@ -395,7 +412,7 @@ describe('Server — Prompts', () => {
         },
       }
       mcp.prompt({ name: 'bin', description: 'test' }, () => msg)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'bin', arguments: {} })
         expect(result.messages[0].content).toMatchObject({
@@ -416,7 +433,7 @@ describe('Server — Prompts', () => {
     it('handler returning null throws a descriptive error', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'bad', description: 'test' }, () => null)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.getPrompt({ name: 'bad', arguments: {} })).rejects.toThrow()
       } finally {
@@ -427,7 +444,7 @@ describe('Server — Prompts', () => {
     it('handler returning a number throws a descriptive error', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'bad', description: 'test' }, () => 42)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.getPrompt({ name: 'bad', arguments: {} })).rejects.toThrow()
       } finally {
@@ -438,7 +455,7 @@ describe('Server — Prompts', () => {
     it('handler returning an object without content throws a descriptive error', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'bad', description: 'test' }, () => ({ role: 'user' }))
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.getPrompt({ name: 'bad', arguments: {} })).rejects.toThrow()
       } finally {
@@ -458,7 +475,7 @@ describe('Server — Prompts', () => {
         { name: 'slow', description: 'test', timeout: 50 },
         () => new Promise((r) => setTimeout(() => r('done'), 500)),
       )
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.getPrompt({ name: 'slow', arguments: {} })).rejects.toThrow()
       } finally {
@@ -475,7 +492,7 @@ describe('Server — Prompts', () => {
           return 'done in time'
         },
       )
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'fast', arguments: {} })
         expect((result.messages[0].content as { text: string }).text).toBe('done in time')
@@ -495,7 +512,7 @@ describe('Server — Prompts', () => {
       mcp.prompt({ name: 'a', description: 'test' }, () => 'a')
       mcp.prompt({ name: 'b', description: 'test' }, () => 'b')
       mcp.prompt({ name: 'c', description: 'test' }, () => 'c')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const fakeCursor = Buffer.from('nonexistent-prompt').toString('base64url')
         await expect(client.listPrompts({ cursor: fakeCursor })).rejects.toThrow()
@@ -513,7 +530,7 @@ describe('Server — Prompts', () => {
     it('a handler with no parameters can be registered and called', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.prompt({ name: 'noargs', description: 'test' }, () => 'no args needed')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'noargs', arguments: {} })
         expect((result.messages[0].content as { text: string }).text).toBe('no args needed')
@@ -535,7 +552,7 @@ describe('Server — Prompts', () => {
         expect(ctx).toBeDefined()
         return 'context ok'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.getPrompt({ name: 'ctx', arguments: {} })
         expect((result.messages[0].content as { text: string }).text).toBe('context ok')

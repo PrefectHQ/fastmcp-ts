@@ -36,8 +36,8 @@ export function formatError(err: unknown): string {
   }
   if (err instanceof MissingRequiredClientCapabilityError) {
     const capabilities = Object.keys(err.requiredCapabilities)
-    const detail = capabilities.length > 0 ? ` (${capabilities.join(', ')})` : ''
-    return `The server requires a client capability this CLI did not declare${detail}.`
+    const detail = capabilities.length > 0 ? `: ${capabilities.join(', ')}` : ''
+    return `The server requires a client capability. This CLI did not declare it${detail}.`
   }
   if (err instanceof ProtocolError && err.code === HEADER_MISMATCH_CODE) {
     return `The server rejected the request. The protocol version header does not match the request body.`

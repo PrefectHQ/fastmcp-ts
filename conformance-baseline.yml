@@ -1,0 +1,37 @@
+# MCP conformance baseline (W9) — the burn-down list to empty before 1.0.0 stable.
+#
+# Format (parsed by `@modelcontextprotocol/conformance --expected-failures`):
+#   an object with `server` / `client` keys, each a list of SCENARIO names.
+# A scenario "fails" when any of its checks is FAILURE *or* WARNING. A listed
+# scenario that fails => expected (exit 0); one that passes => stale entry
+# (exit 1, remove it); an unlisted scenario that fails => regression (exit 1).
+#
+# Regenerate the observed set: run `npm run conformance:server` /
+# `conformance:client` with this file temporarily removed.
+# Recorded from real runs against the fixtures on 2026-07-22 (tool 0.1.16).
+#
+# DEFERRED — client OAuth conformance. `npm run conformance:client` runs only the
+# four non-auth core client scenarios (initialize, tools_call,
+# elicitation-sep1034-client-defaults, sse-retry), which all PASS today. The
+# conformance client `core`/`auth`/`metadata` suites also include the OAuth
+# `auth/*` scenarios; the everything-client registers sampling + elicitation
+# handlers but configures NO OAuth, so those cannot pass. Rather than park ~14
+# permanent, non-fastmcp-bug entries here (which would stop this baseline ever
+# reaching empty), OAuth conformance is a NAMED W9 FOLLOW-UP: add an
+# OAuth-configured client driver, then run the `auth`/`metadata` suites. Until
+# then the client section is intentionally empty.
+
+# --- server (`npm run conformance:server`, --suite active) ------------------
+# Genuine fastmcp SERVER gaps — the real W9 burn-down items. FastMCP uses the
+# low-level SDK Server and registers handlers only for tools/resources/prompts,
+# so these methods return -32601 Method not found (or, for DNS, are unguarded):
+server:
+  - completion-complete       # no completion/complete handler (-32601)
+  - resources-subscribe        # no resources/subscribe handler (-32601)
+  - resources-unsubscribe      # no resources/unsubscribe handler (-32601)
+  - dns-rebinding-protection   # HTTP transport does not validate Host/Origin (accepts non-localhost)
+
+# --- client (`npm run conformance:client`) ----------------------------------
+# Empty: the four non-auth core client scenarios all pass. OAuth is deferred
+# (see the DEFERRED note above).
+client: []

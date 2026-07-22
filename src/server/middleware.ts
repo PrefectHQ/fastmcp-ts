@@ -140,15 +140,36 @@ export class CachingMiddleware implements Middleware {
   ) {}
 
   async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
+    // Multi-round-trip (inputRequired) exclusion. A retry re-sends byte-identical
+    // tools/call params — the SDK lifts inputResponses / requestState out of params —
+    // so the default cache key is identical across every round. Caching would replay
+    // the first round's input_required result forever and the tool could never
+    // complete. Rule: never serve/store when the request carries per-round input, and
+    // never store an input_required result (each embeds a single-use flow token).
+    const mc = ctx.mcpContext
+    const carriesRoundInput = mc.inputResponses !== undefined || mc.requestState() !== undefined
+    if (carriesRoundInput) return next()
+
     const key = this._keyFn
       ? this._keyFn(ctx as MiddlewareContext)
       : `${ctx.method}:${JSON.stringify(ctx.request)}`
     const entry = this._cache.get(key)
     if (entry && entry.expiresAt > Date.now()) return entry.value
     const result = await next()
-    this._cache.set(key, { value: result, expiresAt: Date.now() + this.ttl })
+    if (!isInputRequiredResultValue(result)) {
+      this._cache.set(key, { value: result, expiresAt: Date.now() + this.ttl })
+    }
     return result
   }
+}
+
+/** True when a handler result is a multi-round-trip `input_required` round (never cacheable). */
+function isInputRequiredResultValue(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { resultType?: unknown }).resultType === 'input_required'
+  )
 }
 
 /** Fixed-window counter rate limiter. Resets to full capacity after every windowMs interval. */

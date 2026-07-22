@@ -214,6 +214,18 @@ export const contextStore = new AsyncLocalStorage<McpContext>()
 /** Internal session-state key for per-session close callbacks. */
 export const SESSION_CLOSE_CALLBACKS_KEY = '__fastmcp_session_close_callbacks'
 
+/**
+ * Pointed error thrown by `ctx.getState` / `ctx.setState` on a modern (2026-07-28)
+ * HTTP request. Plan §3: session state stays for stdio and legacy HTTP sessions; on
+ * modern HTTP it throws instead of silently dropping the write against a fresh
+ * per-request state map. The message steers to the request-scoped replacement.
+ */
+const SESSION_STATE_MODERN_HTTP_ERROR =
+  '[fastmcp] Session state is not available on modern HTTP requests (protocol revision 2026-07-28). ' +
+  'Each request runs statelessly with no shared session store. ' +
+  'Use ctx.requestState() to read per-request state. ' +
+  'Use ctx.mintRequestState() to carry state across a multi-round-trip flow.'
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -250,6 +262,14 @@ export function createContext(
   const progressToken = (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)
     ?.progressToken
 
+  // Per-request era + transport, read from the SDK context:
+  //  - a modern (2026-07-28) request carries a `_meta` envelope; a legacy one does not.
+  //  - an HTTP-transport request carries `sdkCtx.http`; a stdio one does not.
+  // These back the era gates below. `isModernEra` reorders the sample/elicit/listRoots
+  // capability guard (Req 2); `isModernHttpRequest` gates session state (Req 1).
+  const isModernEra = sdkCtx.mcpReq.envelope !== undefined
+  const isModernHttpRequest = isModernEra && sdkCtx.http !== undefined
+
   async function log(level: LogLevel, message: string, loggerName?: string): Promise<void> {
     await sdkCtx.mcpReq.log(level, message, loggerName)
   }
@@ -282,11 +302,17 @@ export function createContext(
     },
 
     async sample(params) {
-      const caps = server.getClientCapabilities()
-      if (!caps?.sampling) {
-        throw new Error(
-          '[fastmcp] Client does not support sampling. Ensure the client advertises the sampling capability before calling ctx.sample().',
-        )
+      // On a modern (2026-07-28) request there is no server→client channel: skip the
+      // legacy capability guard so the SDK's era gate throws first, naming the
+      // inputRequired(...) replacement. On legacy the capability guard stays intact
+      // (getClientCapabilities reflects the initialize handshake). (task-9 Req 2)
+      if (!isModernEra) {
+        const caps = server.getClientCapabilities()
+        if (!caps?.sampling) {
+          throw new Error(
+            '[fastmcp] Client does not support sampling. Ensure the client advertises the sampling capability before calling ctx.sample().',
+          )
+        }
       }
       const result = await server.createMessage({
         messages: params.messages,
@@ -307,11 +333,15 @@ export function createContext(
     },
 
     async elicit(message, schema) {
-      const caps = server.getClientCapabilities()
-      if (!caps?.elicitation) {
-        throw new Error(
-          '[fastmcp] Client does not support elicitation. Ensure the client advertises the elicitation capability before calling ctx.elicit().',
-        )
+      // Modern era: skip the legacy capability guard so the SDK era gate throws first,
+      // naming inputRequired(...). Legacy: capability guard intact. (task-9 Req 2)
+      if (!isModernEra) {
+        const caps = server.getClientCapabilities()
+        if (!caps?.elicitation) {
+          throw new Error(
+            '[fastmcp] Client does not support elicitation. Ensure the client advertises the elicitation capability before calling ctx.elicit().',
+          )
+        }
       }
       const result = await server.elicitInput({
         message,
@@ -326,11 +356,15 @@ export function createContext(
     },
 
     async listRoots() {
-      const caps = server.getClientCapabilities()
-      if (!caps?.roots) {
-        throw new Error(
-          '[fastmcp] Client does not support roots. Ensure the client advertises the roots capability before calling ctx.listRoots().',
-        )
+      // Modern era: skip the legacy capability guard so the SDK era gate throws first,
+      // naming inputRequired(...). Legacy: capability guard intact. (task-9 Req 2)
+      if (!isModernEra) {
+        const caps = server.getClientCapabilities()
+        if (!caps?.roots) {
+          throw new Error(
+            '[fastmcp] Client does not support roots. Ensure the client advertises the roots capability before calling ctx.listRoots().',
+          )
+        }
       }
       const result = await server.listRoots()
       return result.roots
@@ -350,8 +384,12 @@ export function createContext(
       return JSON.stringify(payload)
     },
 
-    getState: (key) => sessionState.get(key),
+    getState: (key) => {
+      if (isModernHttpRequest) throw new Error(SESSION_STATE_MODERN_HTTP_ERROR)
+      return sessionState.get(key)
+    },
     setState: (key, value) => {
+      if (isModernHttpRequest) throw new Error(SESSION_STATE_MODERN_HTTP_ERROR)
       sessionState.set(key, value)
     },
     deleteState: (key) => {

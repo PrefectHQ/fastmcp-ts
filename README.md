@@ -58,6 +58,13 @@ await server.run()                              // stdio (default)
 // await server.run({ transport: 'http', port: 3000 })
 ```
 
+Save this file as `server.ts`. Installing `@prefecthq/fastmcp-ts` also installs the `fastmcp` CLI. Use it to inspect the server and call a tool, with no build step:
+
+```bash
+npx fastmcp inspect --file server.ts
+npx fastmcp call add --file server.ts a=1 b=2
+```
+
 ### Context
 
 Handlers access logging, progress, LLM sampling, user elicitation, and per-session state through an ambient context with no prop-drilling.
@@ -85,7 +92,7 @@ server.tool(
       maxTokens: 512,
     })
 
-    return content.text
+    return content.type === 'text' ? content.text : ''
   }
 )
 ```
@@ -121,7 +128,7 @@ const weather = new FastMCP({ name: 'weather' })
 weather.tool({ name: 'forecast', description: 'Get a forecast', input: z.object({ city: z.string() }) }, ({ city }) => `Forecast for ${city}`)
 
 // Wrap a remote server as a mountable instance
-const maps = await createProxy({ transport: 'http', url: 'http://maps-service/mcp' })
+const maps = await createProxy({ type: 'http', url: 'http://maps-service/mcp' })
 
 const gateway = new FastMCP({ name: 'gateway' })
 gateway.mount(weather, 'weather')   // → weather_forecast
@@ -168,7 +175,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const client = await Client.connect('http://localhost:3000', {
   handlers: {
-    sampling: (params) => new AnthropicSamplingAdapter(new Anthropic()).handleSampling(params),
+    sampling: new AnthropicSamplingAdapter(new Anthropic()).asHandler(),
   },
 })
 ```
@@ -201,7 +208,6 @@ FastMCP ships a server-side component library for building interactive UIs rende
 
 ```typescript
 import { FastMCPApp, Column, Row, Text, Input, Button, Table } from '@prefecthq/fastmcp-ts/server'
-import { z } from 'zod'
 
 const app = new FastMCPApp({ name: 'search-app', version: '1.0.0' })
 
@@ -213,19 +219,15 @@ app.entrypoint(
       Text('Product Search'),
       Row({}, [
         Input({ name: 'query', placeholder: 'Search products…' }),
-        Button({ label: 'Search', actionRef: 'run_search' }),
+        Button({ label: 'Search', action: app.toolRef('run_search') }),
       ]),
     ])
 )
 
 // Backend tool: hidden from the LLM, callable only from within the rendered UI
 app.backendTool(
-  {
-    name: 'run_search',
-    description: 'Execute the search query',
-    input: z.object({ query: z.string() }),
-  },
-  async ({ query }) => {
+  { name: 'run_search', description: 'Execute the search query' },
+  async ({ query }: { query: string }) => {
     const rows = await db.search(query)
     return Table({ columns: ['Name', 'Price', 'Stock'], rows })
   }
@@ -247,7 +249,15 @@ const server = new FastMCP({ name: 'my-server' })
 server.addProvider(new Approval())    // confirm/deny card injected back into the conversation
 server.addProvider(new Choice())      // clickable option list
 server.addProvider(new FileUpload())  // drag-and-drop file picker; file bytes never pass through the LLM
-server.addProvider(new FormInput())   // auto-generated validated form from any Standard Schema
+
+// Auto-generated, validated form from any Standard Schema
+server.addProvider(
+  new FormInput({
+    name: 'contact_form',
+    description: 'Contact form',
+    schema: z.object({ name: z.string(), email: z.string() }),
+  }),
+)
 ```
 
 ### Generative UI
@@ -277,6 +287,8 @@ fastmcp run server.ts --transport http --port 3000
 fastmcp inspect --file server.ts
 fastmcp inspect --url http://localhost:3000
 fastmcp inspect --file server.ts --json
+fastmcp inspect --file server.ts --modern       # negotiate the 2026-07-28 protocol era over stdio
+fastmcp inspect --file server.ts --pin 2026-07-28  # require that exact era
 
 # Call a tool, read a resource, or get a prompt
 fastmcp call add --file server.ts a=1 b=2
@@ -297,6 +309,8 @@ fastmcp install claude-desktop server.ts
 # Find locally configured MCP servers
 fastmcp discover
 ```
+
+`fastmcp inspect`, `fastmcp list`, and `fastmcp call` connect over stdio by default, when you pass `--file` or `--command`. Add `--modern` to negotiate the newer 2026-07-28 protocol era. A `--url` connection negotiates the protocol version automatically, so `--modern` is not needed for HTTP. `--pin <version>` works on every transport, including HTTP. It forces that exact protocol revision. The connection fails if the server does not offer it.
 
 ---
 

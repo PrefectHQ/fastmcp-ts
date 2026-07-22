@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { FastMCP, staticTokenVerifier, requireScopes } from 'fastmcp-ts/server'
+import { FastMCP, staticTokenVerifier, requireScopes, inputRequired, acceptedContent } from 'fastmcp-ts/server'
 import {
   LoggingMiddleware,
   CachingMiddleware,
@@ -234,6 +234,97 @@ describe('Server — Middleware', () => {
       } finally {
         await closeAdmin()
         await closeUser()
+        await mcp.close()
+      }
+    })
+
+    it('caching middleware does not cache or replay an inputRequired round-trip', async () => {
+      // Regression (task-9 Req 4; repro from .tmp/sdd/task-3-report.md): a multi-round-trip
+      // retry re-sends byte-identical tools/call params — inputResponses / requestState are
+      // lifted out of params by the SDK, so the default cache key is identical across rounds.
+      // The old CachingMiddleware cached round 1's `input_required` result and replayed it on
+      // round 2, so the handler never saw the client's answer and the tool never completed.
+      // The fix (exclusion rule): never serve/store when the request carries inputResponses
+      // or requestState, and never store an `input_required` result.
+      let rounds = 0
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool(
+        { name: 'confirmDelete', description: 'Delete after confirmation' },
+        async () => {
+          rounds++
+          const ctx = mcp.getContext()
+          const accepted = acceptedContent<{ confirm: boolean }>(ctx.inputResponses, 'confirm')
+          if (!accepted?.confirm) {
+            return inputRequired({
+              inputRequests: {
+                confirm: inputRequired.elicit({
+                  message: 'Confirm delete?',
+                  requestedSchema: {
+                    type: 'object',
+                    properties: { confirm: { type: 'boolean' } },
+                    required: ['confirm'],
+                  },
+                }),
+              },
+            })
+          }
+          return 'deleted'
+        },
+      )
+      mcp.use(new CachingMiddleware(60_000))
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+
+      const url = `http://127.0.0.1:${mcp.address!.port}/mcp`
+      const envelopeMeta = {
+        'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientCapabilities': { elicitation: { form: {} } },
+      }
+      const headers = {
+        'Content-Type': 'application/json',
+        'MCP-Protocol-Version': '2026-07-28',
+        'Mcp-Method': 'tools/call',
+        'Mcp-Name': 'confirmDelete',
+      }
+
+      try {
+        // Round 1 — no inputResponses: the handler returns input_required. This result must
+        // NOT be cached (each carries a single-use flow token; caching would replay it).
+        const res1 = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: { name: 'confirmDelete', arguments: {}, _meta: envelopeMeta },
+          }),
+        })
+        const body1 = await res1.json()
+        expect(body1.result.resultType).toBe('input_required')
+
+        // Round 2 — retry with inputResponses (byte-identical params otherwise). The cache
+        // must be bypassed so the handler re-runs and completes, rather than replaying the
+        // cached round-1 input_required result.
+        const res2 = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'tools/call',
+            params: {
+              name: 'confirmDelete',
+              arguments: {},
+              inputResponses: { confirm: { action: 'accept', content: { confirm: true } } },
+              _meta: envelopeMeta,
+            },
+          }),
+        })
+        const body2 = await res2.json()
+        expect(body2.result.content).toEqual([{ type: 'text', text: 'deleted' }])
+        // The handler ran on BOTH rounds — proof the cache never short-circuited the retry.
+        expect(rounds).toBe(2)
+      } finally {
         await mcp.close()
       }
     })

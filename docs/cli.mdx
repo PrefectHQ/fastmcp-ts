@@ -64,6 +64,8 @@ fastmcp call analyze --file server.ts --input-json '{"filters": {"status": "open
 fastmcp dev inspector server.ts
 ```
 
+The Inspector speaks the legacy (2025) protocol era only. A fastmcp server pins its era per connection. It still serves the Inspector correctly. The Inspector cannot exercise 2026-07-28 (modern) era behavior. To check the modern era, run `fastmcp inspect --file server.ts --modern` instead.
+
 ## Install into editors and clients
 
 `fastmcp install` writes a server into a client's MCP configuration so that editor or app launches it automatically. This is how you hand a finished server to the tools that consume it — Claude Code, Claude Desktop, Cursor, Gemini, Goose, or a project-local `mcp.json`.

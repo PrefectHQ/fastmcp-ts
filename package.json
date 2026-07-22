@@ -57,6 +57,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
+    "conformance:server": "node tests/conformance/run-server.mjs",
+    "conformance:client": "node tests/conformance/run-client.mjs",
     "docs:dev": "cd docs && npx --yes mint@latest dev",
     "docs:api": "typedoc && node scripts/generate-api-nav.mjs",
     "docs:links": "cd docs && npx --yes mint@latest broken-links",

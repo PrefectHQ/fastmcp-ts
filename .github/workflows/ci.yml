@@ -63,3 +63,46 @@ jobs:
 
       - name: Run browser e2e tests
         run: npm run test:e2e
+
+  conformance-server:
+    name: MCP conformance (server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Boots the everything-server fixture, runs the pinned
+      # @modelcontextprotocol/conformance suite (active + draft) against it, and
+      # applies conformance-baseline.yml. Fails the job (and the PR) on any
+      # regression or stale baseline entry — see tests/conformance/run-server.mjs.
+      - name: Run server conformance suite
+        run: npm run conformance:server
+
+  conformance-client:
+    name: MCP conformance (client)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Runs the pinned @modelcontextprotocol/conformance suite in client mode
+      # against the everything-client fixture (the four non-auth core scenarios,
+      # plus the draft filter) and applies conformance-baseline.yml. Fails the
+      # job (and the PR) on any regression or stale baseline entry — see
+      # tests/conformance/run-client.mjs.
+      - name: Run client conformance suite
+        run: npm run conformance:client

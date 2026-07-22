@@ -1,6 +1,6 @@
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
-import { ProtocolError, ProtocolErrorCode, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec } from "@modelcontextprotocol/server";
+import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec } from "@modelcontextprotocol/server";
 import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, McpHandlerRequestOptions, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
 
 // Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
@@ -719,7 +719,10 @@ export class FastMCP {
       }
 
       if (!resource || resource.config.disabled) {
-        throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown resource: "${requestedUri}"`)
+        // ResourceNotFoundError stamps `data: { uri }` (exactly one key) and keeps the
+        // -32602 code the SDK recognition contract requires, so a client can tell a
+        // resource miss from a generic Invalid Params (task-9 Req 3; task-7 F1).
+        throw new ResourceNotFoundError(requestedUri, `Unknown resource: "${requestedUri}"`)
       }
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
@@ -1029,7 +1032,9 @@ export class FastMCP {
       : this._staticResources.get(uri)
 
     if (!resource || resource.config.disabled) {
-      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown resource: "${uri}"`)
+      // See resources/read handler: ResourceNotFoundError carries data.uri so the
+      // miss is recognisable per the SDK contract (task-9 Req 3; task-7 F1).
+      throw new ResourceNotFoundError(uri, `Unknown resource: "${uri}"`)
     }
     if (resource.config.auth) await runAuthCheck(resource.config.auth, ctx.auth)
 

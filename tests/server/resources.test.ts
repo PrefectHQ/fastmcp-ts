@@ -1,18 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { ProtocolError } from '@modelcontextprotocol/client'
 import { FastMCP, ResourceResult } from 'fastmcp-ts/server'
-import { createTestClient } from '../helpers/createTestClient'
+import { connectEra, describeEachEra } from '../helpers/eras'
 
 // ---------------------------------------------------------------------------
-// Static resources
+// Static resources — every case runs across all four transport/era combos.
 // ---------------------------------------------------------------------------
 
-describe('Server — Resources', () => {
+describeEachEra('Server — Resources', (combo) => {
   describe('static resources', () => {
     it('a static text resource is readable by clients at its declared URI', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.resource({ uri: 'memo://greeting', name: 'greeting' }, () => 'Hello, world!')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.readResource({ uri: 'memo://greeting' })
         expect(result.contents).toHaveLength(1)
@@ -28,7 +28,7 @@ describe('Server — Resources', () => {
       const mcp = new FastMCP({ name: 'test' })
       const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]) // PNG magic bytes
       mcp.resource({ uri: 'img://logo', name: 'logo', mimeType: 'image/png' }, () => bytes)
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.readResource({ uri: 'img://logo' })
         const content = result.contents[0] as { blob: string; mimeType: string }
@@ -42,7 +42,7 @@ describe('Server — Resources', () => {
     it('a static resource appears in resources/list', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.resource({ uri: 'memo://note', name: 'note', description: 'A note' }, () => 'hi')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { resources } = await client.listResources()
         expect(resources).toHaveLength(1)
@@ -66,7 +66,7 @@ describe('Server — Resources', () => {
         },
         () => 'content',
       )
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { resources } = await client.listResources()
         const r = resources[0] as Record<string, unknown>
@@ -89,7 +89,7 @@ describe('Server — Resources', () => {
         },
         () => 'ok',
       )
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { resourceTemplates } = await client.listResourceTemplates()
         const t = resourceTemplates[0] as Record<string, unknown>
@@ -113,7 +113,7 @@ describe('Server — Resources', () => {
         called = true
         return 'executed'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await client.readResource({ uri: 'fn://counter' })
         expect(called).toBe(true)
@@ -128,7 +128,7 @@ describe('Server — Resources', () => {
         await new Promise((r) => setTimeout(r, 10))
         return 'async result'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.readResource({ uri: 'async://data' })
         const content = result.contents[0] as { text: string }
@@ -141,7 +141,7 @@ describe('Server — Resources', () => {
     it('a function returning a plain object gets JSON-serialised into a text/json response', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.resource({ uri: 'data://config' }, () => ({ host: 'localhost', port: 3000 }))
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.readResource({ uri: 'data://config' })
         const content = result.contents[0] as { text: string; mimeType: string }
@@ -161,7 +161,7 @@ describe('Server — Resources', () => {
     it('a URI template is listed as a resource template, not a static resource', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.resource({ uri: 'user://{id}', name: 'user' }, () => 'ok')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { resources } = await client.listResources()
         expect(resources).toHaveLength(0)
@@ -181,7 +181,7 @@ describe('Server — Resources', () => {
         received = params
         return `user ${params?.id}`
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.readResource({ uri: 'user://42' })
         expect(received).toEqual({ id: '42' })
@@ -199,7 +199,7 @@ describe('Server — Resources', () => {
         received = params
         return 'ok'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await client.readResource({ uri: 'repo://acme/myapp/issues/99' })
         expect(received).toEqual({ owner: 'acme', repo: 'myapp', number: '99' })
@@ -215,7 +215,7 @@ describe('Server — Resources', () => {
         received = params
         return 'ok'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await client.readResource({ uri: 'file:///a/b/c/readme.txt' })
         expect(received).toEqual({ path: 'a/b/c/readme.txt' })
@@ -231,7 +231,7 @@ describe('Server — Resources', () => {
         received = params
         return 'ok'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await client.readResource({ uri: 'search://typescript?limit=10&offset=20' })
         expect(received).toEqual({ query: 'typescript', limit: '10', offset: '20' })
@@ -251,7 +251,7 @@ describe('Server — Resources', () => {
       mcp.resource({ uri: 'r://a' }, () => 'a')
       mcp.resource({ uri: 'r://b' }, () => 'b')
       mcp.resource({ uri: 'r://c' }, () => 'c')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         // client.listResources() now auto-aggregates every page (v2 SDK behavior) —
         // use the low-level request() to observe a single raw page, matching what
@@ -270,7 +270,7 @@ describe('Server — Resources', () => {
       mcp.resource({ uri: 'r://a' }, () => 'a')
       mcp.resource({ uri: 'r://b' }, () => 'b')
       mcp.resource({ uri: 'r://c' }, () => 'c')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const page1 = await client.request({ method: 'resources/list', params: {} })
         const page2 = await client.request({ method: 'resources/list', params: { cursor: page1.nextCursor } })
@@ -287,7 +287,7 @@ describe('Server — Resources', () => {
       mcp.resource({ uri: 'r://{a}' }, () => 'a')
       mcp.resource({ uri: 'r://{b}' }, () => 'b')
       mcp.resource({ uri: 'r://{c}' }, () => 'c')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const page1 = await client.request({ method: 'resources/templates/list', params: {} })
         expect(page1.resourceTemplates).toHaveLength(2)
@@ -312,7 +312,7 @@ describe('Server — Resources', () => {
       mcp.resource({ uri: 'r://a', name: 'a' }, () => 'a')
       mcp.resource({ uri: 'r://b', name: 'b' }, () => 'b')
 
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(
           client.listResources({ cursor: Buffer.from('r://nonexistent').toString('base64url') }),
@@ -327,7 +327,7 @@ describe('Server — Resources', () => {
       mcp.resource({ uri: 'r://{a}' }, () => 'a')
       mcp.resource({ uri: 'r://{b}' }, () => 'b')
 
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(
           client.listResourceTemplates({ cursor: Buffer.from('r://{nonexistent}').toString('base64url') }),
@@ -345,7 +345,7 @@ describe('Server — Resources', () => {
   describe('error handling', () => {
     it('reading an unknown URI returns an error response', async () => {
       const mcp = new FastMCP({ name: 'test' })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.readResource({ uri: 'unknown://nope' })).rejects.toThrow()
       } finally {
@@ -358,7 +358,7 @@ describe('Server — Resources', () => {
       // MCP-custom -32002 to the JSON-RPC standard -32602 Invalid Params — the URI
       // is a request parameter, not an unknown method.
       const mcp = new FastMCP({ name: 'test' })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const error = await client.readResource({ uri: 'unknown://nope' }).catch((e: unknown) => e)
         expect(error).toBeInstanceOf(ProtocolError)
@@ -380,7 +380,7 @@ describe('Server — Resources', () => {
         await new Promise((r) => setTimeout(r, 200))
         return 'too late'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.readResource({ uri: 'slow://data' })).rejects.toThrow(/timed out/)
       } finally {
@@ -394,7 +394,7 @@ describe('Server — Resources', () => {
         await new Promise((r) => setTimeout(r, 10))
         return 'in time'
       })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const result = await client.readResource({ uri: 'fast://data' })
         const content = result.contents[0] as { text: string }
@@ -425,7 +425,7 @@ describe('Server — Resources', () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.resource({ uri: 'hidden://secret', disabled: true }, () => 'secret')
       mcp.resource({ uri: 'visible://public' }, () => 'public')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         const { resources } = await client.listResources()
         expect(resources.map((r) => r.uri)).toEqual(['visible://public'])
@@ -437,7 +437,7 @@ describe('Server — Resources', () => {
     it('reading a disabled resource returns an error', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.resource({ uri: 'hidden://secret', disabled: true }, () => 'secret')
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
         await expect(client.readResource({ uri: 'hidden://secret' })).rejects.toThrow()
       } finally {
@@ -445,15 +445,32 @@ describe('Server — Resources', () => {
       }
     })
 
-    it('clients are notified when the resource list changes', async () => {
+    it('adding a resource surfaces it to clients (list_changed on legacy)', async () => {
       const mcp = new FastMCP({ name: 'test' })
-      const { client, close } = await createTestClient(mcp)
+      const { client, close } = await connectEra(mcp, combo)
       try {
-        const notified = new Promise<void>((resolve) => {
-          client.setNotificationHandler('notifications/resources/list_changed', () => resolve())
-        })
-        mcp.resource({ uri: 'dynamic://new' }, () => 'new')
-        await notified
+        if (combo.era === 'legacy') {
+          // Legacy delivers list_changed as a server→client notification; over HTTP the
+          // client must first open the standalone SSE stream (an initial list), stdio's
+          // duplex is always open.
+          await client.listResources()
+          await new Promise((r) => setTimeout(r, 50))
+          const notified = new Promise<void>((resolve) => {
+            client.setNotificationHandler('notifications/resources/list_changed', () => resolve())
+          })
+          mcp.resource({ uri: 'dynamic://new' }, () => 'new')
+          await notified
+        } else {
+          // Modern list_changed rides the subscriptions/listen bus, not a plain
+          // notification; a raw client observes the change by re-listing.
+          let fired = false
+          client.setNotificationHandler('notifications/resources/list_changed', () => { fired = true })
+          mcp.resource({ uri: 'dynamic://new' }, () => 'new')
+          await new Promise((r) => setTimeout(r, 50))
+          expect(fired).toBe(false)
+          const { resources } = await client.listResources()
+          expect(resources.map((r) => r.uri)).toContain('dynamic://new')
+        }
       } finally {
         await close()
       }
