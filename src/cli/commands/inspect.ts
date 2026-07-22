@@ -16,6 +16,8 @@ export default defineCommand({
     file: { type: 'string', description: 'Server file (e.g. server.ts)' },
     auth: { type: 'string', description: 'Bearer token' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
+    modern: { type: 'boolean', description: 'Opt stdio/in-process connections into version negotiation', default: false },
+    pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args }) {
     if (args.json) setJsonMode(true)
@@ -40,10 +42,12 @@ export default defineCommand({
         ? { kind: 'stdio' as const, command: args.command }
         : { kind: 'url' as const, url: args.url! }
 
+    const era = { modern: args.modern, pin: args.pin }
+
     let client
     try {
       client = await withSpinner('Inspecting server…', () =>
-        connectClient(mode, authObj),
+        connectClient(mode, authObj, era),
       )
     } catch (err) {
       cliError(formatError(err), { code: EXIT.CONNECTION })

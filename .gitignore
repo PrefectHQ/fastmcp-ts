@@ -33,3 +33,8 @@ mcp.json
 # Playwright
 test-results/
 playwright-report/
+
+# Agent stuff
+.tmp/
+.superpowers/
+
