@@ -567,24 +567,94 @@ SDK issues.
   `tests/client/browser-oauth.test.ts` (`iss` through postMessage and `resumeFromRedirect`). Full
   suite: 660/660 passing (13 pre-existing `it.todo`, unrelated). Playwright OAuth e2e: 1/1 passing.
 
-### W7 — Client core
+### W7 — Client core ✅ (done, not yet committed)
 
-- [ ] `ClientOptions.versionNegotiation` + `prior` verdict passthrough; expose `getProtocolEra()`;
-  defaults `'auto'` (HTTP), `'legacy'` + `--modern`/`--pin` flag (CLI stdio) (src/client/client.ts).
-- [ ] Era-aware `ping()` (legacy RPC; modern: `server/discover` liveness or deprecate) and
-  `setLogLevel` (legacy RPC; modern: thread per-request `logLevel` into `_meta`)
-  (src/client/client.ts:281, :442).
-- [ ] MRTR auto-fulfilment: confirm `handlers.sampling`/`elicitation` map onto SDK handler
-  registration; expose `inputRequired` client knobs (`autoFulfill`, `maxRounds`).
-- [ ] SSE fallback: keep, but demote to explicit opt-in + deprecation warning
-  (src/client/transports.ts:206–209).
-- [ ] In-process transports: `InMemoryTransport` is 2025-era only; add a `handler.fetch`-backed
-  transport path for modern in-process `McpServerLike` inputs; document era implications
-  (src/client/transports.ts).
-- [ ] Optional (stretch): surface the SDK `responseCache` (`ttlMs`/`cacheScope`-aware) via
-  `ClientOptions.cache`.
-- [ ] `MultiServerClient`: per-entry `versionNegotiation`/auth; era surfaced per server;
-  subscribe/logLevel/ping fan-out era-aware (src/client/multi-server.ts).
+- [x] `ClientOptions.versionNegotiation` + `getProtocolEra()` — **already done in W3**, pulled
+  forward at the time because W3's own subscription tests needed it; re-verified here, unchanged.
+  Added `ClientOptions.prior?: PriorDiscovery` (constructor-level, mirroring how
+  `versionNegotiation` is already configured, rather than as a per-`connect()`-call param — the
+  ref-counted `connect()` is shared across callers, so a per-call verdict would conflict with that
+  model) — threaded to `sdkClient.connect(transport, { prior })`. **CLI `--modern`/`--pin` flags and
+  an `'auto'`-for-HTTP default are explicitly deferred to W8** ("CLI + examples", the very next
+  workstream) — this line originally bundled a CLI concern into a client-library workstream; the
+  library capability (`ClientOptions.versionNegotiation`) is fully wired and ready for W8 to expose
+  as flags, but no CLI code was touched here.
+- [x] Era-aware `ping()`: legacy era sends the `ping` RPC unchanged; modern era calls
+  `discover()` (`server/discover`) instead and returns `true` on success — confirmed by reading
+  the SDK's 2026 wire registry (from W5's research) that `ping` is absent from it, so the
+  unconditional `this._sdk().ping(...)` call would throw `MethodNotSupportedByProtocolVersion` on
+  a modern connection; `discover()` is the SDK-native modern equivalent, not a hand-rolled one.
+- [x] Era-aware `setLogLevel()`: legacy era sends `logging/setLevel` unchanged; modern era — where
+  `logging/setLevel` is deprecated (SEP-2577) and physically absent from the wire registry —
+  records the level and threads it into `_meta['io.modelcontextprotocol/logLevel']` on every
+  subsequent request via a new `_metaParams()` helper, spread into the params object of every
+  request-building call site (`listTools`, `listResources`, `listResourceTemplates`, `readResource`,
+  `readResourceRaw`, `subscribeResource`, `unsubscribeResource`, `listPrompts`, `getPrompt`,
+  `callTool`, `complete`). **Verified live, not just "doesn't throw"**: built a raw
+  `createMcpHandler`-based test server whose `tools/call` handler reads `ctx.mcpReq.envelope`
+  (discovered along the way — the server lifts `_meta` off `params` before the handler runs, so a
+  registered handler never sees it at `request.params._meta`; the correct read site is the second
+  handler argument's `mcpReq.envelope`) and confirmed the key is absent before `setLogLevel()` and
+  present with the right value immediately after.
+- [x] MRTR auto-fulfilment: `handlers.sampling`/`handlers.elicitation` → SDK handler registration —
+  **confirmed already correct**, no changes (capability declaration in `_buildCapabilities()` and
+  `setRequestHandler` registration in `_registerHandlers()` both already matched the SDK's expected
+  shape). Added `ClientOptions.inputRequired?: InputRequiredOptions` (`autoFulfill`, `maxRounds`),
+  passed straight through to the SDK client constructor — the SDK already implements the entire
+  auto-fulfilment driver against the *same* `sampling`/`elicitation` handlers this class registers,
+  so this was a pure passthrough, not new logic.
+- [x] SSE fallback demoted to explicit opt-in: added `ClientOptions.legacySSE` (default `false`).
+  A URL whose path indicates SSE (e.g. ends in `/sse`) now throws a clear error pointing at
+  Streamable HTTP and the flag, instead of silently connecting over a transport the SDK itself
+  marks `@deprecated`; setting `legacySSE: true` connects as before and logs a one-time
+  `console.warn`. Threaded through a new shared `TransportResolutionOptions` type across
+  `resolveTransport`/`resolveEntryTransport`/`urlToTransport` (previously these only took
+  `(input, auth)`).
+- [x] In-process transports for modern era: added an optional `_modernFetch?(request, options)`
+  hook to the `McpServerLike` duck-type interface, and implemented it on `FastMCP`
+  (`_modernFetch` delegates to the same `createMcpHandler`-backed `_getModernHandler().fetch` the
+  real HTTP modern path already uses — confirmed via its own type defs that `McpHttpHandler.fetch`
+  is exactly `(request: Request, options?) => Promise<Response>`, a pure in-process dispatcher, no
+  sockets). Client-side: when an in-process `McpServerLike` input is paired with a **pinned**
+  modern `versionNegotiation` (`{ mode: { pin: '2026-07-28' } }`) and the entry exposes
+  `_modernFetch`, `resolveTransport`/`resolveEntryTransport` build a `StreamableHTTPClientTransport`
+  against a dummy in-process URL whose `fetch` option is adapted `(url, init) =>
+  modernFetch(new Request(url, init))`. **Scoped deliberately to pinned mode only, and documented as
+  such**: `'auto'`/`'legacy'` modes still go through the existing `connect()` + `InMemoryTransport`
+  pair (2025-era only, unchanged) — `_modernFetch` mirrors `createMcpHandler(..., { legacy:
+  'reject' })`, so it cannot itself serve a negotiation that might fall back to legacy; building a
+  dual-era in-process bridge (routing through the server's *full* HTTP dispatch, which splits
+  legacy/modern at the Node request/response layer, not a pure fetch signature) is a materially
+  larger undertaking left for a future workstream if in-process `'auto'` negotiation is needed.
+  Verified live end-to-end (in-process `FastMCP` server, pinned modern client, `listTools()`
+  succeeds, `getProtocolEra()` reports `'modern'`).
+- [x] Response cache passthrough (stretch, done): added `ClientOptions.responseCacheStore` /
+  `cachePartition` / `defaultCacheTtlMs`, passed straight through to the SDK client constructor —
+  the SDK's `InMemoryResponseCacheStore` default and cache-hint handling needed no fastmcp-side
+  logic at all.
+- [x] `MultiServerClient`: added `MultiServerOptions.versionNegotiation` — **this was missing
+  entirely**; `_buildSdkClient()` never passed `versionNegotiation` to the per-server SDK client
+  constructor at all, so a `MultiServerClient` could never negotiate modern era on any server,
+  regardless of what a caller configured (there was nothing to configure). Applied identically to
+  every server in the config (a single option, not per-entry — per-entry auth already existed via
+  `McpServerEntry.auth`, but per-entry `versionNegotiation` was judged unnecessary complexity for
+  what SEP-2577 conformance actually needs: fan-out to potentially-mixed-era servers, not
+  independently-tunable negotiation policy per server). Added `getProtocolEra(serverName)` (new —
+  didn't exist before; "era surfaced per server" from the plan had no way to be surfaced at all)
+  reading the named sub-client's own negotiated era. Made `ping()` and `setLogLevel()` era-aware
+  per sub-client — same fixes as `Client` (`discover()` for modern `ping`; per-server-name
+  `_logLevels` map + `_metaParamsFor(serverName)` threaded into the same breadth of call sites) —
+  `subscribeResource`/`unsubscribeResource` needed **no changes**, already era-routed per server
+  from an earlier workstream.
+- [x] Tests: 8 new tests in `tests/client/client.test.ts` (pinned-modern in-process transport,
+  era-aware `ping()` on both eras, era-aware `setLogLevel()` on both eras plus a raw-wire
+  `_meta`-arrival verification, `inputRequired`/response-cache passthrough sanity), 3 new tests in
+  `tests/client/transports.test.ts` (SSE opt-in throw + explicit-opt-in success, replacing the
+  old auto-SSE tests), 4 new tests in `tests/client/multi-server.test.ts`
+  (`versionNegotiation` legacy-default and pinned-modern fan-out, era-aware `ping()`/`setLogLevel()`
+  for a modern sub-client). Full suite: 675/675 passing (13 pre-existing `it.todo`, unrelated).
+  Playwright OAuth e2e re-run: 1/1 passing (unaffected, but re-verified since `transports.ts`
+  changed).
 
 ### W8 — CLI + examples
 

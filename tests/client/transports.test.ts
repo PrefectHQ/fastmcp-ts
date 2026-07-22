@@ -16,13 +16,21 @@ describe('resolveTransport', () => {
       expect(transport).toBeInstanceOf(StreamableHTTPClientTransport)
     })
 
-    it('/sse path segment → SSEClientTransport', async () => {
-      const { transport } = await resolveTransport('http://localhost:3000/sse')
+    it('/sse path segment without legacySSE throws (deprecated transport requires opt-in)', async () => {
+      await expect(resolveTransport('http://localhost:3000/sse')).rejects.toThrow(/deprecated/)
+    })
+
+    it('/sse path segment with legacySSE: true → SSEClientTransport', async () => {
+      const { transport } = await resolveTransport('http://localhost:3000/sse', undefined, {
+        legacySSE: true,
+      })
       expect(transport).toBeInstanceOf(SSEClientTransport)
     })
 
-    it('/sse/ path prefix → SSEClientTransport', async () => {
-      const { transport } = await resolveTransport('http://localhost:3000/sse/messages')
+    it('/sse/ path prefix with legacySSE: true → SSEClientTransport', async () => {
+      const { transport } = await resolveTransport('http://localhost:3000/sse/messages', undefined, {
+        legacySSE: true,
+      })
       expect(transport).toBeInstanceOf(SSEClientTransport)
     })
 
@@ -71,10 +79,20 @@ describe('resolveTransport', () => {
       expect(transport).toBeInstanceOf(StreamableHTTPClientTransport)
     })
 
-    it('SSE URL entry → SSEClientTransport', async () => {
-      const { transport } = await resolveTransport({
-        mcpServers: { myServer: { url: 'http://localhost:3000/sse' } },
-      })
+    it('SSE URL entry without legacySSE throws', async () => {
+      await expect(
+        resolveTransport({
+          mcpServers: { myServer: { url: 'http://localhost:3000/sse' } },
+        }),
+      ).rejects.toThrow(/deprecated/)
+    })
+
+    it('SSE URL entry with legacySSE: true → SSEClientTransport', async () => {
+      const { transport } = await resolveTransport(
+        { mcpServers: { myServer: { url: 'http://localhost:3000/sse' } } },
+        undefined,
+        { legacySSE: true },
+      )
       expect(transport).toBeInstanceOf(SSEClientTransport)
     })
 

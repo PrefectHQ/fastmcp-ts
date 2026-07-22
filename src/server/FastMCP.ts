@@ -1,7 +1,7 @@
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
 import { ProtocolError, ProtocolErrorCode, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec } from "@modelcontextprotocol/server";
-import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
+import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, McpHandlerRequestOptions, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
 
 // Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
 // mirrors its CACHEABLE_RESULT_METHODS literal union (SEP-2549 cacheable operations).
@@ -1355,6 +1355,21 @@ export class FastMCP {
     // Rebuild so UI extension capability reflects all registered components.
     this._primaryServer = this._makeServer()
     await this._primaryServer.connect(transport)
+  }
+
+  /**
+   * Modern-era (2026-07-28) in-process fetch entrypoint — the `McpServerLike`
+   * duck-type hook `fastmcp-ts/client`'s `Client` looks for when a caller pins
+   * modern era for an in-process server (`versionNegotiation: { mode: { pin:
+   * '2026-07-28' } } }`). Delegates directly to the same `createMcpHandler`
+   * instance the real HTTP modern path uses (`_getModernHandler`), so this is
+   * the identical dispatch a real network connection would get — no sockets,
+   * same code. Modern-only (`legacy: 'reject'`): a client using `'auto'` or
+   * `'legacy'` negotiation instead goes through `connect()` + `InMemoryTransport`
+   * (2025-era only), unaffected by this method.
+   */
+  async _modernFetch(request: Request, options?: McpHandlerRequestOptions): Promise<Response> {
+    return this._getModernHandler().fetch(request, options)
   }
 
   async run(options?: RunOptions): Promise<void> {

@@ -1,5 +1,13 @@
-import { UnauthorizedError, Client as SdkClient } from "@modelcontextprotocol/client";
-import type { RequestOptions as SdkRequestOptions, McpSubscription, VersionNegotiationOptions, ProtocolEra } from "@modelcontextprotocol/client";
+import { UnauthorizedError, Client as SdkClient, LOG_LEVEL_META_KEY } from "@modelcontextprotocol/client";
+import type {
+  RequestOptions as SdkRequestOptions,
+  McpSubscription,
+  VersionNegotiationOptions,
+  ProtocolEra,
+  PriorDiscovery,
+  InputRequiredOptions,
+  ResponseCacheStore,
+} from "@modelcontextprotocol/client";
 import { BearerAuth, OAuth } from './auth.js'
 import type { ClientCredentials } from './auth.js'
 import type { ClientHandlers, ListChangedHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
@@ -89,6 +97,56 @@ export interface ClientOptions {
    * result after connecting.
    */
   versionNegotiation?: VersionNegotiationOptions
+  /**
+   * A cached era verdict from a previous connection to the same server, so
+   * connect() can skip the `server/discover` probe entirely. Takes precedence
+   * over `versionNegotiation`. `{ kind: 'modern', discover }` adopts a prior
+   * `DiscoverResult` with zero round trips; `{ kind: 'legacy' }` skips the probe
+   * and runs the plain legacy `initialize` handshake. Freshness is the caller's
+   * responsibility — a stale modern verdict fails loudly at the first request; a
+   * stale legacy verdict succeeds silently forever. Reuse only within one
+   * authorization context.
+   */
+  prior?: PriorDiscovery
+  /**
+   * Multi-round-trip auto-fulfilment (protocol revision 2026-07-28). On the
+   * modern era, servers obtain client input (elicitation, sampling, roots) by
+   * answering a request with an `input_required` result instead of a
+   * server→client request. By default the client fulfils these automatically
+   * through the same `handlers.sampling`/`handlers.elicitation` callbacks,
+   * retrying up to `maxRounds` times. Set `autoFulfill: false` for manual mode.
+   * Has no effect on legacy-era connections. Passed through verbatim to the SDK
+   * client.
+   */
+  inputRequired?: InputRequiredOptions
+  /**
+   * The response-cache store backing cacheable results (SEP-2549 `ttlMs`/
+   * `cacheScope` hints on `listTools`/`listResources`/`listResourceTemplates`/
+   * `listPrompts`/`readResource`). Defaults to a fresh in-memory store per
+   * client (the SDK's own default) when omitted. Passed through verbatim.
+   */
+  responseCacheStore?: ResponseCacheStore
+  /**
+   * Opaque per-principal identifier for response-cache writes whose
+   * server-reported `cacheScope` is `'private'`. Set this to a stable identity
+   * of the authorization context (e.g. the auth subject) when one
+   * `responseCacheStore` backs several principals. Passed through verbatim.
+   */
+  cachePartition?: string
+  /**
+   * TTL (ms) applied when a cacheable result arrives without a `ttlMs` field.
+   * Default `0` (never served from cache, but still stored). Passed through
+   * verbatim.
+   */
+  defaultCacheTtlMs?: number
+  /**
+   * Allow the deprecated SSE transport when a target URL's path indicates SSE
+   * (e.g. ends in `/sse`). Default `false` — such URLs throw a clear error
+   * pointing at Streamable HTTP and this flag, rather than silently connecting
+   * over a transport the MCP SDK itself marks `@deprecated`. When enabled, a
+   * one-time deprecation warning is logged via `console.warn`.
+   */
+  legacySSE?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +178,17 @@ export class Client implements IClient {
   private readonly _roots: (() => Promise<Root[]>) | undefined
   private readonly _autoInitialize: boolean
   private readonly _versionNegotiation: VersionNegotiationOptions | undefined
+  private readonly _prior: PriorDiscovery | undefined
+  private readonly _inputRequired: InputRequiredOptions | undefined
+  private readonly _responseCacheStore: ResponseCacheStore | undefined
+  private readonly _cachePartition: string | undefined
+  private readonly _defaultCacheTtlMs: number | undefined
+  private readonly _legacySSE: boolean
+  /** Set by setLogLevel() on a modern-era connection (where logging/setLevel is
+   * not a wire method) — threaded into `_meta[LOG_LEVEL_META_KEY]` on every
+   * subsequent request. Unused on legacy era, where setLogLevel() still sends
+   * the real `logging/setLevel` RPC. */
+  private _logLevel: LoggingLevel | undefined
   private readonly _defaultOptions: ClientDefaultOptions
 
   constructor(input: ClientTransportInput, options?: ClientOptions) {
@@ -137,6 +206,12 @@ export class Client implements IClient {
     this._roots = options?.roots ? normalizeRootsOption(options.roots) : undefined
     this._autoInitialize = options?.autoInitialize ?? true
     this._versionNegotiation = options?.versionNegotiation
+    this._prior = options?.prior
+    this._inputRequired = options?.inputRequired
+    this._responseCacheStore = options?.responseCacheStore
+    this._cachePartition = options?.cachePartition
+    this._defaultCacheTtlMs = options?.defaultCacheTtlMs
+    this._legacySSE = options?.legacySSE ?? false
     this._defaultOptions = options?.defaultOptions ?? {}
   }
 
@@ -175,12 +250,21 @@ export class Client implements IClient {
         capabilities: this._buildCapabilities(),
         listChanged: this._buildListChangedConfig(),
         ...(this._versionNegotiation ? { versionNegotiation: this._versionNegotiation } : {}),
+        ...(this._inputRequired ? { inputRequired: this._inputRequired } : {}),
+        ...(this._responseCacheStore ? { responseCacheStore: this._responseCacheStore } : {}),
+        ...(this._cachePartition !== undefined ? { cachePartition: this._cachePartition } : {}),
+        ...(this._defaultCacheTtlMs !== undefined
+          ? { defaultCacheTtlMs: this._defaultCacheTtlMs }
+          : {}),
       },
     )
 
     this._registerHandlers(sdkClient)
 
-    const { transport, beforeConnect } = await resolveTransport(this._input, this._auth)
+    const { transport, beforeConnect } = await resolveTransport(this._input, this._auth, {
+      legacySSE: this._legacySSE,
+      versionNegotiation: this._versionNegotiation,
+    })
 
     // Bind the server URL into the OAuth provider before the SDK transport
     // reads clientMetadata or tokens() so storage keys are properly namespaced.
@@ -192,7 +276,7 @@ export class Client implements IClient {
     if (beforeConnect) await beforeConnect()
 
     try {
-      await sdkClient.connect(transport)
+      await sdkClient.connect(transport, this._prior ? { prior: this._prior } : undefined)
     } catch (err) {
       if (err instanceof UnauthorizedError && this._auth instanceof OAuth) {
         // The SDK opened the browser and is waiting for the user to authorize.
@@ -296,7 +380,21 @@ export class Client implements IClient {
   // Core protocol
   // -------------------------------------------------------------------------
 
+  /**
+   * Liveness check. On a legacy-era connection this sends the `ping` RPC. On a
+   * modern (2026-07-28) connection `ping` is not a wire method — the era's
+   * registry deliberately excludes it — so this sends `server/discover`
+   * instead: any successful response is equally strong liveness evidence, and
+   * `discover()` is the SDK-native modern equivalent (rather than a
+   * hand-rolled substitute). Returns `false` only on legacy `ping`'s own
+   * result; a modern-era failure throws, matching `ping()`'s existing
+   * throw-on-failure contract.
+   */
   async ping(options?: RequestOptions): Promise<boolean> {
+    if (this.getProtocolEra() === 'modern') {
+      await this._sdk().discover(this._toSdkOptions(options))
+      return true
+    }
     await this._sdk().ping(this._toSdkOptions(options))
     return true
   }
@@ -316,7 +414,7 @@ export class Client implements IClient {
 
   async listTools(options?: RequestOptions): Promise<Tool[]> {
     const result = await this._sdk().listTools(
-      undefined,
+      this._metaParams(),
       this._toSdkOptions(options, undefined, this._defaultOptions.tool?.timeout),
     )
     return result.tools as Tool[]
@@ -351,7 +449,7 @@ export class Client implements IClient {
       this._defaultOptions.tool?.timeout,
     )
     const result = await this._sdk().callTool(
-      { name, arguments: args ?? {} },
+      { name, arguments: args ?? {}, ...this._metaParams() },
       sdkOptions,
     )
     return {
@@ -367,7 +465,7 @@ export class Client implements IClient {
 
   async listResources(options?: RequestOptions): Promise<Resource[]> {
     const result = await this._sdk().listResources(
-      undefined,
+      this._metaParams(),
       this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
     )
     return result.resources as Resource[]
@@ -375,7 +473,7 @@ export class Client implements IClient {
 
   async listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]> {
     const result = await this._sdk().listResourceTemplates(
-      undefined,
+      this._metaParams(),
       this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
     )
     return result.resourceTemplates as ResourceTemplate[]
@@ -386,7 +484,7 @@ export class Client implements IClient {
     options?: RequestOptions,
   ): Promise<Array<TextResourceContents | BlobResourceContents>> {
     const result = await this._sdk().readResource(
-      { uri },
+      { uri, ...this._metaParams() },
       this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
     )
     return result.contents
@@ -395,7 +493,7 @@ export class Client implements IClient {
   /** Returns the raw SDK ReadResourceResult without unwrapping. */
   async readResourceRaw(uri: string, options?: RequestOptions) {
     return this._sdk().readResource(
-      { uri },
+      { uri, ...this._metaParams() },
       this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
     )
   }
@@ -419,7 +517,7 @@ export class Client implements IClient {
       await this._refreshResourceListenSubscription()
     } else {
       await this._sdk().subscribeResource(
-        { uri },
+        { uri, ...this._metaParams() },
         this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
       )
     }
@@ -431,7 +529,7 @@ export class Client implements IClient {
       await this._refreshResourceListenSubscription()
     } else {
       await this._sdk().unsubscribeResource(
-        { uri },
+        { uri, ...this._metaParams() },
         this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
       )
     }
@@ -475,7 +573,7 @@ export class Client implements IClient {
 
   async listPrompts(options?: RequestOptions): Promise<Prompt[]> {
     const result = await this._sdk().listPrompts(
-      undefined,
+      this._metaParams(),
       this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
     )
     return result.prompts as Prompt[]
@@ -487,7 +585,7 @@ export class Client implements IClient {
     options?: RequestOptions,
   ): Promise<GetPromptResult> {
     const result = await this._sdk().getPrompt(
-      { name, arguments: args },
+      { name, arguments: args, ...this._metaParams() },
       this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
     )
     return result as GetPromptResult
@@ -504,7 +602,7 @@ export class Client implements IClient {
     options?: RequestOptions,
   ): Promise<CompletionResult> {
     const result = await this._sdk().complete(
-      { ref, argument, ...(context ? { context } : {}) },
+      { ref, argument, ...(context ? { context } : {}), ...this._metaParams() },
       this._toSdkOptions(options),
     )
     return result.completion as CompletionResult
@@ -514,7 +612,21 @@ export class Client implements IClient {
   // Logging
   // -------------------------------------------------------------------------
 
+  /**
+   * Sets the minimum severity level for log messages sent by the server. On a
+   * legacy-era connection this sends the `logging/setLevel` RPC, unchanged. On
+   * a modern (2026-07-28) connection `logging/setLevel` is deprecated (SEP-2577)
+   * and physically absent from the era's registry — there is no RPC to send.
+   * Instead, the level is recorded and threaded into
+   * `_meta['io.modelcontextprotocol/logLevel']` on every subsequent request via
+   * `_metaParams()`, per request; user-supplied `_meta` still wins if a caller
+   * passes one explicitly (there is no such call site in this class today).
+   */
   async setLogLevel(level: LoggingLevel, options?: RequestOptions): Promise<void> {
+    if (this.getProtocolEra() === 'modern') {
+      this._logLevel = level
+      return
+    }
     await this._sdk().setLoggingLevel(level, this._toSdkOptions(options))
   }
 
@@ -527,6 +639,20 @@ export class Client implements IClient {
       throw new Error('Client is not connected. Call connect() first.')
     }
     return this._sdkClient
+  }
+
+  /**
+   * The `_meta` override to merge into an outbound request's params — carries
+   * `_logLevel` (set by setLogLevel() on a modern-era connection) so it rides
+   * along on every subsequent request. Returns `undefined` (not `{}`) when
+   * there is nothing to attach, so `{...this._metaParams()}` is a no-op and
+   * callers that pass no params at all can keep passing `undefined` unchanged.
+   */
+  private _metaParams(): { _meta: Record<string, unknown> } | undefined {
+    if (this._logLevel !== undefined && this.getProtocolEra() === 'modern') {
+      return { _meta: { [LOG_LEVEL_META_KEY]: this._logLevel } }
+    }
+    return undefined
   }
 
   private _toSdkOptions(
