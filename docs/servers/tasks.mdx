@@ -1,54 +1,19 @@
 ---
 title: "Tasks"
-description: "Long-running tools with background execution and client polling"
+description: "Planned support for long-running tools with background execution and client polling"
 icon: "clock"
 ---
 
-Most tool calls return in a moment, but some do real work — render a report, train a model, crawl a site — that outlives a normal request. Holding the connection open for minutes is fragile: a dropped socket loses the result, and the client has nothing to show while it waits. Tasks solve this by inverting the wait. A task-enabled tool returns a handle immediately, runs the handler in the background, and lets the client poll for the result on its own schedule. The tool is still a tool, registered the same way and validated the same way; opting into task execution only changes how the result is delivered. The mechanism follows MCP [SEP-1686](https://modelcontextprotocol.io).
+FastMCP does not support tasks yet. This page describes planned work, not a current feature.
 
-```typescript
-server.tool({ name: 'render', description: 'Render a large report', task: true }, async () => {
-  await renderReport()
-  return 'done'
-})
-```
+Tasks let a tool return a handle right away, run the handler in the background, and let the client poll for the result later. This helps with work that outlives a normal request, such as rendering a large report or training a model.
 
-## Task modes
+In MCP, tasks are an optional extension, not a core protocol feature. The extension is defined in a separate, experimental specification: [SEP-2663](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2663) and the [`ext-tasks`](https://github.com/modelcontextprotocol/ext-tasks) reference repository. The MCP maintainers may still change this design, or drop it.
 
-A tool declares its relationship to task execution through the `task` field, and the default is the conservative one. Left unset, a tool is `forbidden`: it runs synchronously, and a client that asks to run it as a task is rejected. This keeps ordinary tools simple — you opt into tasks deliberately, never by accident.
+FastMCP will add task support once the extension stabilizes. Until then, use these tools for long-running work:
 
-Setting `task: true` makes the tool `optional`: it works both ways, running synchronously for clients that call it normally and as a task for clients that request that. This is the right default when you're adding task support to an existing tool and don't want to break callers that still expect a synchronous result.
+- **Multi round-trip requests.** A handler can ask the client for more input mid-call and resume once the client replies. See [Context](/servers/context).
+- **Progress notifications.** A handler can send progress updates while it runs. See [Context](/servers/context).
+- **Resource subscriptions.** A client can watch a resource and get notified when it changes. See [Resources](/servers/resources).
 
-Setting `required` rejects synchronous calls outright and advertises the tool to clients as task-only, with `execution: { taskSupport: 'required' }`. Choose this when the work genuinely cannot finish inside a request and a synchronous call would only ever time out — better to refuse it clearly than to fail slowly.
-
-```typescript
-server.tool({ name: 'train', task: { mode: 'required', pollInterval: 2000 } }, async () => {
-  await trainModel()
-  return 'model trained'
-})
-```
-
-## Execution flow
-
-When a client invokes a task-enabled tool as a task, the server starts the handler running and returns a `CreateTaskResult` right away — a handle the client holds onto. The client then polls `tasks/get` to check status, and once the task reaches a terminal state it fetches the output with `tasks/result`. The handler runs to completion in the background regardless of whether the client is actively polling, so a client can disconnect and reconnect without losing the work.
-
-Because the result is decoupled from the request that started it, `ToolConfig.timeout` does not apply in task mode. A timeout exists to bound how long a *client waits on a synchronous call*, and a task already removes that wait — the point of running in the background is that it can take as long as it needs. Applying the synchronous timeout would defeat the feature it's paired with. Bound long-running work inside the handler instead, with your own deadline or cancellation logic.
-
-## Task stores
-
-A task outlives its request, so its state has to live somewhere while it runs and after it finishes. That store is the `TaskStore`, and FastMCP uses an `InMemoryTaskStore` automatically — enough to run tasks the moment you set `task: true`, with no extra setup. In-memory state is the right choice for a single-process server where tasks don't need to survive a restart.
-
-Swap in a custom store when that assumption breaks: when tasks must outlast a process restart, or when several server instances behind a load balancer need to read each other's task state. Supply your own `TaskStore` through the constructor, or enable the capability globally with `tasks: true`.
-
-```typescript
-import { FastMCP } from '@prefecthq/fastmcp-ts/server'
-
-const server = new FastMCP({
-  name: 'my-server',
-  tasks: { store: myRedisTaskStore },
-})
-```
-
-## Errors
-
-A failure in task mode surfaces differently from a failure in a synchronous call, and it has to. There is no longer a request in flight to throw an exception back into — the client already has its handle and is polling. So a server-side rejection or a handler that fails appears as a `{ type: 'error' }` message in the task's stream, and the client observes it by polling rather than by catching. When you write a task handler, treat its failures as data the client will read from the stream, not as exceptions a caller will catch at the call site.
+This page will describe the real API once tasks ship.

@@ -5,7 +5,7 @@ description: "Bearer tokens, OAuth, and client credentials"
 icon: "key"
 ---
 
-A server [verifies the caller's identity](/servers/auth/overview) before it runs any handler. The client's job is the other side of that exchange: present a credential the server will accept. Authentication is orthogonal to the [transport](/clients/transports) — you choose where the server lives and, separately, how you prove who you are — so you supply a credential through the `auth` option regardless of whether you connect over HTTP or stdio. Three strategies cover the common cases, and they line up with the verifiers a server runs: a static bearer token for the simplest setup, OAuth for user-delegated access with refresh, and client credentials for machine-to-machine calls. When the client runs in a [browser](#browser-apps), the OAuth flow changes shape — a popup or redirect rather than the system browser — but the credential model is unchanged.
+A server [verifies the caller's identity](/servers/auth/overview) before it runs any handler. The client's job is the other side of that exchange: present a credential the server will accept. Authentication is orthogonal to the [transport](/clients/transports) — you choose where the server lives and, separately, how you prove who you are — so you supply a credential through the `auth` option regardless of whether you connect over HTTP or stdio. This page covers three credential families. A static bearer token suits the simplest setup. Interactive OAuth suits user-delegated access with refresh; it also covers step-up, where the client re-authorizes mid-session if a server later demands a broader scope. When the client runs in a [browser](#browser-apps), a browser variant adapts the same OAuth flow — a popup or redirect rather than the system browser — but the credential model is unchanged. A third family covers non-interactive, machine credentials for machine-to-machine calls: client credentials (with three token-endpoint authentication methods), the JWT-bearer grant for workload identity, and enterprise-managed token exchange for federated deployments (SEP-990).
 
 ## Bearer tokens
 
@@ -27,6 +27,8 @@ When access is delegated through an identity provider — the [OAuth flow a serv
 
 Refreshes are coalesced: if several requests discover an expiring token at once, they share a single refresh call rather than each firing their own, so a burst of concurrent activity never stampedes the token endpoint.
 
+Some servers withhold a broader scope until you ask for it: a request succeeds against one operation but comes back `401`, or `403` with an `insufficient_scope` challenge, on another. When that happens *after* the client has connected, `OAuth` runs a step-up re-authorization — the same authorization round `connect()` performs, this time honoring the scope the server challenged for — and retries the request. The round is single-flight, so concurrent challenges share it rather than each opening a browser. Re-authorization is bounded per request: one round covers a scope step-up; a second covers an authorization-server migration (SEP-2352), where the first authenticated request moves the server to a new authorization server and the next request must re-register and re-authorize there. Beyond the bound, the failure propagates rather than looping. Step-up is interactive-only. A failure from a non-interactive provider (`BearerAuth`, `ClientCredentials`, `JwtBearerAuth`, or `EnterpriseManagedAuth`) propagates unchanged, because a machine-to-machine credential has no user to send through a browser.
+
 Tokens survive only as long as the client unless you persist them. `OAuth` stores tokens through a pluggable store — the default `InMemoryStore` keeps them for the process lifetime, while `FileTokenStorage` writes them to disk so a restarted client resumes without sending the user back through the authorization flow.
 
 ```typescript
@@ -38,6 +40,20 @@ const client = await Client.connect('https://mcp.example.com', {
   }),
 })
 ```
+
+Two hardening measures run inside that flow with no extra configuration. The client validates the RFC 9207 `iss` parameter the authorization server returns on the callback, so a response minted by the wrong issuer is rejected rather than trusted. It also keys stored credentials by issuer (SEP-2352), so a client that reaches servers behind different authorization servers never crosses a token from one issuer into another. If a server later migrates to a different authorization server, the client re-discovers it, registers fresh at the new server, and never presents the old server's client credentials there.
+
+When your client publishes a metadata document, `clientMetadataUrl` (SEP-991) skips Dynamic Client Registration entirely. Point it at an HTTPS URL that serves the client's metadata; when the authorization server advertises support, that URL is used directly as the `client_id`. The value is checked when you construct `OAuth`, so a malformed URL fails at construction rather than deep in the flow.
+
+```typescript
+const client = await Client.connect('https://mcp.example.com', {
+  auth: new OAuth({
+    clientMetadataUrl: 'https://myapp.example.com/.well-known/mcp-client',
+  }),
+})
+```
+
+Prefer an external identity provider when you can. A FastMCP server's [built-in authorization server](/servers/auth/oauth) runs on a frozen, supported-interim code path, and Dynamic Client Registration is deprecated in revision 2026-07-28 — `clientMetadataUrl` is how a client sidesteps DCR against a server that still fronts one.
 
 ## Client credentials
 
@@ -55,7 +71,71 @@ const client = await Client.connect('https://mcp.example.com', {
 })
 ```
 
+By default the provider sends the client ID and secret in the request body (`client_secret_post`). Two other token-endpoint authentication methods are available:
+
+- Set `authMethod: 'client_secret_basic'` to send the credentials in an HTTP Basic `Authorization` header (RFC 6749 §2.3.1). Nothing secret goes in the body.
+- Supply a `privateKey` (PEM) and its `algorithm` in place of `clientSecret` to authenticate with a signed JWT assertion (`private_key_jwt`, RFC 7523). The client signs one assertion per token request and sends no secret. You must also set `audience` — the assertion's `aud` claim. RFC 7523 §3 recommends the authorization server's issuer identity; some servers verify against the token endpoint URL instead. Set whichever your server checks.
+
+Give either a `clientSecret` or a `privateKey` — never both. `client_secret_post` stays the default.
+
+```typescript
+// private_key_jwt: no shared secret leaves the client.
+const client = await Client.connect('https://mcp.example.com', {
+  auth: new ClientCredentials({
+    clientId: process.env.CLIENT_ID!,
+    privateKey: process.env.CLIENT_PRIVATE_KEY_PEM!,
+    algorithm: 'ES256',
+    tokenEndpoint: 'https://auth.example.com/oauth/token',
+    audience: 'https://auth.example.com',
+  }),
+})
+```
+
 When you connect to several servers at once, each can carry its own credential rather than sharing one. A [multi-server config](/clients/multi-server#per-server-auth) accepts an `auth` field per entry, so one client can present a bearer token to one server and run OAuth against another.
+
+## Workload identity (JWT-bearer)
+
+A workload — a Kubernetes pod, a cloud VM, a CI job — often already holds a signed identity token its runtime minted. `JwtBearerAuth` presents that token directly to the authorization server under the JWT-bearer grant (RFC 7523 §2.1) and receives an access token in return. There is no shared secret and no interactive step: the assertion itself is the credential.
+
+```typescript
+import { Client, JwtBearerAuth } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('https://mcp.example.com', {
+  auth: new JwtBearerAuth({
+    tokenEndpoint: 'https://auth.example.com/oauth/token',
+    clientId: 'my-workload',
+    // A signed JWT string, or a callback that mints a fresh one each fetch.
+    assertion: () => readProjectedServiceAccountToken(),
+  }),
+})
+```
+
+The client is a public client by default (`authMethod: 'none'`) — the assertion carries the identity, so no secret is sent. Pass a function for `assertion` when the workload token is short-lived; the provider calls it each time it fetches a new access token. Set `scope` to request specific scopes.
+
+## Enterprise-managed authorization (SEP-990)
+
+Enterprise deployments federate identity through a central provider: the user signs in at the enterprise IdP, and the MCP server's authorization server trusts that IdP rather than authenticating the user itself. `EnterpriseManagedAuth` runs the two-hop flow. First it exchanges the user's OpenID Connect ID token for an identity-assertion grant (an ID-JAG) scoped to the target server (token exchange, RFC 8693). Then it presents that grant to the server's authorization server under the JWT-bearer grant (RFC 7523) to obtain the access token.
+
+```typescript
+import { Client, EnterpriseManagedAuth } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('https://mcp.example.com/mcp', {
+  auth: new EnterpriseManagedAuth({
+    // Step 2 — the MCP server's authorization server.
+    tokenEndpoint: 'https://auth.example.com/token',
+    clientId: process.env.MCP_CLIENT_ID!,
+    clientSecret: process.env.MCP_CLIENT_SECRET!,
+    audience: 'https://auth.example.com',      // the ID-JAG audience (the AS)
+    resource: 'https://mcp.example.com/mcp',   // the target MCP server
+    // Step 1 — the enterprise IdP token exchange.
+    idpTokenEndpoint: 'https://idp.example.com/token',
+    idpClientId: process.env.IDP_CLIENT_ID!,
+    idToken: () => currentUserIdToken(),
+  }),
+})
+```
+
+Both hops are unattended once you supply the ID token. Set `audience` to the authorization server the grant is minted for, and `resource` to the MCP server the token is used against — the authorization server verifies the grant against both. The access token is cached and refreshed through the same store as the other providers.
 
 ## Browser apps
 

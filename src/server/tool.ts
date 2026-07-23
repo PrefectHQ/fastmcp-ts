@@ -1,6 +1,8 @@
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js'
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
+import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { isInputRequiredResult } from './mrtr'
+import type { InputRequiredResult } from './mrtr'
 
 export class Image {
   constructor(
@@ -21,7 +23,14 @@ export class ToolResult {
   constructor(readonly result: CallToolResult) {}
 }
 
-export function convertResult(value: unknown): CallToolResult {
+export function convertResult(value: unknown): CallToolResult | InputRequiredResult {
+  // Multi-round-trip escape hatch (protocol revision 2026-07-28): a handler that
+  // needs more input from the client returns inputRequired({ ... }) — passed through
+  // untouched, exactly like the ToolResult escape hatch below. See inputRequired /
+  // acceptedContent / inputResponse (re-exported from fastmcp-ts/server).
+  if (isInputRequiredResult(value)) {
+    return value
+  }
   if (value instanceof ToolResult) {
     return value.result
   }
@@ -117,7 +126,7 @@ export async function validateInput<S extends StandardSchemaV1>(
   if (result.issues) {
     const messages = result.issues.map((i) => i.message).join('; ')
     if (throwAsProtocolError) {
-      throw new McpError(ErrorCode.InvalidParams, `Validation failed: ${messages}`)
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Validation failed: ${messages}`)
     }
     throw new Error(`Validation failed: ${messages}`)
   }

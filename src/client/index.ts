@@ -52,9 +52,24 @@ export type {
   OAuthToken,
   KeyValueStore,
   OAuthOptions,
+  AsyncHeaderAuth,
   ClientCredentialsOptions,
+  ClientSecretCredentialsOptions,
+  PrivateKeyJwtCredentialsOptions,
+  ClientSecretAuthMethod,
+  AssertionSource,
+  JwtBearerOptions,
+  EnterpriseManagedOptions,
 } from './auth.js'
-export { OAuth, BearerAuth, ClientCredentials, InMemoryStore, FileTokenStorage } from './auth.js'
+export {
+  OAuth,
+  BearerAuth,
+  ClientCredentials,
+  JwtBearerAuth,
+  EnterpriseManagedAuth,
+  InMemoryStore,
+  FileTokenStorage,
+} from './auth.js'
 
 export { LocalStorageStore, IndexedDBStore } from './browser-stores.js'
 export { BrowserOAuth, handleOAuthCallback } from './browser-oauth.js'

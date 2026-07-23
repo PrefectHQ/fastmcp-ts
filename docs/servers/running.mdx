@@ -1,10 +1,12 @@
 ---
 title: "Running your server"
-description: "Connect a server to the world with one run() call, configured by code, env vars, and defaults"
+description: "Connect a server to the world with one run() call — dual-era serving, transport resolution, and DNS-rebinding protection"
 icon: "play"
 ---
 
 Registering tools, resources, and prompts builds a server; running it connects that server to the world. A single `server.run()` call does it. What that call needs to know — which transport to speak, which port to bind, where to listen — resolves from a chain of code, environment variables, and defaults, so the same compiled server can run on stdio during development and over HTTP in production with no code change.
+
+One server definition serves both [protocol eras](/concepts/protocol-eras) at once. You do not configure an era or run two servers: the same tools, resources, and prompts answer a 2025-era legacy client and a 2026-07-28 modern client together, and `run()` sorts each connection to the right machinery for you.
 
 ```typescript server.ts
 import { FastMCP } from '@prefecthq/fastmcp-ts/server'
@@ -19,11 +21,15 @@ await server.run()
 
 A transport is the channel a client uses to reach the server, and FastMCP supports two. They suit different deployments, and the choice is usually made by where the server runs rather than by anything in your handler code.
 
-Stdio is the default. The server reads MCP messages from standard input and writes responses to standard output, which is exactly what a desktop host like Claude Desktop expects when it launches a server as a subprocess. One process, one client, no network — ideal for local tools and for anything a host spawns on demand.
+Stdio is the default. The server reads MCP messages from standard input and writes responses to standard output, which is exactly what a desktop host like Claude Desktop expects when it launches a server as a subprocess. One process, one client, no network — ideal for local tools and for anything a host spawns on demand. Over stdio the era is pinned per connection: FastMCP reads the client's opening exchange, decides legacy or modern once, and serves that era for the life of the connection.
 
-Streamable HTTP is the choice when the server is a long-lived service that clients connect to over the network. The server listens on a host and port and serves MCP over HTTP, so many clients can reach one deployed instance. Reach for it when you're deploying a server rather than handing one to a host to launch.
+Streamable HTTP is the choice when the server is a long-lived service that clients connect to over the network. The server listens on a host and port and serves MCP over HTTP, so many clients can reach one deployed instance. Reach for it when you're deploying a server rather than handing one to a host to launch. Over HTTP the routing is per request: FastMCP inspects each incoming request and sends a legacy request to a sessionful transport that preserves today's behavior, and a modern request to a stateless handler. One HTTP endpoint answers both eras, so a mixed fleet of clients needs no separate route.
 
-SSE is not supported. Server-Sent Events transport is deprecated in the MCP SDK and Streamable HTTP supersedes it, so there is nothing to configure — HTTP means Streamable HTTP.
+Over HTTP the response for a request is a short Server-Sent Events stream, and a dropped connection does not lose the reply. On a legacy (2025-era) session the server opens each stream with a priming event that carries a resume anchor and a reconnect hint, tags each event with an id, and remembers recent events per session. If the network drops mid-stream, the client reconnects with the last event id it saw and the server replays what it missed; a reconnect from an id the server no longer holds is refused so the client never mistakes a lost gap for nothing missed. This works out of the box with no configuration, so a slow tool call survives a brief connection blip. Modern (2026-07-28) streams have their own resumable channel and need no setup either.
+
+The memory this uses is bounded but worth understanding for a busy deployment. The server keeps a fixed count of recent events per session (256), not a fixed number of bytes, so a session that streams large tool results can hold up to that many large messages. The buffer is released when the session ends cleanly — the client sends a shutdown request, or the server calls `close()`. A client that simply drops its connection without a clean shutdown leaves its session, and this buffer, in memory until the server process stops. This matches how legacy HTTP sessions already behave; resumability adds the per-session event buffer on top.
+
+SSE is not supported as a standalone transport. The deprecated Server-Sent Events transport is a separate thing from the SSE framing that Streamable HTTP uses for its responses; the standalone transport is gone from the MCP SDK and Streamable HTTP supersedes it, so there is nothing to configure — HTTP means Streamable HTTP.
 
 ## Configuration
 
@@ -40,11 +46,13 @@ The environment variables fill the middle of the chain. Each maps to one setting
 | Variable | Sets | Default |
 |---|---|---|
 | `MCP_TRANSPORT` | Transport (`stdio` or `http`) | `stdio` |
-| `MCP_HOST` | Bind host (HTTP) | `0.0.0.0` |
+| `MCP_HOST` | Bind host (HTTP) | `127.0.0.1` |
 | `MCP_PORT` | Bind port (HTTP) | `3000` |
 | `MCP_PATH` | HTTP path | `/mcp` |
 
 One extra rule smooths deployment to managed platforms: when `MCP_PORT` is unset, FastMCP reads plain `PORT` as a fallback. Railway, Render, and Heroku assign a port through `PORT` automatically, so a server deployed there binds the right port with no configuration of its own.
+
+The default bind host is `127.0.0.1`. This matches the parent fastmcp project, which binds a loopback host by default. A loopback bind keeps the server on the local machine, and it turns on the DNS-rebinding guard automatically (see below). To reach the server from other machines, set the host on purpose: use `MCP_HOST=0.0.0.0` or the `host: '0.0.0.0'` run option, and configure `dnsRebinding` to protect the exposed bind.
 
 ## HTTP options
 
@@ -57,9 +65,33 @@ await server.run({ transport: 'http', host: '127.0.0.1', port: 8080, path: '/api
 After `run()` resolves, the bound address is available as `server.address`. This matters most when you let the OS choose the port by binding `port: 0`: the actual port isn't known until the socket is open, and `server.address` is how you read it back — useful in tests and in code that needs to advertise its own URL. It is `null` for stdio, which has no address, and `null` before `run()` has resolved.
 
 ```typescript server.ts
-await server.run({ transport: 'http', port: 0 }) // OS picks a free port
-console.log(server.address)                       // e.g. http://0.0.0.0:54123/mcp
+await server.run({ transport: 'http', host: '127.0.0.1', port: 0 }) // OS picks a free port
+console.log(server.address)                                          // e.g. http://127.0.0.1:54123/mcp
 ```
+
+## DNS-rebinding protection
+
+An HTTP server that binds a loopback address is a target for DNS rebinding: a malicious web page can rebind its own hostname to `127.0.0.1` and reach a server meant only for the local machine. FastMCP's `dnsRebinding` option defends against this by validating the `Host` and `Origin` headers of each HTTP request — by hostname, port-agnostic — and rejecting a mismatch with `403`. It affects the HTTP transport only; stdio has no headers to check.
+
+The default posture is chosen from the bind host, so most servers need no configuration. When `run()` binds a loopback host — `127.0.0.1`, `::1`, or `localhost` — protection turns on automatically, because that is the deployment the attack targets. When `run()` binds a routable interface, protection stays off by default, because a localhost-only allowlist would reject the very traffic such a deployment exists to serve; FastMCP warns once on that path so the posture is never silent.
+
+Set the option to move off the default. `enabled` forces protection on or off outright. Supplying `allowedHosts` or `allowedOrigins` turns protection on and replaces the localhost allowlist with your own — the form a public deployment behind a known domain uses. A missing `Origin` header always passes, so non-browser clients, which send none, are never rejected.
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'my-server',
+  dnsRebinding: {
+    allowedHosts: ['mcp.example.com'],
+    allowedOrigins: ['https://app.example.com'],
+  },
+})
+
+await server.run({ transport: 'http', host: '0.0.0.0', port: 3000 })
+```
+
+The bind host and this posture are coupled. The default bind host is `127.0.0.1`, so the guard is on out of the box. A routable bind turns the guard off unless you opt in, so pin the host you intend, and set `dnsRebinding` to match the interface you bind.
 
 ## Stream overrides
 

@@ -1,0 +1,118 @@
+---
+title: "JwtBearerOptions"
+---
+
+Defined in: [client/auth.ts:758](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L758)
+
+Configuration for [JwtBearerAuth](/api/client/classes/JwtBearerAuth).
+
+The client presents a pre-issued, signed JWT (`assertion`) directly to the
+token endpoint under `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`
+(RFC 7523 §2.1). No interactive authorization, no client secret by default —
+this is the workload-identity-federation shape (SEP-1933): a workload proves
+its identity with a JWT its runtime already minted (a Kubernetes projected
+service-account token, a cloud instance-identity JWT, etc.).
+
+## Properties
+
+### assertion
+
+```ts
+assertion: AssertionSource;
+```
+
+Defined in: [client/auth.ts:766](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L766)
+
+The workload assertion (a signed JWT). Pass a string for a fixed assertion,
+or a callback to mint/read a fresh one each time a token is fetched (the
+usual case — workload JWTs are short-lived).
+
+***
+
+### authMethod?
+
+```ts
+optional authMethod?: ClientAuthMethod;
+```
+
+Defined in: [client/auth.ts:773](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L773)
+
+Token-endpoint client authentication. Default: `none` (public client — the
+assertion itself is the credential, so no separate client secret is sent).
+
+***
+
+### clientId?
+
+```ts
+optional clientId?: string;
+```
+
+Defined in: [client/auth.ts:768](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L768)
+
+The client identifier registered for this workload.
+
+***
+
+### clientSecret?
+
+```ts
+optional clientSecret?: string;
+```
+
+Defined in: [client/auth.ts:775](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L775)
+
+Client secret, when `authMethod` is `client_secret_basic`/`_post`.
+
+***
+
+### refreshBufferSeconds?
+
+```ts
+optional refreshBufferSeconds?: number;
+```
+
+Defined in: [client/auth.ts:788](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L788)
+
+How many seconds before expiry to proactively re-fetch. Default: 60.
+
+***
+
+### scope?
+
+```ts
+optional scope?: string;
+```
+
+Defined in: [client/auth.ts:777](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L777)
+
+Requested scopes (space-separated).
+
+***
+
+### store?
+
+```ts
+optional store?: KeyValueStore;
+```
+
+Defined in: [client/auth.ts:786](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L786)
+
+Persistent token store. Default: in-memory. The cache key is derived from
+`tokenEndpoint` alone, with no client identity in it — use one store per
+credential identity. Do not share a persistent `store` across two
+`JwtBearerAuth` instances that have different `clientId`/`assertion` but
+the same `tokenEndpoint`; they will read and overwrite each other's
+cached tokens.
+
+***
+
+### tokenEndpoint
+
+```ts
+tokenEndpoint: string;
+```
+
+Defined in: [client/auth.ts:760](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L760)
+
+The authorization server's token endpoint.

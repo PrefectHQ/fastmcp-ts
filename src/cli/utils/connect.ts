@@ -1,4 +1,5 @@
 import { Client } from '../../client/client.js'
+import type { ClientOptions } from '../../client/client.js'
 import { StdioTransport } from '../../client/transports.js'
 import type { CliAuth } from './auth.js'
 import type { FileSpec } from './file-spec.js'
@@ -9,9 +10,38 @@ export type TransportMode =
   | { kind: 'stdio'; command: string; args?: string[] }
   | { kind: 'inprocess'; spec: FileSpec }
 
-export async function connectClient(mode: TransportMode, auth?: CliAuth): Promise<Client> {
+/** CLI-level era selection (`--modern`, `--pin`); resolved to a concrete
+ * `versionNegotiation` mode per transport by `resolveVersionNegotiation`. */
+export interface EraOptions {
+  modern?: boolean
+  pin?: string
+}
+
+/**
+ * Default negotiation mode per transport kind, decided in one place so every
+ * connecting command (list/call/inspect) behaves identically:
+ * - `url` (HTTP) defaults to `'auto'` — the transport already carries the
+ *   headers a probe needs, so there is no probe-stall risk.
+ * - `stdio`/`inprocess` (CLI-spawned) default to `'legacy'` (omitted) per SDK
+ *   probe-stall guidance; `--modern` opts them into `'auto'`.
+ * `--pin` overrides the default on any transport — it is the stronger
+ * request, so it wins even when `--modern` is also given.
+ */
+function resolveVersionNegotiation(
+  kind: TransportMode['kind'],
+  era?: EraOptions,
+): ClientOptions['versionNegotiation'] {
+  if (era?.pin) return { mode: { pin: era.pin } }
+  if (kind === 'url') return { mode: 'auto' }
+  if (era?.modern) return { mode: 'auto' }
+  return undefined
+}
+
+export async function connectClient(mode: TransportMode, auth?: CliAuth, era?: EraOptions): Promise<Client> {
+  const versionNegotiation = resolveVersionNegotiation(mode.kind, era)
+
   if (mode.kind === 'url') {
-    const client = new Client(mode.url, { auth })
+    const client = new Client(mode.url, { auth, versionNegotiation })
     await client.connect()
     return client
   }
@@ -25,7 +55,7 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth): Promis
   if (mode.kind === 'stdio') {
     const [cmd, ...rest] = mode.command.split(/\s+/)
     const transport = new StdioTransport(cmd!, [...rest, ...(mode.args ?? [])], { env: stdioEnv })
-    const client = new Client(transport, { auth })
+    const client = new Client(transport, { auth, versionNegotiation })
     await client.connect()
     return client
   }
@@ -42,7 +72,7 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth): Promis
   const transport = new StdioTransport(command, cmdArgs, {
     env: { ...stdioEnv, ...buildEntrypointEnv(spec) },
   })
-  const client = new Client(transport, { auth })
+  const client = new Client(transport, { auth, versionNegotiation })
   await client.connect()
   return client
 }

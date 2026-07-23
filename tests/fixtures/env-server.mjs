@@ -1,18 +1,12 @@
-/**
- * Fixture server that exposes an echo_env tool returning the value of a
- * given environment variable. Used to verify that spawned stdio/in-process
- * servers inherit the parent process environment.
- */
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { Server } from "@modelcontextprotocol/server";
 
 const server = new Server(
   { name: 'env-server', version: '1.0.0' },
   { capabilities: { tools: {} } },
 )
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
+server.setRequestHandler('tools/list', async () => ({
   tools: [
     {
       name: 'echo_env',
@@ -26,7 +20,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }))
 
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
+server.setRequestHandler('tools/call', async (req) => {
   const varName = String(req.params.arguments?.name ?? '')
   const value = process.env[varName] ?? ''
   return { content: [{ type: 'text', text: value }] }

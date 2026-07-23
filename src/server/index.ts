@@ -6,11 +6,14 @@ export type {
   ToolConfig,
   OAuthConfig,
 } from './FastMCP'
+// Re-exported for FastMCPOptions.eventBus implementers (multi-process deployments).
+export type { ServerEventBus } from '@modelcontextprotocol/server'
 export { Image, File, ToolResult } from './tool'
 export { ResourceResult } from './resource'
 export type { ResourceConfig, ResourceAnnotations } from './resource'
 export { PromptResult } from './prompt'
 export type { PromptConfig, PromptArgument, PromptMessage, PromptContent } from './prompt'
+export type { CompleteCallback, CompletionContext, CompletionResult } from './completion'
 export type {
   McpContext,
   LogLevel,
@@ -21,6 +24,17 @@ export type {
   ElicitationResult,
   Root,
 } from './context'
+// Multi-round-trip requests (MRTR, protocol revision 2026-07-28) — see src/server/mrtr.ts
+export { inputRequired, acceptedContent, inputResponse, isInputRequiredResult } from './mrtr'
+export type {
+  InputRequiredResult,
+  InputRequiredSpec,
+  InputRequest,
+  InputRequests,
+  InputResponse,
+  InputResponses,
+  InputResponseView,
+} from './mrtr'
 export type { Middleware, MiddlewareContext, Next, CacheKeyFn } from './middleware'
 export {
   LoggingMiddleware,

@@ -86,22 +86,25 @@ For the verifier side of this — why you would mix schemes and how to order the
 
 ## Caching and identity
 
-Authorization makes responses caller-specific: two callers asking the same question can legitimately get different answers, because one is allowed something the other is not. That collides with response caching. The [`CachingMiddleware`](/servers/middleware) keys entries on the request method and parameters by default, with no notion of who asked — so a response computed for a privileged caller could be served from cache to one who should never have seen it.
+Authorization makes responses caller-specific: two callers asking the same question can legitimately get different answers, because one is allowed something the other is not. That collides with response caching, where a result computed for one caller could be replayed to another. FastMCP's [`CachingMiddleware`](/servers/middleware) is built for this — its default cache key already partitions by identity, so an entry written for one caller is never served to another, with no configuration.
 
-The fix is to fold identity into the cache key. `CachingMiddleware` accepts a `CacheKeyFn`, which receives the full middleware context — including the caller's verified identity — so you can partition the cache per caller and let each identity see only its own cached results. The first argument is the TTL in milliseconds.
+The default key is the request method, plus an auth partition, plus the serialized request params. The auth partition is the piece that keeps identities apart: an unauthenticated request uses a single `anon` partition, and an authenticated request is partitioned by the SHA-256 hash of its bearer token — the hash, never the raw token. A privileged caller's filtered `tools/list` therefore stays out of an anonymous caller's cache in both directions. The [caching](/concepts/caching) page covers the full model.
+
+You take over that partitioning only when you pass a custom `CacheKeyFn`. A custom key **replaces** the default entirely — the auth partition is not merged back in — so when your cached values depend on who is calling, you must fold identity into the key yourself. Use the same dimension the default uses: the bearer token, hashed. The first argument is the TTL in milliseconds.
 
 ```typescript server.ts
+import { createHash } from 'node:crypto'
 import { FastMCP, CachingMiddleware } from '@prefecthq/fastmcp-ts/server'
 
 const server = new FastMCP({ name: 'secure-server' })
 
 server.use(
-  new CachingMiddleware(
-    60_000,
-    (ctx) =>
-      `${ctx.method}:${ctx.mcpContext.auth?.clientId ?? ''}:${JSON.stringify(ctx.request)}`,
-  ),
+  new CachingMiddleware(60_000, (ctx) => {
+    const token = ctx.mcpContext.auth?.token
+    const id = token ? createHash('sha256').update(token).digest('hex') : 'anon'
+    return `${ctx.method}:${id}:${JSON.stringify(ctx.request)}`
+  }),
 )
 ```
 
-Any time a cached response could differ by caller, partition the key this way. The general rule follows from the verification-versus-authorization split: identity established once at the edge has to be carried into every decision downstream that depends on it, and a cache is one of those decisions.
+`ctx.mcpContext.auth?.clientId` is a coarser dimension: two tokens can share a `clientId` yet differ in scope, so a `clientId` key can merge identities that must stay apart — prefer the hashed token. The general rule follows from the verification-versus-authorization split: identity established once at the edge has to be carried into every decision downstream that depends on it, and a cache is one of those decisions.

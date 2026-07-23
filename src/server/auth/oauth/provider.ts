@@ -1,10 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { UnsupportedGrantTypeError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
+import type { OAuthClientInformationFull, AuthInfo } from "@modelcontextprotocol/server";
+import { UnsupportedGrantTypeError } from "@modelcontextprotocol/server-legacy/auth";
+import type { OAuthServerProvider, AuthorizationParams, OAuthRegisteredClientsStore } from "@modelcontextprotocol/server-legacy/auth";
 import type { Response } from 'express'
-import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js'
-import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js'
-import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js'
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
 
 export interface OAuthProviderOptions {
   /**

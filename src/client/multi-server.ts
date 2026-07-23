@@ -1,14 +1,6 @@
-import { Client as SdkClient } from '@modelcontextprotocol/sdk/client'
-import {
-  CompatibilityCallToolResultSchema,
-  LoggingMessageNotificationSchema,
-  ResourceUpdatedNotificationSchema,
-  CreateMessageRequestSchema,
-  ElicitRequestSchema,
-  ListRootsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js'
-import type { LoggingLevel } from '@modelcontextprotocol/sdk/types.js'
-
+import type { LoggingLevel, RequestOptions as SdkRequestOptions } from "@modelcontextprotocol/server";
+import { Client as SdkClient, LOG_LEVEL_META_KEY } from '@modelcontextprotocol/client'
+import type { McpSubscription, VersionNegotiationOptions, ProtocolEra } from '@modelcontextprotocol/client'
 import type { BearerAuth, OAuth, ClientCredentials } from './auth.js'
 import type { ClientHandlers, LogHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
@@ -29,8 +21,6 @@ import type { McpConfig, McpServerValue } from './transports.js'
 import { resolveEntryTransport } from './transports.js'
 import type { ClientDefaultOptions } from './client.js'
 import { ToolCallError } from './client.js'
-import type { RequestOptions as SdkRequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js'
-
 // ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
@@ -40,6 +30,14 @@ export interface MultiServerOptions {
   /** file:// URIs to advertise to all servers as accessible roots. */
   roots?: string[]
   defaultOptions?: ClientDefaultOptions
+  /**
+   * Opt-in protocol version negotiation, applied identically to every server
+   * in the config (protocol revision 2026-07-28 and later). See
+   * `ClientOptions.versionNegotiation` on the single-server `Client` — same
+   * semantics, just applied per sub-client here since each connected server
+   * negotiates its own era independently. Default `'legacy'`.
+   */
+  versionNegotiation?: VersionNegotiationOptions
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +61,18 @@ export class MultiServerClient implements IClient {
   }
   private readonly _roots: string[] | undefined
   private readonly _defaultOptions: ClientDefaultOptions
+  private readonly _versionNegotiation: VersionNegotiationOptions | undefined
   private _resourceSubscriptions: Map<string, ResourceUpdateHandler> = new Map()
+  /** Modern-era (2026-07-28) subscriptions/listen streams, one per server that
+   * currently has active resource subscriptions — see Client's own field of the
+   * same purpose for the full rationale. Keyed by server name since each
+   * connected server negotiates its own era independently. */
+  private _resourceListenSubscriptions: Map<string, McpSubscription> = new Map()
+  /** Per-server log level set by setLogLevel() for servers negotiated to modern
+   * era — see Client's own field of the same purpose for the full rationale.
+   * Keyed by server name since each connected server negotiates its own era
+   * independently and may therefore need (or not need) meta-threading. */
+  private _logLevels: Map<string, LoggingLevel> = new Map()
 
   constructor(config: McpConfig, options?: MultiServerOptions) {
     this._config = config
@@ -73,6 +82,7 @@ export class MultiServerClient implements IClient {
       sampling: options?.handlers?.sampling,
       elicitation: options?.handlers?.elicitation,
     }
+    this._versionNegotiation = options?.versionNegotiation
     this._roots = options?.roots
     this._defaultOptions = options?.defaultOptions ?? {}
   }
@@ -108,6 +118,8 @@ export class MultiServerClient implements IClient {
           this._registerHandlers(sdk)
           const { transport, beforeConnect } = await resolveEntryTransport(
             entry as McpServerValue,
+            undefined,
+            { versionNegotiation: this._versionNegotiation },
           )
           if (beforeConnect) await beforeConnect()
           await sdk.connect(transport)
@@ -131,6 +143,12 @@ export class MultiServerClient implements IClient {
     if (!this._connected) return
     this._connected = false
     this._uriMap.clear()
+    // Close explicitly (and first) so each closure reason is 'local', not 'remote' —
+    // see Client.close()'s equivalent ordering for the full rationale.
+    await Promise.allSettled(
+      [...this._resourceListenSubscriptions.values()].map((sub) => sub.close()),
+    )
+    this._resourceListenSubscriptions.clear()
     await Promise.allSettled([...this._clients.values()].map((sdk) => sdk.close()))
     this._clients.clear()
   }
@@ -156,11 +174,28 @@ export class MultiServerClient implements IClient {
   // Core protocol
   // -------------------------------------------------------------------------
 
+  /**
+   * The protocol era negotiated with a specific named server: `'modern'` for
+   * 2026-07-28, `'legacy'` for 2025-11-25 and earlier, `undefined` if the
+   * server name is unknown or not yet connected. See
+   * `MultiServerOptions.versionNegotiation` — the same mode is requested of
+   * every server, but each negotiates (and may land on) its own era
+   * independently, so this is necessarily per-server rather than a single
+   * client-wide value.
+   */
+  getProtocolEra(serverName: string): ProtocolEra | undefined {
+    return this._clients.get(serverName)?.getProtocolEra()
+  }
+
+  /** See Client.ping's docs — the same era-routing applies here, per server,
+   * since each connected server negotiates its own era independently. */
   async ping(options?: RequestOptions): Promise<boolean> {
     this._assertConnected()
     await Promise.all(
       [...this._clients.values()].map((sdk) =>
-        sdk.ping(this._toSdkOptions(options)),
+        sdk.getProtocolEra() === 'modern'
+          ? sdk.discover(this._toSdkOptions(options))
+          : sdk.ping(this._toSdkOptions(options)),
       ),
     )
     return true
@@ -175,7 +210,7 @@ export class MultiServerClient implements IClient {
     const results = await Promise.all(
       [...this._clients.entries()].map(async ([name, sdk]) => {
         const r = await sdk.listTools(
-          undefined,
+          this._metaParamsFor(name),
           this._toSdkOptions(options, undefined, this._defaultOptions.tool?.timeout),
         )
         return (r.tools as Tool[]).map((t) => ({ ...t, name: `${name}_${t.name}` }))
@@ -214,8 +249,7 @@ export class MultiServerClient implements IClient {
       this._defaultOptions.tool?.timeout,
     )
     const result = await sdk.callTool(
-      { name: localName, arguments: args ?? {} },
-      CompatibilityCallToolResultSchema,
+      { name: localName, arguments: args ?? {}, ...this._metaParamsFor(serverName) },
       sdkOptions,
     )
     return {
@@ -234,7 +268,7 @@ export class MultiServerClient implements IClient {
     const results = await Promise.all(
       [...this._clients.entries()].map(async ([name, sdk]) => {
         const r = await sdk.listResources(
-          undefined,
+          this._metaParamsFor(name),
           this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
         )
         const resources = r.resources as Resource[]
@@ -255,7 +289,7 @@ export class MultiServerClient implements IClient {
     const results = await Promise.all(
       [...this._clients.entries()].map(async ([name, sdk]) => {
         const r = await sdk.listResourceTemplates(
-          undefined,
+          this._metaParamsFor(name),
           this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
         )
         const templates = r.resourceTemplates as ResourceTemplate[]
@@ -286,15 +320,15 @@ export class MultiServerClient implements IClient {
     const knownServer = this._uriMap.get(uri)
     if (knownServer) {
       const sdk = this._clients.get(knownServer)!
-      const result = await sdk.readResource({ uri }, sdkOptions)
+      const result = await sdk.readResource({ uri, ...this._metaParamsFor(knownServer) }, sdkOptions)
       return result.contents
     }
 
     // Fallback: try each server in order, return the first success.
     const errors: unknown[] = []
-    for (const sdk of this._clients.values()) {
+    for (const [name, sdk] of this._clients) {
       try {
-        const result = await sdk.readResource({ uri }, sdkOptions)
+        const result = await sdk.readResource({ uri, ...this._metaParamsFor(name) }, sdkOptions)
         return result.contents
       } catch (err) {
         errors.push(err)
@@ -315,7 +349,7 @@ export class MultiServerClient implements IClient {
     const results = await Promise.all(
       [...this._clients.entries()].map(async ([name, sdk]) => {
         const r = await sdk.listPrompts(
-          undefined,
+          this._metaParamsFor(name),
           this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
         )
         return (r.prompts as Prompt[]).map((p) => ({ ...p, name: `${name}_${p.name}` }))
@@ -332,7 +366,7 @@ export class MultiServerClient implements IClient {
     const { serverName, localName } = this._parseNamespacedName(name)
     const sdk = this._sdkForServer(serverName)
     const result = await sdk.getPrompt(
-      { name: localName, arguments: args },
+      { name: localName, arguments: args, ...this._metaParamsFor(serverName) },
       this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
     )
     return result as GetPromptResult
@@ -342,6 +376,8 @@ export class MultiServerClient implements IClient {
   // Resource subscriptions
   // -------------------------------------------------------------------------
 
+  /** See Client.subscribeResource's docs — the same era-routing applies here,
+   * per server, since each connected server negotiates its own era. */
   async subscribeResource(
     uri: string,
     handler: ResourceUpdateHandler,
@@ -351,19 +387,31 @@ export class MultiServerClient implements IClient {
     this._resourceSubscriptions.set(uri, handler)
     const serverName = this._uriMap.get(uri)
     if (serverName) {
-      await this._clients.get(serverName)!.subscribeResource(
-        { uri },
-        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
-      )
+      const sdk = this._clients.get(serverName)!
+      if (sdk.getProtocolEra() === 'modern') {
+        await this._refreshResourceListenSubscriptionForServer(serverName)
+      } else {
+        await sdk.subscribeResource(
+          { uri },
+          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+        )
+      }
       return
     }
+    // Fallback: the URI's owning server isn't known yet (listResources() was never
+    // called). Only legacy-era servers can be probed this way — the validating
+    // resources/subscribe RPC either succeeds (that server owns the URI) or throws;
+    // listen() has no equivalent per-URI validation, so a modern-era server can't be
+    // ruled in or out by trying it, and is skipped in this fallback.
     const errors: unknown[] = []
-    for (const sdk of this._clients.values()) {
+    for (const [name, sdk] of this._clients) {
+      if (sdk.getProtocolEra() === 'modern') continue
       try {
         await sdk.subscribeResource(
           { uri },
           this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
         )
+        this._uriMap.set(uri, name)
         return
       } catch (err) {
         errors.push(err)
@@ -377,20 +425,52 @@ export class MultiServerClient implements IClient {
     this._resourceSubscriptions.delete(uri)
     const serverName = this._uriMap.get(uri)
     if (serverName) {
-      await this._clients.get(serverName)!.unsubscribeResource(
-        { uri },
-        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
-      )
+      const sdk = this._clients.get(serverName)!
+      if (sdk.getProtocolEra() === 'modern') {
+        await this._refreshResourceListenSubscriptionForServer(serverName)
+      } else {
+        await sdk.unsubscribeResource(
+          { uri },
+          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+        )
+      }
       return
     }
     await Promise.allSettled(
-      [...this._clients.values()].map((sdk) =>
-        sdk.unsubscribeResource(
-          { uri },
-          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      [...this._clients.values()]
+        .filter((sdk) => sdk.getProtocolEra() !== 'modern')
+        .map((sdk) =>
+          sdk.unsubscribeResource(
+            { uri },
+            this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+          ),
         ),
-      ),
     )
+  }
+
+  /** Re-opens server-scoped listen stream for its currently-subscribed URIs — see
+   * Client's own private method of the same purpose for the full rationale. */
+  private async _refreshResourceListenSubscriptionForServer(serverName: string): Promise<void> {
+    const existing = this._resourceListenSubscriptions.get(serverName)
+    if (existing) {
+      await existing.close()
+      this._resourceListenSubscriptions.delete(serverName)
+    }
+    const uris = [...this._resourceSubscriptions.keys()].filter(
+      (uri) => this._uriMap.get(uri) === serverName,
+    )
+    if (uris.length === 0) return
+
+    const sdk = this._clients.get(serverName)!
+    const subscription = await sdk.listen({ resourceSubscriptions: uris })
+    this._resourceListenSubscriptions.set(serverName, subscription)
+
+    void subscription.closed.then((reason) => {
+      if (reason === 'remote' && this._resourceListenSubscriptions.get(serverName) === subscription) {
+        this._resourceListenSubscriptions.delete(serverName)
+        void this._refreshResourceListenSubscriptionForServer(serverName).catch(() => {})
+      }
+    })
   }
 
   // -------------------------------------------------------------------------
@@ -410,7 +490,12 @@ export class MultiServerClient implements IClient {
       const { serverName, localName } = this._parseNamespacedName(ref.name)
       const sdk = this._sdkForServer(serverName)
       const result = await sdk.complete(
-        { ref: { type: 'ref/prompt', name: localName }, argument, ...(context ? { context } : {}) },
+        {
+          ref: { type: 'ref/prompt', name: localName },
+          argument,
+          ...(context ? { context } : {}),
+          ...this._metaParamsFor(serverName),
+        },
         sdkOptions,
       )
       return result.completion as CompletionResult
@@ -419,17 +504,17 @@ export class MultiServerClient implements IClient {
     const serverName = this._uriMap.get(ref.uri)
     if (serverName) {
       const result = await this._clients.get(serverName)!.complete(
-        { ref, argument, ...(context ? { context } : {}) },
+        { ref, argument, ...(context ? { context } : {}), ...this._metaParamsFor(serverName) },
         sdkOptions,
       )
       return result.completion as CompletionResult
     }
 
     const errors: unknown[] = []
-    for (const sdk of this._clients.values()) {
+    for (const [name, sdk] of this._clients) {
       try {
         const result = await sdk.complete(
-          { ref, argument, ...(context ? { context } : {}) },
+          { ref, argument, ...(context ? { context } : {}), ...this._metaParamsFor(name) },
           sdkOptions,
         )
         return result.completion as CompletionResult
@@ -444,12 +529,21 @@ export class MultiServerClient implements IClient {
   // Logging
   // -------------------------------------------------------------------------
 
+  /** See Client.setLogLevel's docs — the same era-routing applies here, per
+   * server: legacy sends the real `logging/setLevel` RPC; modern records the
+   * level and threads it into `_meta` on that server's subsequent requests via
+   * `_metaParamsFor`, since `logging/setLevel` is absent from the modern wire
+   * registry (SEP-2577). */
   async setLogLevel(level: LoggingLevel, options?: RequestOptions): Promise<void> {
     this._assertConnected()
     await Promise.all(
-      [...this._clients.values()].map((sdk) =>
-        sdk.setLoggingLevel(level, this._toSdkOptions(options)),
-      ),
+      [...this._clients.entries()].map(([name, sdk]) => {
+        if (sdk.getProtocolEra() === 'modern') {
+          this._logLevels.set(name, level)
+          return undefined
+        }
+        return sdk.setLoggingLevel(level, this._toSdkOptions(options))
+      }),
     )
   }
 
@@ -493,7 +587,10 @@ export class MultiServerClient implements IClient {
   private _buildSdkClient(): SdkClient {
     return new SdkClient(
       { name: 'fastmcp-ts', version: '1.0.0' },
-      { capabilities: this._buildCapabilities() },
+      {
+        capabilities: this._buildCapabilities(),
+        ...(this._versionNegotiation ? { versionNegotiation: this._versionNegotiation } : {}),
+      },
     )
   }
 
@@ -506,7 +603,7 @@ export class MultiServerClient implements IClient {
   }
 
   private _registerHandlers(sdk: SdkClient): void {
-    sdk.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
+    sdk.setNotificationHandler('notifications/message', (notification) => {
       void this._handlers.log({
         level: notification.params.level,
         logger: notification.params.logger ?? undefined,
@@ -514,27 +611,36 @@ export class MultiServerClient implements IClient {
       })
     })
 
-    sdk.setNotificationHandler(ResourceUpdatedNotificationSchema, (notification) => {
+    sdk.setNotificationHandler('notifications/resources/updated', (notification) => {
       const handler = this._resourceSubscriptions.get(notification.params.uri)
       if (handler) void handler(notification.params.uri)
     })
 
     if (this._handlers.sampling) {
       const h = this._handlers.sampling
-      sdk.setRequestHandler(CreateMessageRequestSchema, async (req) => h(req.params))
+      sdk.setRequestHandler('sampling/createMessage', async (req) => h(req.params))
     }
 
     if (this._handlers.elicitation) {
       const h = this._handlers.elicitation
-      sdk.setRequestHandler(ElicitRequestSchema, async (req) => h(req.params))
+      sdk.setRequestHandler('elicitation/create', async (req) => h(req.params))
     }
 
     if (this._roots) {
       const roots = this._roots
-      sdk.setRequestHandler(ListRootsRequestSchema, async () => ({
+      sdk.setRequestHandler('roots/list', async () => ({
         roots: roots.map((uri) => ({ uri })),
       }))
     }
+  }
+
+  /** See Client._metaParams's docs — the same purpose, per server name, since
+   * each connected server may be on a different era and have a different
+   * recorded log level (or none). */
+  private _metaParamsFor(serverName: string): { _meta: Record<string, unknown> } | undefined {
+    const level = this._logLevels.get(serverName)
+    if (level === undefined) return undefined
+    return { _meta: { [LOG_LEVEL_META_KEY]: level } }
   }
 
   private _toSdkOptions(

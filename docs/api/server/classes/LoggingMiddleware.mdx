@@ -2,7 +2,7 @@
 title: "LoggingMiddleware"
 ---
 
-Defined in: [server/middleware.ts:88](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L88)
+Defined in: [server/middleware.ts:95](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L95)
 
 Logs every request with method, outcome, and elapsed time.
 
@@ -18,7 +18,7 @@ Logs every request with method, outcome, and elapsed time.
 new LoggingMiddleware(emit?): LoggingMiddleware;
 ```
 
-Defined in: [server/middleware.ts:89](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L89)
+Defined in: [server/middleware.ts:96](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L96)
 
 #### Parameters
 
@@ -35,34 +35,24 @@ Defined in: [server/middleware.ts:89](https://github.com/PrefectHQ/fastmcp-ts/bl
 ### onRequest()
 
 ```ts
-onRequest<T, R>(ctx, next): Promise<R>;
+onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:91](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L91)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:98](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L98)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 #### Implementation of
 

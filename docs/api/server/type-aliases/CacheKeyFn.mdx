@@ -6,22 +6,38 @@ title: "CacheKeyFn"
 type CacheKeyFn = (ctx) => string;
 ```
 
-Defined in: [server/middleware.ts:123](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L123)
+Defined in: [server/middleware.ts:146](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L146)
 
 Custom cache key function. Receives the full middleware context so callers can
 incorporate auth identity or any other dimension into the key.
 
-**Required when using per-component auth checks.** The default key is
-`"method:JSON(params)"`, which contains no auth information. If auth-filtered
-list results (tools, resources, prompts) are cached with the default key, one
-session's filtered results can be served to a session with different permissions.
-Pass a `keyFn` that includes the caller identity, e.g.:
+**The default key already partitions by auth identity — you do not need a `keyFn`
+for auth safety.** The default is
+`"method:<auth-partition>:JSON(params)"`, where the auth partition is `anon` for a
+request with no bearer token and the SHA-256 hash of the bearer token for an
+authenticated request. So a result computed under one identity is never served under
+another (anonymous and authenticated included, both directions), and auth-filtered
+list results (tools, resources, prompts) stay per identity.
+
+**A custom `keyFn` REPLACES the default partitioning entirely — you then own it.**
+The key you return is used verbatim; the auth partition is not merged in. If your
+cached values depend on the caller identity, include an identity dimension yourself.
+Use the same dimension the default uses — the bearer token, HASHED. Never place the
+raw token in a cache key:
 
 ```ts
-new CachingMiddleware(60_000, (ctx) =>
-  `${ctx.method}:${ctx.mcpContext.auth?.clientId ?? ''}:${JSON.stringify(ctx.request)}`
-)
+import { createHash } from 'node:crypto'
+
+new CachingMiddleware(60_000, (ctx) => {
+  const token = ctx.mcpContext.auth?.token
+  const id = token ? createHash('sha256').update(token).digest('hex') : 'anon'
+  return `${ctx.method}:${id}:${JSON.stringify(ctx.request)}`
+})
 ```
+
+`clientId` is a coarser alternative (`ctx.mcpContext.auth?.clientId`), but two tokens
+may share a `clientId` yet differ in scope, so a `clientId` key can merge identities
+that must stay apart. Prefer the hashed token.
 
 ## Parameters
 

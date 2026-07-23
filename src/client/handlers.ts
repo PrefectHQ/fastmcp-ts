@@ -1,12 +1,4 @@
-import type {
-  LoggingLevel,
-  CreateMessageRequestParams,
-  ElicitRequestParams,
-  ElicitResult,
-  Tool,
-  Resource,
-  Prompt,
-} from '@modelcontextprotocol/sdk/types.js'
+import type { LoggingLevel, CreateMessageRequestParams, ElicitRequestParams, ElicitResult, Tool, Resource, Prompt } from "@modelcontextprotocol/server";
 import type { AnySamplingResult } from './results.js'
 
 export type LogMessage = {

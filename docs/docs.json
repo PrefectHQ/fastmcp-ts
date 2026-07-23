@@ -28,6 +28,15 @@
             ]
           },
           {
+            "group": "Concepts",
+            "pages": [
+              "concepts/protocol-eras",
+              "concepts/input-required",
+              "concepts/state-and-handles",
+              "concepts/caching"
+            ]
+          },
+          {
             "group": "Servers",
             "pages": [
               "servers/tools",
@@ -51,8 +60,7 @@
             "pages": [
               "servers/middleware",
               "servers/transforms",
-              "servers/composition",
-              "servers/tasks"
+              "servers/composition"
             ]
           },
           {
@@ -78,7 +86,8 @@
           {
             "group": "More",
             "pages": [
-              "cli"
+              "cli",
+              "migration"
             ]
           }
         ]
@@ -127,6 +136,8 @@
                   "api/server/interfaces/BackendToolConfig",
                   "api/server/interfaces/BrowserPermissions",
                   "api/server/interfaces/CatalogEntry",
+                  "api/server/interfaces/CompletionContext",
+                  "api/server/interfaces/CompletionResult",
                   "api/server/interfaces/Component",
                   "api/server/interfaces/CspPolicy",
                   "api/server/interfaces/ElicitationResult",
@@ -172,6 +183,7 @@
                 "pages": [
                   "api/server/type-aliases/AuthCheck",
                   "api/server/type-aliases/CacheKeyFn",
+                  "api/server/type-aliases/CompleteCallback",
                   "api/server/type-aliases/LogLevel",
                   "api/server/type-aliases/Next",
                   "api/server/type-aliases/PromptContent",
@@ -226,11 +238,13 @@
                   "api/client/classes/BrowserOAuth",
                   "api/client/classes/Client",
                   "api/client/classes/ClientCredentials",
+                  "api/client/classes/EnterpriseManagedAuth",
                   "api/client/classes/FileTokenStorage",
                   "api/client/classes/GenericSamplingAdapter",
                   "api/client/classes/GoogleSamplingAdapter",
                   "api/client/classes/IndexedDBStore",
                   "api/client/classes/InMemoryStore",
+                  "api/client/classes/JwtBearerAuth",
                   "api/client/classes/LocalStorageStore",
                   "api/client/classes/MultiServerClient",
                   "api/client/classes/OAuth",
@@ -242,20 +256,24 @@
               {
                 "group": "Interfaces",
                 "pages": [
+                  "api/client/interfaces/AsyncHeaderAuth",
                   "api/client/interfaces/BrowserOAuthOptions",
                   "api/client/interfaces/CallToolOptions",
-                  "api/client/interfaces/ClientCredentialsOptions",
                   "api/client/interfaces/ClientDefaultOptions",
                   "api/client/interfaces/ClientHandlers",
                   "api/client/interfaces/ClientOptions",
+                  "api/client/interfaces/ClientSecretCredentialsOptions",
+                  "api/client/interfaces/EnterpriseManagedOptions",
                   "api/client/interfaces/GenericCompletionParams",
                   "api/client/interfaces/IClient",
                   "api/client/interfaces/IPromptsClient",
                   "api/client/interfaces/IResourcesClient",
                   "api/client/interfaces/IToolsClient",
+                  "api/client/interfaces/JwtBearerOptions",
                   "api/client/interfaces/McpServerLike",
                   "api/client/interfaces/MultiServerOptions",
                   "api/client/interfaces/OAuthOptions",
+                  "api/client/interfaces/PrivateKeyJwtCredentialsOptions",
                   "api/client/interfaces/RequestOptions",
                   "api/client/interfaces/SamplingAdapter",
                   "api/client/interfaces/SamplingAdapterOptions"
@@ -265,7 +283,10 @@
                 "group": "Type Aliases",
                 "pages": [
                   "api/client/type-aliases/AnySamplingResult",
+                  "api/client/type-aliases/AssertionSource",
                   "api/client/type-aliases/CallToolResult",
+                  "api/client/type-aliases/ClientCredentialsOptions",
+                  "api/client/type-aliases/ClientSecretAuthMethod",
                   "api/client/type-aliases/ClientTransportInput",
                   "api/client/type-aliases/CompletionResult",
                   "api/client/type-aliases/ElicitationHandler",

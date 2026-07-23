@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod/v4'
 import { FastMCP } from 'fastmcp-ts/server'
 import { Client, MultiServerClient } from 'fastmcp-ts/client'
-import type { TextResourceContents } from '@modelcontextprotocol/sdk/types'
+import type { TextResourceContents } from "@modelcontextprotocol/server";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -319,6 +319,55 @@ describe('Client — Multi-server', () => {
       const a = makeServerA()
       const client = new MultiServerClient({ mcpServers: { a } })
       await expect(client.listTools()).rejects.toThrow('not connected')
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // versionNegotiation (applied identically to every server) + era-aware
+  // ping()/setLogLevel() fan-out
+  // -------------------------------------------------------------------------
+
+  describe('versionNegotiation', () => {
+    it('with no versionNegotiation, every server negotiates legacy era', async () => {
+      const a = makeServerA()
+      const b = makeServerB()
+      await using client = await MultiServerClient.connect({ mcpServers: { a, b } })
+      expect(client.getProtocolEra('a')).toBe('legacy')
+      expect(client.getProtocolEra('b')).toBe('legacy')
+    })
+
+    it('pinning modern era applies identically to every in-process server', async () => {
+      const a = makeServerA()
+      const b = makeServerB()
+      await using client = await MultiServerClient.connect(
+        { mcpServers: { a, b } },
+        { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+      )
+      expect(client.getProtocolEra('a')).toBe('modern')
+      expect(client.getProtocolEra('b')).toBe('modern')
+      const tools = await client.listTools()
+      expect(tools.some((t) => t.name === 'a_echo')).toBe(true)
+      expect(tools.some((t) => t.name === 'b_search')).toBe(true)
+    })
+
+    it('ping() uses server/discover instead of the ping RPC for modern-era sub-clients', async () => {
+      const a = makeServerA()
+      await using client = await MultiServerClient.connect(
+        { mcpServers: { a } },
+        { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+      )
+      await expect(client.ping()).resolves.toBe(true)
+    })
+
+    it('setLogLevel() resolves for modern-era sub-clients and does not break subsequent calls', async () => {
+      const a = makeServerA()
+      await using client = await MultiServerClient.connect(
+        { mcpServers: { a } },
+        { versionNegotiation: { mode: { pin: '2026-07-28' } } },
+      )
+      await expect(client.setLogLevel('debug')).resolves.toBeUndefined()
+      const tools = await client.listTools()
+      expect(tools.some((t) => t.name === 'a_echo')).toBe(true)
     })
   })
 

@@ -1,0 +1,180 @@
+---
+title: "EnterpriseManagedOptions"
+---
+
+Defined in: [client/auth.ts:876](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L876)
+
+Configuration for [EnterpriseManagedAuth](/api/client/classes/EnterpriseManagedAuth) (SEP-990, Enterprise-Managed
+Authorization / Cross-App Access).
+
+The flow is two hops, both stable RFCs:
+ 1. **Token exchange** (RFC 8693) at the enterprise IdP: exchange the user's
+    OpenID Connect ID token for an *identity assertion JWT authorization
+    grant* (ID-JAG) scoped to the target MCP server.
+ 2. **JWT-bearer grant** (RFC 7523) at the MCP server's authorization server:
+    present the ID-JAG under `grant_type=jwt-bearer` to obtain the access
+    token.
+
+## Properties
+
+### audience
+
+```ts
+audience: string;
+```
+
+Defined in: [client/auth.ts:889](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L889)
+
+The ID-JAG audience — the target authorization server's identifier. The
+authorization server verifies the ID-JAG `aud` against this.
+
+***
+
+### authMethod?
+
+```ts
+optional authMethod?: ClientAuthMethod;
+```
+
+Defined in: [client/auth.ts:884](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L884)
+
+Client-authentication method for step 2. Default: `client_secret_basic`.
+
+***
+
+### clientId
+
+```ts
+clientId: string;
+```
+
+Defined in: [client/auth.ts:880](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L880)
+
+The MCP client identifier registered with the authorization server.
+
+***
+
+### clientSecret?
+
+```ts
+optional clientSecret?: string;
+```
+
+Defined in: [client/auth.ts:882](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L882)
+
+The MCP client secret (default client auth is `client_secret_basic`).
+
+***
+
+### idpClientId
+
+```ts
+idpClientId: string;
+```
+
+Defined in: [client/auth.ts:898](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L898)
+
+The client identifier registered with the IdP for token exchange.
+
+***
+
+### idpClientSecret?
+
+```ts
+optional idpClientSecret?: string;
+```
+
+Defined in: [client/auth.ts:900](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L900)
+
+The client secret for the IdP token exchange, if the IdP requires one.
+
+***
+
+### idpTokenEndpoint
+
+```ts
+idpTokenEndpoint: string;
+```
+
+Defined in: [client/auth.ts:896](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L896)
+
+The enterprise IdP's token endpoint (step 1).
+
+***
+
+### idToken
+
+```ts
+idToken: AssertionSource;
+```
+
+Defined in: [client/auth.ts:905](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L905)
+
+The user's OpenID Connect ID token (the `subject_token` of the exchange).
+Pass a string, or a callback to read a fresh one each fetch.
+
+***
+
+### refreshBufferSeconds?
+
+```ts
+optional refreshBufferSeconds?: number;
+```
+
+Defined in: [client/auth.ts:918](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L918)
+
+How many seconds before expiry to proactively re-fetch. Default: 60.
+
+***
+
+### resource
+
+```ts
+resource: string;
+```
+
+Defined in: [client/auth.ts:894](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L894)
+
+The protected-resource identifier of the target MCP server (RFC 9728). The
+authorization server verifies the ID-JAG `resource` against this.
+
+***
+
+### scope?
+
+```ts
+optional scope?: string;
+```
+
+Defined in: [client/auth.ts:907](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L907)
+
+Requested scopes (space-separated).
+
+***
+
+### store?
+
+```ts
+optional store?: KeyValueStore;
+```
+
+Defined in: [client/auth.ts:916](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L916)
+
+Persistent token store. Default: in-memory. The cache key is derived from
+`tokenEndpoint` alone, with no client identity in it — use one store per
+credential identity. Do not share a persistent `store` across two
+`EnterpriseManagedAuth` instances that have different `clientId`/`idToken`
+but the same `tokenEndpoint`; they will read and overwrite each other's
+cached tokens.
+
+***
+
+### tokenEndpoint
+
+```ts
+tokenEndpoint: string;
+```
+
+Defined in: [client/auth.ts:878](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L878)
+
+The MCP server's authorization-server token endpoint (step 2).

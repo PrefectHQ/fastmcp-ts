@@ -2,7 +2,7 @@
 title: "PromptResult"
 ---
 
-Defined in: [server/prompt.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L59)
+Defined in: [server/prompt.ts:69](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/prompt.ts#L69)
 
 Escape hatch for full control over the prompt response.
 Return this from a prompt handler to set an explicit description and/or
@@ -16,7 +16,7 @@ supply a custom multi-turn message sequence.
 new PromptResult(messages, description?): PromptResult;
 ```
 
-Defined in: [server/prompt.ts:60](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L60)
+Defined in: [server/prompt.ts:70](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/prompt.ts#L70)
 
 #### Parameters
 
@@ -40,7 +40,7 @@ Defined in: [server/prompt.ts:60](https://github.com/PrefectHQ/fastmcp-ts/blob/c
 readonly optional description?: string;
 ```
 
-Defined in: [server/prompt.ts:62](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L62)
+Defined in: [server/prompt.ts:72](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/prompt.ts#L72)
 
 ***
 
@@ -50,4 +50,4 @@ Defined in: [server/prompt.ts:62](https://github.com/PrefectHQ/fastmcp-ts/blob/c
 readonly messages: PromptMessage[];
 ```
 
-Defined in: [server/prompt.ts:61](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L61)
+Defined in: [server/prompt.ts:71](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/prompt.ts#L71)

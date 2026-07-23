@@ -1,10 +1,20 @@
 import type { AuthCheck } from './auth/authorization'
+import { isInputRequiredResult } from './mrtr'
+import type { InputRequiredResult } from './mrtr'
+import type { CompleteCallback } from './completion'
 
 export interface PromptArgument {
   name: string
   description?: string
   /** When true, the client must supply this argument. Defaults to false. */
   required?: boolean
+  /**
+   * Autocompletion callback for this argument. When set, a `completion/complete`
+   * request for `{ ref: { type: 'ref/prompt', name }, argument: { name, value } }`
+   * routes here. Not advertised in `prompts/list` — the client discovers it by
+   * calling `completion/complete`.
+   */
+  complete?: CompleteCallback
 }
 
 export interface PromptConfig {
@@ -83,7 +93,14 @@ function isPromptMessage(value: unknown): value is PromptMessage {
  * - PromptMessage[] → used as-is
  * - PromptResult    → passthrough (escape hatch)
  */
-export function convertPromptResult(value: unknown): { description?: string; messages: PromptMessage[] } {
+export function convertPromptResult(
+  value: unknown,
+): { description?: string; messages: PromptMessage[] } | InputRequiredResult {
+  // Multi-round-trip escape hatch (protocol revision 2026-07-28) — see tool.ts's
+  // convertResult for the same pattern applied to tools/call.
+  if (isInputRequiredResult(value)) {
+    return value
+  }
   if (value instanceof PromptResult) {
     return { description: value.description, messages: value.messages }
   }

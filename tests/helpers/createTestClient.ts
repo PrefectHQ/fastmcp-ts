@@ -1,5 +1,5 @@
-import { Client } from '@modelcontextprotocol/sdk/client'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
+import { InMemoryTransport } from "@modelcontextprotocol/server";
+import { Client } from '@modelcontextprotocol/client'
 import type { FastMCP } from 'fastmcp-ts/server'
 
 export interface TestClient {

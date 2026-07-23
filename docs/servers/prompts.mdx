@@ -29,7 +29,7 @@ server.prompt(
 )
 ```
 
-FastMCP enforces the `required` flags before your handler runs. If the client omits a required argument, the request returns `McpError(InvalidParams)` and the handler is never invoked — so inside the handler a required argument is always present. Because arguments are named and untyped strings, any further validation of their *contents* is yours to do; the framework guarantees presence, not shape.
+FastMCP enforces the `required` flags before your handler runs. If the client omits a required argument, the request returns `ProtocolError(InvalidParams)` and the handler is never invoked — so inside the handler a required argument is always present. Because arguments are named and untyped strings, any further validation of their *contents* is yours to do; the framework guarantees presence, not shape.
 
 ## Messages
 
@@ -75,6 +75,38 @@ The same magic conversion that maps tool and resource return values maps prompt 
 
 `PromptResult` is the escape hatch the last row points to — reach for it when you want to set the result description or hand-build the message array.
 
+## Argument completion
+
+A prompt argument can suggest values as the user types it. When a client supports completion, it sends a `completion/complete` request carrying the partial value, and the server routes that request to the matching argument's `complete` callback. This is how a UI fills a dropdown for a prompt argument, so the user picks a valid value instead of the model guessing one.
+
+Attach a `complete` callback to any argument. It receives the partial `value` the user has typed and an optional `context` holding the values already chosen for the prompt's *other* arguments, and it returns either a plain `string[]` or a `CompletionResult` with explicit `total` and `hasMore` pagination hints. The callback may be async, so it can query a database or an API. Completion works on both [protocol eras](/concepts/protocol-eras) unchanged — the method is in both wire registries.
+
+```typescript server.ts
+server.prompt(
+  {
+    name: 'deploy',
+    description: 'Draft a deploy plan for a service',
+    arguments: [
+      {
+        name: 'service',
+        required: true,
+        complete: (value) => ['api', 'web', 'worker'].filter((s) => s.startsWith(value)),
+      },
+      {
+        name: 'environment',
+        required: true,
+        complete: (value, context) =>
+          (context?.arguments?.service === 'worker' ? ['staging'] : ['staging', 'production'])
+            .filter((e) => e.startsWith(value)),
+      },
+    ],
+  },
+  ({ service, environment }) => `Draft a deploy plan for ${service} to ${environment}.`,
+)
+```
+
+The `context` argument narrows suggestions against earlier answers — the example offers `production` for a normal service but withholds it for `worker`. FastMCP caps a bare `string[]` to the 100-item wire maximum and fills in `total` and `hasMore` for you; return a `CompletionResult` yourself only when you page the matches. The same `complete` callback shape serves [resource template variables](/servers/resources) too.
+
 ## Configuration
 
 Beyond `name`, `description`, and `arguments`, the config object accepts these fields. Each is optional.
@@ -84,7 +116,7 @@ Beyond `name`, `description`, and `arguments`, the config object accepts these f
 | `name` | Inferred from the handler function's `.name` when omitted |
 | `title` | Human-readable label for UIs |
 | `description` | Inferred from the resolved name (camelCase to words) when omitted |
-| `arguments` | Array of `{ name, description?, required? }` declaring the prompt's inputs |
+| `arguments` | Array of `{ name, description?, required?, complete? }` declaring the prompt's inputs; `complete` adds argument completion |
 | `timeout` | Per-call timeout in milliseconds; a handler that exceeds it propagates as an error to the client |
 | `disabled` | When `true`, hides the prompt from listings and rejects `prompts/get` |
 | `auth` | Per-prompt authorization check — see [Authorization](/servers/auth/authorization) |

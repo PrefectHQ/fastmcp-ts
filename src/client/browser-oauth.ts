@@ -1,3 +1,5 @@
+import type { OAuthClientMetadata } from "@modelcontextprotocol/server";
+
 // ---------------------------------------------------------------------------
 // BrowserOAuth — OAuth authorization-code + PKCE flow for the browser.
 //
@@ -9,8 +11,6 @@
 // (redirect). Because it `instanceof OAuth`, the Client connect flow
 // (connect → waitForCallback → finishAuth → reconnect) drives it unchanged.
 // ---------------------------------------------------------------------------
-
-import type { OAuthClientMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
 import { OAuth, type OAuthOptions } from './auth.js'
 
 /** postMessage payload sent by {@link handleOAuthCallback} back to the opener. */
@@ -67,10 +67,14 @@ export class BrowserOAuth extends OAuth {
     const expectedOrigin = new URL(this._redirectUri).origin
     this._messageHandler = (e: MessageEvent) => {
       if (e.origin !== expectedOrigin) return
-      const data = e.data as { type?: string; code?: string; error?: string }
+      const data = e.data as { type?: string; code?: string; iss?: string; error?: string }
       if (data?.type !== MESSAGE_TYPE) return
-      if (data.error) this._rejectCallback(new Error(`OAuth authorization denied: ${data.error}`))
-      else if (data.code) this._resolveCallback(data.code)
+      if (data.error) {
+        this._rejectCallback(new Error(`OAuth authorization denied: ${data.error}`))
+      } else if (data.code) {
+        const params = new URLSearchParams({ code: data.code, ...(data.iss ? { iss: data.iss } : {}) })
+        this._resolveCallback(params)
+      }
     }
     window.addEventListener('message', this._messageHandler)
     // Arm the callback promise before opening so a fast provider can't race us.
@@ -84,7 +88,7 @@ export class BrowserOAuth extends OAuth {
     }
   }
 
-  async waitForCallback(timeoutMs = 5 * 60 * 1000): Promise<string> {
+  async waitForCallback(timeoutMs = 5 * 60 * 1000): Promise<URLSearchParams> {
     try {
       return await this._awaitCallback(timeoutMs)
     } finally {
@@ -93,15 +97,17 @@ export class BrowserOAuth extends OAuth {
   }
 
   /**
-   * Redirect-mode resume: parse the authorization code from a returned URL
-   * (defaults to the current location). Returns the code, or null if absent.
-   * Throws if the provider returned an error.
+   * Redirect-mode resume: parse the authorization callback params from a
+   * returned URL (defaults to the current location). Returns the full
+   * `URLSearchParams` (including `code` and, when present, `iss`) — pass
+   * directly to `finishAuth()` — or `null` if there is no `code`. Throws if
+   * the provider returned an error.
    */
-  resumeFromRedirect(href: string = window.location.href): string | null {
+  resumeFromRedirect(href: string = window.location.href): URLSearchParams | null {
     const params = new URL(href).searchParams
     const error = params.get('error_description') ?? params.get('error')
     if (error) throw new Error(`OAuth authorization denied: ${error}`)
-    return params.get('code')
+    return params.has('code') ? params : null
   }
 
   private _teardown(): void {
@@ -123,8 +129,9 @@ export class BrowserOAuth extends OAuth {
 export function handleOAuthCallback(opts: { targetOrigin?: string } = {}): void {
   const params = new URLSearchParams(window.location.search)
   const code = params.get('code') ?? undefined
+  const iss = params.get('iss') ?? undefined
   const error = params.get('error_description') ?? params.get('error') ?? undefined
   const target = opts.targetOrigin ?? window.location.origin
-  window.opener?.postMessage({ type: MESSAGE_TYPE, code, error }, target)
+  window.opener?.postMessage({ type: MESSAGE_TYPE, code, iss, error }, target)
   window.close()
 }

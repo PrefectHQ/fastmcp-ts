@@ -2,11 +2,15 @@
 title: "CachingMiddleware"
 ---
 
-Defined in: [server/middleware.ts:128](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L128)
+Defined in: [server/middleware.ts:155](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L155)
 
-TTL-based response cache keyed on method + serialised request params by default.
- Pass a custom `keyFn` when using per-component auth so cached results are
- partitioned by caller identity.
+TTL-based response cache. The default key is method + auth partition + serialised
+ request params, so a cached result is served only to the identity that produced it
+ (anonymous is its own partition; authenticated requests partition by bearer-token
+ hash). Auth-filtered results (tools/list visibility, resources/read contents,
+ prompts, completion) therefore never cross identities. Pass a custom `keyFn` to
+ replace this partitioning — the caller then owns identity partitioning (see
+ [CacheKeyFn](/api/server/type-aliases/CacheKeyFn)).
 
 ## Implements
 
@@ -20,7 +24,7 @@ TTL-based response cache keyed on method + serialised request params by default.
 new CachingMiddleware(ttl?, _keyFn?): CachingMiddleware;
 ```
 
-Defined in: [server/middleware.ts:131](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L131)
+Defined in: [server/middleware.ts:179](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L179)
 
 #### Parameters
 
@@ -44,41 +48,31 @@ Defined in: [server/middleware.ts:131](https://github.com/PrefectHQ/fastmcp-ts/b
 readonly ttl: number = 60_000;
 ```
 
-Defined in: [server/middleware.ts:132](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L132)
+Defined in: [server/middleware.ts:180](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L180)
 
 ## Methods
 
 ### onRequest()
 
 ```ts
-onRequest<T, R>(ctx, next): Promise<R>;
+onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:136](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L136)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:203](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L203)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 #### Implementation of
 

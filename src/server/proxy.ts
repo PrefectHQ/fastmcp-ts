@@ -1,11 +1,5 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import {
-  CallToolResultSchema,
-  type CallToolResult,
-  ToolListChangedNotificationSchema,
-  ResourceListChangedNotificationSchema,
-  PromptListChangedNotificationSchema,
-} from '@modelcontextprotocol/sdk/types.js'
+import { Client } from "@modelcontextprotocol/client";
+import type { CallToolResult } from "@modelcontextprotocol/client";
 import { parseTemplate } from 'url-template'
 import { FastMCP } from './FastMCP'
 import { ToolResult } from './tool'
@@ -58,13 +52,9 @@ export async function buildProxyFromClient(
   const lastSync = { tools: 0, resources: 0, prompts: 0 }
 
   async function resyncTools(): Promise<void> {
-    const tools: Awaited<ReturnType<typeof client.listTools>>['tools'] = []
-    let cursor: string | undefined
-    do {
-      const page = await client.listTools({ cursor })
-      tools.push(...page.tools)
-      cursor = page.nextCursor
-    } while (cursor)
+    // client.listTools() with no cursor auto-aggregates every page for us (v2 SDK
+    // behavior — see ClientOptions.listMaxPages, default cap 64 pages).
+    const { tools } = await client.listTools()
 
     const incoming = new Set(tools.map((t) => t.name))
 
@@ -90,8 +80,7 @@ export async function buildProxyFromClient(
         },
         async (args: unknown) => {
           const result = await client.callTool(
-            { name: tool.name, arguments: args as Record<string, unknown> },
-            CallToolResultSchema,
+            { name: tool.name, arguments: args as Record<string, unknown> }
           )
           // Zod infers _meta on content items as Record<string,unknown> but
           // CallToolResult types it more specifically — identical at runtime.
@@ -108,13 +97,8 @@ export async function buildProxyFromClient(
     const incoming = new Set<string>()
 
     try {
-      const resources: Awaited<ReturnType<typeof client.listResources>>['resources'] = []
-      let cursor: string | undefined
-      do {
-        const page = await client.listResources({ cursor })
-        resources.push(...page.resources)
-        cursor = page.nextCursor
-      } while (cursor)
+      // client.listResources() with no cursor auto-aggregates every page for us.
+      const { resources } = await client.listResources()
 
       for (const resource of resources) {
         incoming.add(resource.uri)
@@ -146,13 +130,8 @@ export async function buildProxyFromClient(
     }
 
     try {
-      const resourceTemplates: Awaited<ReturnType<typeof client.listResourceTemplates>>['resourceTemplates'] = []
-      let templateCursor: string | undefined
-      do {
-        const page = await client.listResourceTemplates({ cursor: templateCursor })
-        resourceTemplates.push(...page.resourceTemplates)
-        templateCursor = page.nextCursor
-      } while (templateCursor)
+      // client.listResourceTemplates() with no cursor auto-aggregates every page for us.
+      const { resourceTemplates } = await client.listResourceTemplates()
 
       for (const template of resourceTemplates) {
         const uriTemplate = template.uriTemplate
@@ -199,13 +178,8 @@ export async function buildProxyFromClient(
   }
 
   async function resyncPrompts(): Promise<void> {
-    const prompts: Awaited<ReturnType<typeof client.listPrompts>>['prompts'] = []
-    let cursor: string | undefined
-    do {
-      const page = await client.listPrompts({ cursor })
-      prompts.push(...page.prompts)
-      cursor = page.nextCursor
-    } while (cursor)
+    // client.listPrompts() with no cursor auto-aggregates every page for us.
+    const { prompts } = await client.listPrompts()
 
     const incoming = new Set(prompts.map((p) => p.name))
 
@@ -244,13 +218,13 @@ export async function buildProxyFromClient(
   ])
 
   // Subscribe to backend change notifications for immediate resync.
-  client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+  client.setNotificationHandler('notifications/tools/list_changed', () => {
     resyncTools().catch(() => {})
   })
-  client.setNotificationHandler(ResourceListChangedNotificationSchema, () => {
+  client.setNotificationHandler('notifications/resources/list_changed', () => {
     resyncResources().catch(() => {})
   })
-  client.setNotificationHandler(PromptListChangedNotificationSchema, () => {
+  client.setNotificationHandler('notifications/prompts/list_changed', () => {
     resyncPrompts().catch(() => {})
   })
 
@@ -292,10 +266,10 @@ export async function buildProxyFromClient(
  *  - TTL-based lazy resync on each list request (configurable via `cacheTtl`, default 30 s)
  */
 export async function createProxy(config: ProxyTransport, name?: string): Promise<FastMCP> {
-  let transport: import('@modelcontextprotocol/sdk/shared/transport').Transport
+  let transport: import('@modelcontextprotocol/client').Transport
 
   if (config.type === 'stdio') {
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
+    const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio')
     transport = new StdioClientTransport({
       command: config.command,
       args: config.args,
@@ -304,7 +278,7 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
     })
   } else {
     const { StreamableHTTPClientTransport } = await import(
-      '@modelcontextprotocol/sdk/client/streamableHttp.js'
+      '@modelcontextprotocol/client'
     )
     transport = new StreamableHTTPClientTransport(new URL(config.url), {
       requestInit: config.requestInit,

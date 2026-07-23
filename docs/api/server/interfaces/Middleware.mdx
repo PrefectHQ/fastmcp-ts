@@ -2,279 +2,205 @@
 title: "Middleware"
 ---
 
-Defined in: [server/middleware.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L17)
+Defined in: [server/middleware.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L24)
+
+A middleware hook. Either call `next()` and return (optionally transforming) its
+result, or short-circuit by returning your own result without calling `next()`.
+The return is typed `Promise<unknown>` because a hook can substitute any result
+shape for the method it intercepts; the framework resolves the concrete type at
+the call boundary.
 
 ## Methods
 
 ### onCallTool()?
 
 ```ts
-optional onCallTool<T, R>(ctx, next): Promise<R>;
+optional onCallTool(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:25](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L25)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L32)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 ***
 
 ### onGetPrompt()?
 
 ```ts
-optional onGetPrompt<T, R>(ctx, next): Promise<R>;
+optional onGetPrompt(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L30)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L37)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 ***
 
 ### onListPrompts()?
 
 ```ts
-optional onListPrompts<T, R>(ctx, next): Promise<R>;
+optional onListPrompts(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:31](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L31)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L38)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 ***
 
 ### onListResources()?
 
 ```ts
-optional onListResources<T, R>(ctx, next): Promise<R>;
+optional onListResources(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:28](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L28)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L35)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 ***
 
 ### onListResourceTemplates()?
 
 ```ts
-optional onListResourceTemplates<T, R>(ctx, next): Promise<R>;
+optional onListResourceTemplates(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:29](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L29)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L36)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 ***
 
 ### onListTools()?
 
 ```ts
-optional onListTools<T, R>(ctx, next): Promise<R>;
+optional onListTools(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L26)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L33)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 ***
 
 ### onReadResource()?
 
 ```ts
-optional onReadResource<T, R>(ctx, next): Promise<R>;
+optional onReadResource(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L27)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L34)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 ***
 
 ### onRequest()?
 
 ```ts
-optional onRequest<T, R>(ctx, next): Promise<R>;
+optional onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L22)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:29](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L29)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 ***
 
@@ -284,7 +210,7 @@ Defined in: [server/middleware.ts:22](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional setup(server): void;
 ```
 
-Defined in: [server/middleware.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L19)
+Defined in: [server/middleware.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L26)
 
 Called once per Server instance. Use to register notification handlers or other server-level setup.
 

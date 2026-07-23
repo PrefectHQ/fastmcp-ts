@@ -80,7 +80,26 @@ server.resource({ uri: 'bundle://manifest' }, () => {
 
 ## Subscriptions
 
-A resource's value can change after a client has read it, and subscriptions let the client find out instead of polling. The client subscribes to a URI and the server notifies it when that resource updates; the client then re-reads at its own pace. Subscription is a client-side action against a server that supports it, so the API lives on the [client](/clients/client).
+A resource's value can change after a client has read it, and subscriptions let the client find out instead of polling. Two sides meet here: your server announces that a resource changed, and a subscribed client re-reads it at its own pace.
+
+Announce a change from server code with `server.notifyResourceUpdated(uri)`. Call it whenever the data behind a URI changes — after a write, on a timer, or from an event handler. FastMCP delivers `notifications/resources/updated` to every connection that subscribed to that URI and nothing to the rest, so calling it for a URI with no subscribers is safe and cheap. The notification carries only the URI, never the new value, which keeps updates light; each client re-reads the fresh data when it is ready to use it.
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+let settings = { theme: 'dark' }
+
+server.resource({ uri: 'config://settings' }, () => JSON.stringify(settings))
+
+// Later, when the settings change:
+settings = { theme: 'light' }
+server.notifyResourceUpdated('config://settings')
+```
+
+`notifyResourceUpdated` is the single change signal for both [protocol eras](/concepts/protocol-eras). The wire transport differs underneath — a legacy client subscribes with the `resources/subscribe` and `resources/unsubscribe` RPCs, while a modern client opens one long-lived `subscriptions/listen` stream — but your server calls the one method and FastMCP routes the notification to each subscriber on its own era. The legacy subscribe and unsubscribe requests both run through your [middleware](/servers/middleware) chain, and subscribe honors a resource's `auth` guard exactly as a read does.
+
+Subscribing is a client-side action, so the subscribe API lives on the [client](/clients/client). The client passes a handler that fires on each update.
 
 ```typescript client.ts
 await client.subscribeResource('config://settings', (uri) => {
@@ -90,7 +109,31 @@ await client.subscribeResource('config://settings', (uri) => {
 await client.unsubscribeResource('config://settings')
 ```
 
-The handler you pass fires whenever the server sends `notifications/resources/updated` for that URI. The notification carries only the URI, not the new value, which keeps updates cheap — the client reads the fresh data only when it's ready to use it.
+The handler fires whenever the server sends `notifications/resources/updated` for that URI. Because the notification names only the URI, the client reads the fresh value on its own schedule.
+
+## Variable completion
+
+When a resource is a template, each RFC 6570 variable can suggest values as the client fills it in. The `complete` config field maps a variable name to a completion callback, and a `completion/complete` request for that template routes to the matching callback. This lets a client offer real identifiers for `{id}` rather than expecting the user to already know them.
+
+Each callback receives the partial `value` the user has typed and an optional `context` holding the template's other resolved variables, and it returns a plain `string[]` or a `CompletionResult` with explicit `total` and `hasMore` hints. The callback may be async, so it can query a store. Completion applies to templates only — a static URI has no variables to complete.
+
+```typescript server.ts
+server.resource(
+  {
+    uri: 'user://{id}',
+    description: 'User by ID',
+    complete: {
+      id: async (value) => {
+        const ids = await listUserIds()
+        return ids.filter((id) => id.startsWith(value))
+      },
+    },
+  },
+  ({ id }) => `User #${id}`,
+)
+```
+
+FastMCP caps a bare `string[]` to the 100-item wire maximum and computes `total` and `hasMore` for you. The same callback shape completes [prompt arguments](/servers/prompts).
 
 ## Configuration
 
@@ -107,6 +150,7 @@ Beyond `uri` and the display metadata, the config object accepts these fields. E
 | `disabled` | When `true`, hides the resource from listings and rejects reads |
 | `tags` | Free-form strings read by [transforms](/servers/transforms) |
 | `auth` | Per-resource authorization check — see [Authorization](/servers/auth/authorization) |
+| `complete` | Completion callbacks for a template's RFC 6570 variables, keyed by variable name; templates only |
 
 ## Dynamic registration
 

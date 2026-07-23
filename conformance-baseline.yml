@@ -1,0 +1,38 @@
+# MCP conformance baseline (W9) — the burn-down list to empty before 1.0.0 stable.
+#
+# Format (parsed by `@modelcontextprotocol/conformance --expected-failures`):
+#   an object with `server` / `client` keys, each a list of SCENARIO names.
+# A scenario "fails" when any of its checks is FAILURE *or* WARNING. A listed
+# scenario that fails => expected (exit 0); one that passes => stale entry
+# (exit 1, remove it); an unlisted scenario that fails => regression (exit 1).
+#
+# Regenerate the observed set: run `npm run conformance:server` /
+# `conformance:client` with this file temporarily removed.
+# Recorded from real runs against the fixtures on 2026-07-22 (tool 0.1.16).
+#
+# Client OAuth conformance is now REAL, not deferred. `npm run conformance:client`
+# enumerates the four non-auth core client scenarios (initialize, tools_call,
+# elicitation-sep1034-client-defaults, sse-retry) and the 14 `[2025-11-25]`-era
+# core `auth/*` OAuth scenarios. The everything-client configures an OAuth
+# provider (authorization-code + PKCE, DCR / pre-registration) from the scenario
+# context and drives the full flow. 17 of the 18 PASS; the one remaining client
+# entry below is a harness-contract limit, with a reason.
+
+# --- server (`npm run conformance:server`, --suite active) ------------------
+# SERVER burn-down COMPLETE — no baselined server scenarios remain. Every server
+# conformance scenario now PASSES against the everything-server fixture.
+# History: `resources/subscribe`/`unsubscribe` were implemented in Task 11
+# (legacy era); `completion/complete` was implemented in Task 12 (both eras,
+# with a real completion callback on the fixture's test_prompt_with_arguments).
+# An empty list means any server scenario that fails is treated as a regression.
+server: []
+
+# --- client (`npm run conformance:client`) ----------------------------------
+# Genuine fastmcp CLIENT gaps — real W9 burn-down items (observed failing on
+# 2026-07-22, tool 0.1.16). All other core + auth client scenarios pass.
+client:
+  - auth/basic-cimd    # WARNING (SHOULD): server advertises client_id_metadata_document_supported but the harness passes the client no CIMD URL, so a spec-correct client falls back to DCR (CIMD is a SHOULD, not a MUST) — harness-contract limit
+  # BURNED DOWN (Task 20, 2026-07-23): auth/scope-step-up now PASSES (20/20, 0
+  # failed) — fastmcp's Client gained post-connect step-up re-authorization (one
+  # single-flight waitForCallback→finishAuth round + one retry on a post-connect
+  # interactive-OAuth 401/403). basic-cimd is now the sole pinned client entry.

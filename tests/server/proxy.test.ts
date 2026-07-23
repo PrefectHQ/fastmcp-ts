@@ -1,13 +1,7 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import { FastMCP } from '../../src/server/FastMCP'
 import { buildProxyFromClient } from '../../src/server/proxy'
-import { Client } from '@modelcontextprotocol/sdk/client/index'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
-import {
-  ToolListChangedNotificationSchema,
-  ResourceListChangedNotificationSchema,
-  PromptListChangedNotificationSchema,
-} from '@modelcontextprotocol/sdk/types'
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { z } from 'zod'
 
 /** Connect a FastMCP backend to a proxy Client via an in-memory transport pair. */
@@ -98,7 +92,7 @@ describe('Proxy — buildProxyFromClient', () => {
 
     // Wait for the notification to propagate to the consumer, then list tools.
     const notified = new Promise<void>((resolve) => {
-      consumer.setNotificationHandler(ToolListChangedNotificationSchema, () => resolve())
+      consumer.setNotificationHandler('notifications/tools/list_changed', () => resolve())
     })
 
     backend.tool({ name: 'new_tool', description: 'added later' }, () => 'new')
@@ -117,7 +111,7 @@ describe('Proxy — buildProxyFromClient', () => {
     const consumer = trackClient(await connectConsumerToProxy(proxy))
 
     const notified = new Promise<void>((resolve) => {
-      consumer.setNotificationHandler(ToolListChangedNotificationSchema, () => resolve())
+      consumer.setNotificationHandler('notifications/tools/list_changed', () => resolve())
     })
 
     // Remove via the internal method which also fires the notification.
@@ -136,7 +130,7 @@ describe('Proxy — buildProxyFromClient', () => {
     const consumer = trackClient(await connectConsumerToProxy(proxy))
 
     const notified = new Promise<void>((resolve) => {
-      consumer.setNotificationHandler(ResourceListChangedNotificationSchema, () => resolve())
+      consumer.setNotificationHandler('notifications/resources/list_changed', () => resolve())
     })
 
     backend.resource({ uri: 'mem://new', name: 'new' }, () => 'content')
@@ -155,7 +149,7 @@ describe('Proxy — buildProxyFromClient', () => {
     const consumer = trackClient(await connectConsumerToProxy(proxy))
 
     const notified = new Promise<void>((resolve) => {
-      consumer.setNotificationHandler(ResourceListChangedNotificationSchema, () => resolve())
+      consumer.setNotificationHandler('notifications/resources/list_changed', () => resolve())
     })
 
     backend._removeResource('mem://gone')
@@ -173,7 +167,7 @@ describe('Proxy — buildProxyFromClient', () => {
     const consumer = trackClient(await connectConsumerToProxy(proxy))
 
     const notified = new Promise<void>((resolve) => {
-      consumer.setNotificationHandler(PromptListChangedNotificationSchema, () => resolve())
+      consumer.setNotificationHandler('notifications/prompts/list_changed', () => resolve())
     })
 
     backend.prompt({ name: 'new_prompt', description: 'new' }, () => 'hi')
@@ -192,7 +186,7 @@ describe('Proxy — buildProxyFromClient', () => {
     const consumer = trackClient(await connectConsumerToProxy(proxy))
 
     const notified = new Promise<void>((resolve) => {
-      consumer.setNotificationHandler(PromptListChangedNotificationSchema, () => resolve())
+      consumer.setNotificationHandler('notifications/prompts/list_changed', () => resolve())
     })
 
     backend._removePrompt('old_prompt')
@@ -277,7 +271,7 @@ describe('Proxy — buildProxyFromClient', () => {
     const consumer = trackClient(await connectConsumerToProxy(proxy))
 
     const notified = new Promise<void>((resolve) => {
-      consumer.setNotificationHandler(ToolListChangedNotificationSchema, () => resolve())
+      consumer.setNotificationHandler('notifications/tools/list_changed', () => resolve())
     })
 
     backend._removeTool('versioned')

@@ -23,6 +23,8 @@ const client = await Client.connect('https://mcp.example.com', {
 
 From there it is automatic. Every `ctx.sample()` on the server flows to the adapter, which converts the request to an Anthropic message call, runs it, and converts the response back into MCP's shape — including tool-use round-trips, so a server that asks the model to call tools during sampling works without extra wiring.
 
+The adapter wires the same handler on both [protocol eras](/concepts/protocol-eras), and the era decides how the request reaches it. On the legacy era the server pushes `ctx.sample()` mid-handler and the handler answers directly. On the modern era there is no server-to-client push channel — sampling as a push is deprecated in revision 2026-07-28 (SEP-2577) — so the server instead answers a call with an [input-required](/concepts/input-required) result, and the client fulfils it through this very same sampling handler. That auto-fulfilment is on by default; you can tune it through the `inputRequired` option and turn it off with `inputRequired: { autoFulfill: false }` when you want to handle the round trip yourself. Wiring one adapter covers both eras.
+
 ## Provider adapters
 
 The three built-in adapters cover the major providers, and each owns the quirks of its SDK so you do not have to. They take a constructed provider client and expose the same `asHandler()` method, so switching providers is switching the adapter.

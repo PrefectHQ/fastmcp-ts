@@ -1,5 +1,14 @@
 import { theme } from '../ui/theme.js'
 import { symbols } from '../ui/symbols.js'
+import {
+  ProtocolError,
+  MissingRequiredClientCapabilityError,
+  UnsupportedProtocolVersionError,
+} from '@modelcontextprotocol/client'
+
+// The SDK does not export a dedicated class for -32020 (HeaderMismatch) — it
+// surfaces as a plain ProtocolError with this code.
+const HEADER_MISMATCH_CODE = -32020
 
 export const EXIT = {
   OK: 0,
@@ -22,6 +31,19 @@ export function cliError(message: string, opts: CliErrorOptions = {}): never {
 }
 
 export function formatError(err: unknown): string {
+  if (err instanceof UnsupportedProtocolVersionError) {
+    return `The server does not support protocol version "${err.requested}". It supports: ${err.supported.join(', ')}. Change or drop --pin.`
+  }
+  if (err instanceof MissingRequiredClientCapabilityError) {
+    const capabilities = Object.keys(err.requiredCapabilities)
+    if (capabilities.length > 0) {
+      return `The server requires a client capability. This CLI did not declare these capabilities: ${capabilities.join(', ')}.`
+    }
+    return `The server requires a client capability. This CLI did not declare it.`
+  }
+  if (err instanceof ProtocolError && err.code === HEADER_MISMATCH_CODE) {
+    return `The server rejected the request. The protocol version header does not match the request body.`
+  }
   if (err instanceof Error) {
     const msg = err.message.toLowerCase()
     if (msg.includes('econnrefused') || msg.includes('connection refused')) {

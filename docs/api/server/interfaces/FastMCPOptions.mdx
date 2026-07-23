@@ -2,7 +2,7 @@
 title: "FastMCPOptions"
 ---
 
-Defined in: [server/FastMCP.ts:62](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L62)
+Defined in: [server/FastMCP.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L64)
 
 ## Properties
 
@@ -12,9 +12,149 @@ Defined in: [server/FastMCP.ts:62](https://github.com/PrefectHQ/fastmcp-ts/blob/
 optional auth?: TokenVerifier;
 ```
 
-Defined in: [server/FastMCP.ts:66](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L66)
+Defined in: [server/FastMCP.ts:68](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L68)
 
 Simple bearer-token verifier for non-OAuth auth scenarios.
+
+***
+
+### cacheHints?
+
+```ts
+optional cacheHints?: Partial<Record<CacheableResultMethod, CacheHint>>;
+```
+
+Defined in: [server/FastMCP.ts:92](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L92)
+
+Cache hints (`ttlMs` / `cacheScope`) for the 2026-07-28 protocol revision's
+cacheable results (`tools/list`, `prompts/list`, `resources/list`,
+`resources/templates/list`, `resources/read`, `server/discover`), keyed by
+operation. Only affects modern (2026-07-28) responses — 2025-era responses
+never carry these fields. Omitted operations (or omitting this option
+entirely) keep the conservative defaults (`ttlMs: 0`, `cacheScope: 'private'`).
+Applies uniformly per operation; per-resource cache hints are not currently
+supported (that per-registration override is only available through the
+SDK's high-level `McpServer.registerResource`, which FastMCP does not use).
+
+***
+
+### dnsRebinding?
+
+```ts
+optional dnsRebinding?: {
+  allowedHosts?: string[];
+  allowedOrigins?: string[];
+  enabled?: boolean;
+};
+```
+
+Defined in: [server/FastMCP.ts:153](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L153)
+
+DNS-rebinding protection for the HTTP transport: validates the `Host` and
+`Origin` request headers (port-agnostic, by hostname) and rejects mismatches
+with `403`. Defends localhost servers against a malicious web page whose DNS
+rebinds to `127.0.0.1` (MCP transport security best practice). Only affects the
+HTTP transport — stdio is unaffected.
+
+Default posture (option omitted): protection auto-enables when, and only when,
+`run()` binds the HTTP server to a loopback host (`127.0.0.1`, `::1`,
+`localhost`) — the deployment the attack targets. A server bound to a routable
+interface (e.g. `0.0.0.0` or a public host) is left open by default, because a
+localhost-only allowlist would reject its legitimate traffic; such deployments
+must opt in with an explicit `allowedHosts`/`allowedOrigins` for their domain.
+
+#### allowedHosts?
+
+```ts
+optional allowedHosts?: string[];
+```
+
+Allowed `Host` header hostnames (no port; IPv6 in brackets, e.g. `[::1]`).
+Supplying this list also implies protection on. Default: `localhost`,
+`127.0.0.1`, `[::1]`.
+
+#### allowedOrigins?
+
+```ts
+optional allowedOrigins?: string[];
+```
+
+Allowed `Origin` header hostnames (a missing `Origin` always passes — non-browser
+clients send none). Supplying this list also implies protection on. Default:
+`localhost`, `127.0.0.1`, `[::1]`.
+
+#### enabled?
+
+```ts
+optional enabled?: boolean;
+```
+
+Force protection on (`true`) or off (`false`). Omit for the loopback-auto default.
+
+***
+
+### eventBus?
+
+```ts
+optional eventBus?: ServerEventBus;
+```
+
+Defined in: [server/FastMCP.ts:138](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L138)
+
+The change-event bus modern (2026-07-28) `subscriptions/listen` streams
+subscribe to, and `tool()`/`resource()`/`prompt()` registration publishes
+change events onto. Defaults to an in-process bus, which is correct for a
+single server process. Supply your own `ServerEventBus` implementation over a
+shared pub/sub backend (e.g. Redis) for a horizontally-scaled deployment,
+where a `subscriptions/listen` stream and the request that changed the list it
+cares about may land on different processes.
+
+***
+
+### inputRequired?
+
+```ts
+optional inputRequired?: {
+  legacyShim?: boolean;
+  maxRounds?: number;
+  roundTimeoutMs?: number;
+};
+```
+
+Defined in: [server/FastMCP.ts:118](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L118)
+
+Multi-round-trip (`inputRequired`) serving knobs (protocol revision 2026-07-28).
+On 2026-era requests the client fulfils `input_required` returns directly; on
+2025-era connections the SDK's legacy shim fulfils them server-side (real
+server→client requests + handler re-entry) — so handlers written with
+`inputRequired(...)` serve both eras unchanged.
+
+#### legacyShim?
+
+```ts
+optional legacyShim?: boolean;
+```
+
+`false` disables the legacy shim: an `inputRequired(...)` return on a 2025-era
+request fails loudly instead of being bridged. Default: true.
+
+#### maxRounds?
+
+```ts
+optional maxRounds?: number;
+```
+
+Handler re-entries per originating request before the shim fails (legacy era
+only). Default: 8.
+
+#### roundTimeoutMs?
+
+```ts
+optional roundTimeoutMs?: number;
+```
+
+Per-leg timeout (ms) for the legacy shim's embedded server→client requests.
+Default: 600_000 (10 minutes) — human-paced, deliberately above the 60s protocol default.
 
 ***
 
@@ -24,7 +164,7 @@ Simple bearer-token verifier for non-OAuth auth scenarios.
 optional middleware?: Middleware[];
 ```
 
-Defined in: [server/FastMCP.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L76)
+Defined in: [server/FastMCP.ts:78](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L78)
 
 Middleware applied to every request in registration order.
 
@@ -36,7 +176,7 @@ Middleware applied to every request in registration order.
 name: string;
 ```
 
-Defined in: [server/FastMCP.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L63)
+Defined in: [server/FastMCP.ts:65](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L65)
 
 ***
 
@@ -46,7 +186,7 @@ Defined in: [server/FastMCP.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/
 optional oauth?: OAuthConfig;
 ```
 
-Defined in: [server/FastMCP.ts:68](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L68)
+Defined in: [server/FastMCP.ts:70](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L70)
 
 Full OAuth 2.1 server with Dynamic Client Registration support.
 
@@ -58,9 +198,66 @@ Full OAuth 2.1 server with Dynamic Client Registration support.
 optional promptsPageSize?: number;
 ```
 
-Defined in: [server/FastMCP.ts:74](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L74)
+Defined in: [server/FastMCP.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L76)
 
 Maximum number of prompts returned per prompts/list page. Default: 50.
+
+***
+
+### requestState?
+
+```ts
+optional requestState?: {
+  bind?: (ctx) => string;
+  key: string | Uint8Array<ArrayBufferLike>;
+  ttlSeconds?: number;
+};
+```
+
+Defined in: [server/FastMCP.ts:101](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L101)
+
+HMAC-SHA256 integrity protection for multi-round-trip `requestState`
+(protocol revision 2026-07-28) — see `ctx.requestState()` / `ctx.mintRequestState()`.
+Backed by the SDK's `createRequestStateCodec`. When omitted, `requestState` passes
+through unverified (the raw wire string) — the client can read and tamper with it,
+so this MUST be configured for any flow whose `requestState` influences
+authorization, resource access, or business logic.
+
+#### bind?
+
+```ts
+optional bind?: (ctx) => string;
+```
+
+Binds a minted `requestState` to, e.g., the authenticated principal and/or the
+originating method — a value minted under one binding is rejected when echoed
+under a different one. See `RequestStateCodecOptions.bind`.
+
+##### Parameters
+
+###### ctx
+
+`ServerContext`
+
+##### Returns
+
+`string`
+
+#### key
+
+```ts
+key: string | Uint8Array<ArrayBufferLike>;
+```
+
+HMAC secret. A `string` is UTF-8-encoded; MUST be at least 32 bytes (256 bits).
+
+#### ttlSeconds?
+
+```ts
+optional ttlSeconds?: number;
+```
+
+How long a minted `requestState` stays valid, in seconds. Default: 600 (10 minutes).
 
 ***
 
@@ -70,7 +267,7 @@ Maximum number of prompts returned per prompts/list page. Default: 50.
 optional resourcesPageSize?: number;
 ```
 
-Defined in: [server/FastMCP.ts:72](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L72)
+Defined in: [server/FastMCP.ts:74](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L74)
 
 Maximum number of resources (or templates) returned per page. Default: 50.
 
@@ -82,7 +279,7 @@ Maximum number of resources (or templates) returned per page. Default: 50.
 optional toolsPageSize?: number;
 ```
 
-Defined in: [server/FastMCP.ts:70](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L70)
+Defined in: [server/FastMCP.ts:72](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L72)
 
 Maximum number of tools returned per listTools page. Default: 50.
 
@@ -94,7 +291,7 @@ Maximum number of tools returned per listTools page. Default: 50.
 optional transforms?: Transform[];
 ```
 
-Defined in: [server/FastMCP.ts:78](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L78)
+Defined in: [server/FastMCP.ts:80](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L80)
 
 Transforms applied to component list responses in registration order.
 
@@ -106,4 +303,4 @@ Transforms applied to component list responses in registration order.
 optional version?: string;
 ```
 
-Defined in: [server/FastMCP.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/FastMCP.ts#L64)
+Defined in: [server/FastMCP.ts:66](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L66)

@@ -142,6 +142,10 @@ server.tool(
     }),
     auth: requireScopes('write'),
   },
+  // ctx.sample() is legacy-era only. It throws on a modern (2026-07-28)
+  // request. This example keeps it to demonstrate the legacy-era sampling
+  // path; inputRequired(...) is the modern-first replacement — see the
+  // docs on McpContext.sample.
   async ({ style }) => {
     const ctx = server.getContext()
     const all = [...notes.values()]

@@ -1,27 +1,27 @@
-import { Server } from '@modelcontextprotocol/sdk/server'
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListResourceTemplatesRequestSchema,
-  ReadResourceRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
-  McpError,
-  ErrorCode,
-} from '@modelcontextprotocol/sdk/types.js'
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js'
-import type { OAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/provider.js'
-import type { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { hostHeaderValidation, originValidation } from "@modelcontextprotocol/node";
+import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
+import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec, localhostAllowedHostnames, localhostAllowedOrigins, assertCompleteRequestPrompt, assertCompleteRequestResourceTemplate } from "@modelcontextprotocol/server";
+import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, CompleteRequestParams, CompleteResult, McpHttpHandler, McpHandlerRequestOptions, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
+
+// Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
+// mirrors its CACHEABLE_RESULT_METHODS literal union (SEP-2549 cacheable operations).
+type CacheableResultMethod =
+  | 'tools/list'
+  | 'prompts/list'
+  | 'resources/list'
+  | 'resources/templates/list'
+  | 'resources/read'
+  | 'server/discover'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
-import type { Server as HttpServer, IncomingMessage } from 'node:http'
+import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { AuthorizationError } from './auth/types'
 import type { TokenVerifier, AccessToken } from './auth/types'
 import type { AuthCheck } from './auth/authorization'
+import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
 import { runMiddlewareChain } from './middleware'
@@ -29,6 +29,7 @@ import type { Middleware } from './middleware'
 import { applyTransformChain } from './transform'
 import type { Transform, ToolView, ResourceView, PromptView, SynthesizedTool } from './transform'
 import { convertResult, toJsonSchema, validateInput, ToolResult } from './tool'
+import { isInputRequiredResult } from './mrtr'
 import {
   convertResourceResult,
   isUriTemplate,
@@ -36,10 +37,11 @@ import {
   ResourceResult,
 } from './resource'
 import type { ResourceConfig } from './resource'
-import { UI_EXTENSION_KEY } from './apps/types'
+import { UI_EXTENSION_KEY, UI_RESOURCE_MIME_TYPE, isUiCapable } from './apps/types'
 import type { UiToolMeta } from './apps/types'
 import { convertPromptResult, PromptResult } from './prompt'
 import type { PromptConfig } from './prompt'
+import { normalizeCompletion, EMPTY_COMPLETION } from './completion'
 
 function prefixResourceUri(uri: string, prefix: string): string {
   const idx = uri.indexOf('://')
@@ -76,6 +78,94 @@ export interface FastMCPOptions {
   middleware?: Middleware[]
   /** Transforms applied to component list responses in registration order. */
   transforms?: Transform[]
+  /**
+   * Cache hints (`ttlMs` / `cacheScope`) for the 2026-07-28 protocol revision's
+   * cacheable results (`tools/list`, `prompts/list`, `resources/list`,
+   * `resources/templates/list`, `resources/read`, `server/discover`), keyed by
+   * operation. Only affects modern (2026-07-28) responses — 2025-era responses
+   * never carry these fields. Omitted operations (or omitting this option
+   * entirely) keep the conservative defaults (`ttlMs: 0`, `cacheScope: 'private'`).
+   * Applies uniformly per operation; per-resource cache hints are not currently
+   * supported (that per-registration override is only available through the
+   * SDK's high-level `McpServer.registerResource`, which FastMCP does not use).
+   */
+  cacheHints?: Partial<Record<CacheableResultMethod, CacheHint>>
+  /**
+   * HMAC-SHA256 integrity protection for multi-round-trip `requestState`
+   * (protocol revision 2026-07-28) — see `ctx.requestState()` / `ctx.mintRequestState()`.
+   * Backed by the SDK's `createRequestStateCodec`. When omitted, `requestState` passes
+   * through unverified (the raw wire string) — the client can read and tamper with it,
+   * so this MUST be configured for any flow whose `requestState` influences
+   * authorization, resource access, or business logic.
+   */
+  requestState?: {
+    /** HMAC secret. A `string` is UTF-8-encoded; MUST be at least 32 bytes (256 bits). */
+    key: Uint8Array | string
+    /** How long a minted `requestState` stays valid, in seconds. Default: 600 (10 minutes). */
+    ttlSeconds?: number
+    /** Binds a minted `requestState` to, e.g., the authenticated principal and/or the
+     * originating method — a value minted under one binding is rejected when echoed
+     * under a different one. See `RequestStateCodecOptions.bind`. */
+    bind?: (ctx: ServerContext) => string
+  }
+  /**
+   * Multi-round-trip (`inputRequired`) serving knobs (protocol revision 2026-07-28).
+   * On 2026-era requests the client fulfils `input_required` returns directly; on
+   * 2025-era connections the SDK's legacy shim fulfils them server-side (real
+   * server→client requests + handler re-entry) — so handlers written with
+   * `inputRequired(...)` serve both eras unchanged.
+   */
+  inputRequired?: {
+    /** Handler re-entries per originating request before the shim fails (legacy era
+     * only). Default: 8. */
+    maxRounds?: number
+    /** Per-leg timeout (ms) for the legacy shim's embedded server→client requests.
+     * Default: 600_000 (10 minutes) — human-paced, deliberately above the 60s protocol default. */
+    roundTimeoutMs?: number
+    /** `false` disables the legacy shim: an `inputRequired(...)` return on a 2025-era
+     * request fails loudly instead of being bridged. Default: true. */
+    legacyShim?: boolean
+  }
+  /**
+   * The change-event bus modern (2026-07-28) `subscriptions/listen` streams
+   * subscribe to, and `tool()`/`resource()`/`prompt()` registration publishes
+   * change events onto. Defaults to an in-process bus, which is correct for a
+   * single server process. Supply your own `ServerEventBus` implementation over a
+   * shared pub/sub backend (e.g. Redis) for a horizontally-scaled deployment,
+   * where a `subscriptions/listen` stream and the request that changed the list it
+   * cares about may land on different processes.
+   */
+  eventBus?: ServerEventBus
+  /**
+   * DNS-rebinding protection for the HTTP transport: validates the `Host` and
+   * `Origin` request headers (port-agnostic, by hostname) and rejects mismatches
+   * with `403`. Defends localhost servers against a malicious web page whose DNS
+   * rebinds to `127.0.0.1` (MCP transport security best practice). Only affects the
+   * HTTP transport — stdio is unaffected.
+   *
+   * Default posture (option omitted): protection auto-enables when, and only when,
+   * `run()` binds the HTTP server to a loopback host (`127.0.0.1`, `::1`,
+   * `localhost`) — the deployment the attack targets. A server bound to a routable
+   * interface (e.g. `0.0.0.0` or a public host) is left open by default, because a
+   * localhost-only allowlist would reject its legitimate traffic; such deployments
+   * must opt in with an explicit `allowedHosts`/`allowedOrigins` for their domain.
+   */
+  dnsRebinding?: {
+    /** Force protection on (`true`) or off (`false`). Omit for the loopback-auto default. */
+    enabled?: boolean
+    /**
+     * Allowed `Host` header hostnames (no port; IPv6 in brackets, e.g. `[::1]`).
+     * Supplying this list also implies protection on. Default: `localhost`,
+     * `127.0.0.1`, `[::1]`.
+     */
+    allowedHosts?: string[]
+    /**
+     * Allowed `Origin` header hostnames (a missing `Origin` always passes — non-browser
+     * clients send none). Supplying this list also implies protection on. Default:
+     * `localhost`, `127.0.0.1`, `[::1]`.
+     */
+    allowedOrigins?: string[]
+  }
 }
 
 export interface RunOptions {
@@ -151,10 +241,19 @@ interface RegisteredPrompt {
 }
 
 interface Session {
-  transport: StreamableHTTPServerTransport
+  transport: NodeStreamableHTTPServerTransport
   server: Server
   state: Map<string, unknown>
 }
+
+/**
+ * Per-session state key holding the set of resource URIs the connection has
+ * subscribed to via `resources/subscribe`. Stored in the same per-session state
+ * Map as `SESSION_CLOSE_CALLBACKS_KEY`, so it is torn down with the session (no
+ * separate registry to leak). Only ever populated on legacy connections — the
+ * modern era rejects the RPC at the wire seam before the handler runs.
+ */
+const RESOURCE_SUBSCRIPTIONS_KEY = '__fastmcp_resource_subscriptions'
 
 /** Converts a camelCase or PascalCase name to space-separated words. e.g. `getWeather` → `"get weather"` */
 function inferDescription(name: string): string {
@@ -163,6 +262,23 @@ function inferDescription(name: string): string {
     .replace(/[-_]+/g, ' ')
     .trim()
     .toLowerCase()
+}
+
+/** True when `host` is a loopback address `run()` can bind — the deployment DNS-rebinding targets. */
+function isLoopbackHost(host: string): boolean {
+  const h = host.toLowerCase()
+  return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]'
+}
+
+// Fired at most once per process: an HTTP serve on a routable host with no dnsRebinding
+// config at all. Any explicit dnsRebinding option (even `enabled: false`) suppresses the
+// warning — silence means the operator chose the open posture on purpose.
+let _dnsRebindingWarned = false
+
+/** @internal Test-only reset of the once-per-process DNS-rebinding warning guard. Not
+ * re-exported from `fastmcp-ts/server` (index.ts names its exports). */
+export function __resetDnsRebindingWarningForTests(): void {
+  _dnsRebindingWarned = false
 }
 
 function toAccessToken(authInfo: AuthInfo | undefined): AccessToken | undefined {
@@ -195,12 +311,12 @@ async function resolveCliEnvToken(verifier: TokenVerifier | undefined): Promise<
 }
 
 async function runAuthCheck(check: AuthCheck, token: AccessToken | undefined): Promise<void> {
-  if (!token) throw new McpError(ErrorCode.InvalidRequest, 'Authentication required')
+  if (!token) throw new ProtocolError(ProtocolErrorCode.InvalidRequest, 'Authentication required')
   try {
     await check(token)
   } catch (err) {
     if (err instanceof AuthorizationError) {
-      throw new McpError(ErrorCode.InvalidRequest, err.message)
+      throw new ProtocolError(ProtocolErrorCode.InvalidRequest, err.message)
     }
     throw err
   }
@@ -221,13 +337,34 @@ export class FastMCP {
   private _promptsPageSize: number
   private _middleware: Middleware[]
   private _transforms: Transform[]
+  private _cacheHints: Partial<Record<CacheableResultMethod, CacheHint>> | undefined
+  private _requestStateCodec: RequestStateCodec | undefined
+  private _inputRequiredOptions: FastMCPOptions['inputRequired']
+  private _eventBus: ServerEventBus | undefined
+  private _dnsRebindingOptions: FastMCPOptions['dnsRebinding']
+  // DNS-rebinding guards, resolved once per serve from _dnsRebindingOptions + the bind
+  // host. null = protection off. Each returns false (and has already written a 403) when
+  // it rejects; see the SDK's hostHeaderValidation/originValidation Node middleware.
+  private _hostGuard: ((req: IncomingMessage, res: ServerResponse) => boolean) | null = null
+  private _originGuard: ((req: IncomingMessage, res: ServerResponse) => boolean) | null = null
   private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
   private _isRunning = false
   private _sessions = new Map<string, Session>()
-  // Primary server used by connect() and stdio
+  // Primary server used by connect() (in-process transports — always 2025-era)
   private _primaryServer: Server
+  // The pinned Server instance for a run({transport:'stdio'}) connection (2025- or
+  // 2026-era, decided by serveStdio's opening handshake). Null unless serving stdio.
+  private _stdioServer: Server | null = null
+  // The state Map paired with `_stdioServer` for the current stdio connection.
+  // Holds this connection's resource-subscription set; read by the resource-updated
+  // fan-out. Null unless serving stdio.
+  private _stdioState: Map<string, unknown> | null = null
+  private _stdioHandle: { close(): Promise<void> } | null = null
+  // Modern (2026-07-28) HTTP handler — one per FastMCP instance, lazily created.
+  // Builds a fresh Server (via _makeServer) per request; see createMcpHandler.
+  private _modernHandler: McpHttpHandler | null = null
 
   private _toolRegisteredCallbacks: Array<(tool: RegisteredTool) => void> = []
   private _resourceRegisteredCallbacks: Array<(resource: RegisteredResource) => void> = []
@@ -245,6 +382,13 @@ export class FastMCP {
     this._promptsPageSize = options.promptsPageSize ?? 50
     this._middleware = options.middleware ? [...options.middleware] : []
     this._transforms = options.transforms ? [...options.transforms] : []
+    this._cacheHints = options.cacheHints
+    this._requestStateCodec = options.requestState
+      ? createRequestStateCodec(options.requestState)
+      : undefined
+    this._inputRequiredOptions = options.inputRequired
+    this._eventBus = options.eventBus
+    this._dnsRebindingOptions = options.dnsRebinding
     this._primaryServer = this._makeServer()
   }
 
@@ -261,13 +405,48 @@ export class FastMCP {
     return false
   }
 
-  /** Create a new Server instance with all request handlers wired up. */
-  private _makeServer(sessionState?: Map<string, unknown>): Server {
+  /**
+   * Create a new Server instance with all request handlers wired up.
+   *
+   * `modern` forks the advertised `resources.subscribe` capability. The legacy
+   * `resources/subscribe`/`unsubscribe` RPCs are physically absent from the
+   * 2026-07-28 wire registry (a modern client uses `subscriptions/listen`
+   * instead), so a modern-only factory (the createMcpHandler path) must NOT
+   * advertise `subscribe` — the modern `server/discover` document is pinned to
+   * `resources: { listChanged: true }`. The primary in-process server and
+   * legacy HTTP sessions are always legacy, so they always advertise it.
+   * stdio forks it per-connection too: `run()`'s stdio branch reads the
+   * `ctx.era` the SDK's `McpServerFactory` hook hands it (serveStdio only
+   * calls the factory once the opening exchange has classified the era, so
+   * the modern-vs-legacy choice is already known at construction time) and
+   * passes it straight through as `opts.modern`.
+   *
+   * The `completions` capability is NOT era-forked: `completion/complete` is in
+   * BOTH era wire registries (the legacy 2025-11-25 registry and the modern
+   * 2026-07-28 `dispatchRequestSchemas`), and `completions` is a valid key in
+   * both eras' ServerCapabilities schemas. So it is declared unconditionally —
+   * unlike `subscribe`, there is no legacy-only surface to hide from a modern
+   * client here, so nothing needs the era fork the way `subscribe` does. The
+   * SDK also requires this capability to be present to register the
+   * `completion/complete` handler (`assertRequestHandlerCapability`).
+   */
+  private _makeServer(sessionState?: Map<string, unknown>, opts?: { modern?: boolean }): Server {
     const state = sessionState ?? this._primaryState
-    const extensions = this._hasUiComponents() ? { [UI_EXTENSION_KEY]: {} } : undefined
+    // mimeTypes announces what fastmcp can serve, symmetric with the mimeTypes the
+    // client is required to declare on its own extension entry (SEP-1865).
+    const extensions = this._hasUiComponents()
+      ? { [UI_EXTENSION_KEY]: { mimeTypes: [UI_RESOURCE_MIME_TYPE] } }
+      : undefined
     const server = new Server(
       { name: this.name, version: this.version },
-      { capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {}, ...(extensions ? { extensions } : {}) } },
+      {
+        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.modern ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
+        ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
+        ...(this._requestStateCodec
+          ? { requestState: { verify: this._requestStateCodec.verify.bind(this._requestStateCodec) } }
+          : {}),
+        ...(this._inputRequiredOptions ? { inputRequired: this._inputRequiredOptions } : {}),
+      },
     )
     for (const mw of this._middleware) mw.setup?.(server)
     this._setupHandlers(server, state)
@@ -279,12 +458,12 @@ export class FastMCP {
   }
 
   private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
-    server.setRequestHandler(ListToolsRequestSchema, async (req, extra) => {
-      const token = await this._resolveToken(extra.authInfo)
-      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
+    server.setRequestHandler('tools/list', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
-          const clientIsUiCapable = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
+          const clientIsUiCapable = isUiCapable(server.getClientCapabilities())
 
           const allVisible = (
             await Promise.all(
@@ -323,7 +502,7 @@ export class FastMCP {
           let startIdx = 0
           if (cursorName !== null) {
             const idx = allEntries.findIndex((e) => e.name === cursorName)
-            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            if (idx < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
           const page = allEntries.slice(startIdx, startIdx + pageSize)
@@ -370,14 +549,18 @@ export class FastMCP {
             }),
           )
 
-          return { tools, ...(nextCursor ? { nextCursor } : {}) }
+          // Cast: our JSON Schema generation (toJsonSchema / user-supplied inputSchema) is
+          // typed loosely as Record<string, unknown>, while the SDK's Tool type is inferred
+          // from a strict Zod schema requiring a literal `type: 'object'` root. The generated
+          // schemas satisfy this at runtime (see tool.ts); this is a static-typing gap only.
+          return { tools, ...(nextCursor ? { nextCursor } : {}) } as ListToolsResult
         }),
       )
     })
 
-    server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+    server.setRequestHandler('tools/call', async (req, sdkCtx) => {
       const requestedName = req.params.name
-      const token = await this._resolveToken(extra.authInfo)
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
 
       // Check synthesized tools first
       const { resourceViews, promptViews } = await this._getVisibleViews(token)
@@ -385,13 +568,7 @@ export class FastMCP {
       const synthTool = synthesizedList.find((s) => s.name === requestedName)
       if (synthTool) {
         if (synthTool.auth) await runAuthCheck(synthTool.auth, token)
-        const ctx = createContext(
-          server,
-          extra.requestId !== undefined ? String(extra.requestId) : undefined,
-          extra._meta?.progressToken,
-          token,
-          sessionState,
-        )
+        const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
         try {
           return await contextStore.run(ctx, () =>
             runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
@@ -415,7 +592,7 @@ export class FastMCP {
             }),
           )
         } catch (err) {
-          if (err instanceof McpError) throw err
+          if (err instanceof ProtocolError) throw err
           return {
             content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
             isError: true,
@@ -438,20 +615,14 @@ export class FastMCP {
       if (!tool) tool = this._tools.get(requestedName)
 
       if (!tool || tool.config.disabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Unknown tool: "${requestedName}"`)
+        throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown tool: "${requestedName}"`)
       }
 
       if (tool.config.auth) await runAuthCheck(tool.config.auth, token)
 
       const resolvedTool = tool
       const rawArgs: unknown = req.params.arguments ?? {}
-      const ctx = createContext(
-        server,
-        extra.requestId !== undefined ? String(extra.requestId) : undefined,
-        extra._meta?.progressToken,
-        token,
-        sessionState,
-      )
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
 
       try {
         return await contextStore.run(ctx, () =>
@@ -479,7 +650,7 @@ export class FastMCP {
             const callResult = convertResult(resultValue)
             // Graceful degradation: strip structuredContent for non-UI clients calling UI tools
             if (resolvedTool.config.ui) {
-              const clientIsUi = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
+              const clientIsUi = isUiCapable(server.getClientCapabilities())
               if (!clientIsUi && callResult.structuredContent !== undefined) {
                 return { content: [{ type: 'text' as const, text: '[UI not available in this client]' }] }
               }
@@ -488,7 +659,7 @@ export class FastMCP {
           }),
         )
       } catch (err) {
-        if (err instanceof McpError) throw err
+        if (err instanceof ProtocolError) throw err
         return {
           content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
           isError: true,
@@ -496,9 +667,9 @@ export class FastMCP {
       }
     })
 
-    server.setRequestHandler(ListResourcesRequestSchema, async (req, extra) => {
-      const token = await this._resolveToken(extra.authInfo)
-      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
+    server.setRequestHandler('resources/list', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
           const allVisible = (
@@ -521,7 +692,7 @@ export class FastMCP {
           let startIdx = 0
           if (cursorUri !== null) {
             const idx = transformedResources.findIndex((r) => r.uri === cursorUri)
-            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            if (idx < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
           const page = transformedResources.slice(startIdx, startIdx + pageSize)
@@ -530,7 +701,7 @@ export class FastMCP {
               ? Buffer.from(page[page.length - 1].uri).toString('base64url')
               : undefined
 
-          const clientIsUiCapableRes = !!(server.getClientCapabilities()?.extensions as Record<string, unknown> | undefined)?.[UI_EXTENSION_KEY]
+          const clientIsUiCapableRes = isUiCapable(server.getClientCapabilities())
           return {
             resources: page.map((r) => ({
               uri: r.uri,
@@ -548,9 +719,9 @@ export class FastMCP {
       )
     })
 
-    server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req, extra) => {
-      const token = await this._resolveToken(extra.authInfo)
-      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
+    server.setRequestHandler('resources/templates/list', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
@@ -573,7 +744,7 @@ export class FastMCP {
           let startIdx = 0
           if (cursorUri !== null) {
             const idx = transformedTemplates.findIndex((r) => r.uri === cursorUri)
-            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            if (idx < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
           const page = transformedTemplates.slice(startIdx, startIdx + pageSize)
@@ -597,64 +768,23 @@ export class FastMCP {
       )
     })
 
-    server.setRequestHandler(ReadResourceRequestSchema, async (req, extra) => {
+    server.setRequestHandler('resources/read', async (req, sdkCtx) => {
       const requestedUri = req.params.uri
-      const token = await this._resolveToken(extra.authInfo)
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
 
-      let resource: RegisteredResource | undefined = this._staticResources.get(requestedUri)
-      let templateParams: Record<string, string> | undefined
-
-      // Direct template matching (original URIs — also handles hidden-but-callable resources)
-      if (!resource) {
-        for (const r of this._templateResources.values()) {
-          if (r.config.disabled) continue
-          const params = matchTemplate(r.config.uri, requestedUri)
-          if (params !== null) { resource = r; templateParams = params; break }
-        }
+      const resolved = this._resolveResource(requestedUri)
+      if (!resolved || resolved.resource.config.disabled) {
+        // ResourceNotFoundError stamps `data: { uri }` (exactly one key) and keeps the
+        // -32602 code the SDK recognition contract requires, so a client can tell a
+        // resource miss from a generic Invalid Params (task-9 Req 3; task-7 F1).
+        throw new ResourceNotFoundError(requestedUri, `Unknown resource: "${requestedUri}"`)
       }
-
-      // Transformed static lookup
-      if (!resource && this._transforms.length > 0) {
-        for (const r of this._staticResources.values()) {
-          if (r.config.disabled) continue
-          const view = applyTransformChain<ResourceView>(
-            { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
-            this._transforms,
-            (t, v) => t.transformResource?.(v),
-          )
-          if (view && view.uri === requestedUri) { resource = r; break }
-        }
-      }
-
-      // Transformed template matching
-      if (!resource && this._transforms.length > 0) {
-        for (const r of this._templateResources.values()) {
-          if (r.config.disabled) continue
-          const view = applyTransformChain<ResourceView>(
-            { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
-            this._transforms,
-            (t, v) => t.transformResourceTemplate?.(v),
-          )
-          if (view) {
-            const params = matchTemplate(view.uri, requestedUri)
-            if (params !== null) { resource = r; templateParams = params; break }
-          }
-        }
-      }
-
-      if (!resource || resource.config.disabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Unknown resource: "${requestedUri}"`)
-      }
+      const resource = resolved.resource
+      const templateParams = resolved.templateParams
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(
-        server,
-        extra.requestId !== undefined ? String(extra.requestId) : undefined,
-        extra._meta?.progressToken,
-        token,
-        sessionState,
-      )
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
@@ -680,9 +810,76 @@ export class FastMCP {
       )
     })
 
-    server.setRequestHandler(ListPromptsRequestSchema, async (req, extra) => {
-      const token = await this._resolveToken(extra.authInfo)
-      const ctx = createContext(server, extra.requestId !== undefined ? String(extra.requestId) : undefined, undefined, token, sessionState)
+    // resources/subscribe / resources/unsubscribe (legacy era only).
+    //
+    // The 2026-07-28 wire registry omits both methods, so a modern connection
+    // never reaches these handlers — the SDK rejects the method at the era seam
+    // (-32601) before dispatch, and a modern client's own era guard rejects even
+    // earlier. On legacy the handshake advertises `resources.subscribe: true`
+    // (see _makeServer), so the client may call them here.
+    //
+    // The subscription set lives in the connection's per-session state Map (the
+    // same Map SESSION_CLOSE_CALLBACKS_KEY uses), so it is discarded when the
+    // session closes — no separate registry to leak. Delivery of
+    // `notifications/resources/updated` is driven by notifyResourceUpdated(uri),
+    // the single change signal shared with the modern subscriptions/listen bus.
+    //
+    // Only resources/subscribe mirrors resources/read's resolve → not-found →
+    // auth → context → middleware sequencing, so subscribe is indistinguishable
+    // from read as an oracle. resources/unsubscribe skips resolution and auth: it
+    // only removes uri from the caller's own subscription set, so an unknown or
+    // forbidden uri is a harmless no-op, not an oracle — there is nothing to guard.
+    server.setRequestHandler('resources/subscribe', async (req, sdkCtx) => {
+      const uri = req.params.uri
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+
+      // Resolve against the same lookup resources/read uses; an unknown or
+      // disabled URI is a bad parameter (ResourceNotFoundError → -32602), matching
+      // resources/read's not-found contract exactly.
+      const resolved = this._resolveResource(uri)
+      if (!resolved || resolved.resource.config.disabled) {
+        throw new ResourceNotFoundError(uri, `Unknown resource: "${uri}"`)
+      }
+      const resource = resolved.resource
+
+      // Enforce the resource's auth guard identically to resources/read (same
+      // rejection). Without this, subscribe leaks an existence/activity oracle for a
+      // URI that read (and resources/list) deliberately hides from an under-scoped
+      // caller: `{}` for a real-but-forbidden URI vs -32602 for an unknown one.
+      if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
+
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'resources/subscribe', req.params, ctx, async () => {
+          let subs = sessionState.get(RESOURCE_SUBSCRIPTIONS_KEY) as Set<string> | undefined
+          if (!subs) {
+            subs = new Set<string>()
+            sessionState.set(RESOURCE_SUBSCRIPTIONS_KEY, subs)
+          }
+          subs.add(uri)
+          return {}
+        }),
+      )
+    })
+
+    server.setRequestHandler('resources/unsubscribe', async (req, sdkCtx) => {
+      const uri = req.params.uri
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'resources/unsubscribe', req.params, ctx, async () => {
+          const subs = sessionState.get(RESOURCE_SUBSCRIPTIONS_KEY) as Set<string> | undefined
+          subs?.delete(uri)
+          return {}
+        }),
+      )
+    })
+
+    server.setRequestHandler('prompts/list', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
           const allVisible = (
@@ -705,7 +902,7 @@ export class FastMCP {
           let startIdx = 0
           if (cursorName !== null) {
             const idx = transformedPrompts.findIndex((p) => p.name === cursorName)
-            if (idx < 0) throw new McpError(ErrorCode.InvalidParams, 'Invalid or expired cursor')
+            if (idx < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
             startIdx = idx + 1
           }
           const page = transformedPrompts.slice(startIdx, startIdx + pageSize)
@@ -719,7 +916,17 @@ export class FastMCP {
               name: p.name,
               ...(p.config.title !== undefined ? { title: p.config.title } : {}),
               description: p.description,
-              ...(p.config.arguments?.length ? { arguments: p.config.arguments } : {}),
+              // Strip the per-argument `complete` callback — it is a server-side
+              // completion hook, not part of the advertised argument schema.
+              ...(p.config.arguments?.length
+                ? {
+                    arguments: p.config.arguments.map((a) => ({
+                      name: a.name,
+                      ...(a.description !== undefined ? { description: a.description } : {}),
+                      ...(a.required !== undefined ? { required: a.required } : {}),
+                    })),
+                  }
+                : {}),
             })),
             ...(nextCursor ? { nextCursor } : {}),
           }
@@ -727,7 +934,7 @@ export class FastMCP {
       )
     })
 
-    server.setRequestHandler(GetPromptRequestSchema, async (req, extra) => {
+    server.setRequestHandler('prompts/get', async (req, sdkCtx) => {
       const requestedName = req.params.name
       let prompt: RegisteredPrompt | undefined
       if (this._transforms.length > 0) {
@@ -743,30 +950,24 @@ export class FastMCP {
       if (!prompt) prompt = this._prompts.get(requestedName)
 
       if (!prompt || prompt.config.disabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${requestedName}"`)
+        throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown prompt: "${requestedName}"`)
       }
 
       const resolvedPrompt = prompt
-      const token = await this._resolveToken(extra.authInfo)
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
       if (resolvedPrompt.config.auth) await runAuthCheck(resolvedPrompt.config.auth, token)
 
       const suppliedArgs = req.params.arguments ?? {}
       for (const arg of resolvedPrompt.config.arguments ?? []) {
         if (arg.required && !(arg.name in suppliedArgs)) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
             `Missing required argument "${arg.name}" for prompt "${requestedName}"`,
           )
         }
       }
 
-      const ctx = createContext(
-        server,
-        extra.requestId !== undefined ? String(extra.requestId) : undefined,
-        extra._meta?.progressToken,
-        token,
-        sessionState,
-      )
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/get', req.params, ctx, async () => {
@@ -784,31 +985,249 @@ export class FastMCP {
               clearTimeout(timer),
             )
           }
-          return convertPromptResult(await executePromise)
+          // Cast: the SDK infers the handler's return type as GetPromptResult |
+          // InputRequiredResult (multi-round-trip); this handler only returns the
+          // "complete" shape today. inputRequired(...) support lands separately.
+          return convertPromptResult(await executePromise) as GetPromptResult
+        }),
+      )
+    })
+
+    // completion/complete — argument autocompletion for prompt arguments and
+    // resource-template variables. Registered on every factory (both eras admit
+    // the method; see _makeServer's `completions` capability note). Routes by the
+    // request's ref type using the SDK's assert helpers (which narrow the request
+    // after the `ref.type` switch has already established the branch), then
+    // dispatches to _completePrompt / _completeResourceTemplate. Both mirror
+    // prompts/get and resources/read: resolve → not-found (-32602) → auth → run,
+    // so completion is no weaker an oracle than get/read and audit middleware
+    // observes it.
+    server.setRequestHandler('completion/complete', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'completion/complete', req.params, ctx, async () => {
+          const ref = req.params.ref
+          if (ref.type === 'ref/prompt') {
+            assertCompleteRequestPrompt(req)
+            return this._completePrompt(req.params, token)
+          }
+          if (ref.type === 'ref/resource') {
+            assertCompleteRequestResourceTemplate(req)
+            return this._completeResourceTemplate(req.params, token)
+          }
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
+            `Invalid completion reference type: "${(ref as { type: string }).type}"`,
+          )
         }),
       )
     })
   }
 
+  /**
+   * Resolve a `completion/complete` request against a prompt argument's completer.
+   * Mirrors prompts/get's transform-aware lookup, not-found contract (-32602), and
+   * auth check; an argument with no completer yields an empty list (SDK parity).
+   */
+  private async _completePrompt(
+    params: CompleteRequestParams,
+    token: AccessToken | undefined,
+  ): Promise<CompleteResult> {
+    const ref = params.ref as { type: 'ref/prompt'; name: string }
+    let prompt: RegisteredPrompt | undefined
+    if (this._transforms.length > 0) {
+      for (const p of this._prompts.values()) {
+        const view = applyTransformChain<PromptView>(
+          { name: p.config.name, description: p.config.description, tags: p.config.tags ?? [] },
+          this._transforms,
+          (t, v) => t.transformPrompt?.(v),
+        )
+        if (view && view.name === ref.name) { prompt = p; break }
+      }
+    }
+    if (!prompt) prompt = this._prompts.get(ref.name)
+
+    if (!prompt || prompt.config.disabled) {
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown prompt: "${ref.name}"`)
+    }
+    if (prompt.config.auth) await runAuthCheck(prompt.config.auth, token)
+
+    const arg = prompt.config.arguments?.find((a) => a.name === params.argument.name)
+    if (!arg?.complete) return { completion: EMPTY_COMPLETION }
+
+    const raw = await arg.complete(params.argument.value, params.context)
+    return { completion: normalizeCompletion(raw) }
+  }
+
+  /**
+   * Resolve a `completion/complete` request against a resource template's
+   * per-variable completer. Mirrors resources/read's not-found contract (-32602)
+   * and auth check; a variable with no completer yields an empty list. Following
+   * the SDK's own high-level server, a `ref.uri` that names a registered STATIC
+   * resource (not a template) is answered with an empty list rather than an error.
+   */
+  private async _completeResourceTemplate(
+    params: CompleteRequestParams,
+    token: AccessToken | undefined,
+  ): Promise<CompleteResult> {
+    const ref = params.ref as { type: 'ref/resource'; uri: string }
+    let template = this._templateResources.get(ref.uri)
+    if (!template && this._transforms.length > 0) {
+      for (const r of this._templateResources.values()) {
+        const view = applyTransformChain<ResourceView>(
+          { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+          this._transforms,
+          (t, v) => t.transformResourceTemplate?.(v),
+        )
+        if (view && view.uri === ref.uri) { template = r; break }
+      }
+    }
+
+    if (!template || template.config.disabled) {
+      // A concrete (non-template) resource URI is a valid ref with nothing to
+      // complete — answer empty, matching the SDK's high-level server. But apply
+      // resources/read's resolve → not-found → auth gate first, so a disabled or
+      // auth-gated static resource is NOT an existence oracle: a hidden resource
+      // must be indistinguishable from an unknown URI (task-11's subscribe standard).
+      const staticResource = this._staticResources.get(ref.uri)
+      if (staticResource && !staticResource.config.disabled) {
+        // Enforce the resource's auth guard identically to resources/read (same
+        // rejection). Without this, an auth-gated static resource answers `{}` here
+        // while read rejects it — a caller could enumerate forbidden URIs.
+        if (staticResource.config.auth) await runAuthCheck(staticResource.config.auth, token)
+        return { completion: EMPTY_COMPLETION }
+      }
+      // Disabled or unknown: fall through to the identical not-found rejection, so a
+      // disabled static resource is byte-indistinguishable from a URI that was never
+      // registered (matches read's not-found code, -32602).
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown resource template: "${ref.uri}"`)
+    }
+    if (template.config.auth) await runAuthCheck(template.config.auth, token)
+
+    const completer = template.config.complete?.[params.argument.name]
+    if (!completer) return { completion: EMPTY_COMPLETION }
+
+    const raw = await completer(params.argument.value, params.context)
+    return { completion: normalizeCompletion(raw) }
+  }
+
   private _notifyToolListChanged(): void {
     this._primaryServer.sendToolListChanged().catch(() => {})
+    this._stdioServer?.sendToolListChanged().catch(() => {})
     for (const { server } of this._sessions.values()) {
       server.sendToolListChanged().catch(() => {})
     }
+    // Modern (2026-07-28) HTTP requests are stateless per-request — there is no live
+    // connection to push an unsolicited notification to. Delivery for subscribed
+    // modern clients instead goes through the shared modern handler's own
+    // subscriptions/listen bus (see _getModernHandler / FastMCPOptions.eventBus).
+    // Optional chaining: a no-op until the first modern HTTP request creates the
+    // handler — nothing to notify before then, so there is no reason to force it
+    // into existence just to publish to an empty bus.
+    this._modernHandler?.notify.toolsChanged()
   }
 
   private _notifyResourceListChanged(): void {
     this._primaryServer.sendResourceListChanged().catch(() => {})
+    this._stdioServer?.sendResourceListChanged().catch(() => {})
     for (const { server } of this._sessions.values()) {
       server.sendResourceListChanged().catch(() => {})
     }
+    this._modernHandler?.notify.resourcesChanged()
   }
 
   private _notifyPromptListChanged(): void {
     this._primaryServer.sendPromptListChanged().catch(() => {})
+    this._stdioServer?.sendPromptListChanged().catch(() => {})
     for (const { server } of this._sessions.values()) {
       server.sendPromptListChanged().catch(() => {})
     }
+    this._modernHandler?.notify.promptsChanged()
+  }
+
+  /**
+   * Signal that a resource changed and any subscriber should re-read it. This is
+   * the SINGLE change signal for resource updates across both eras — the legacy
+   * per-session push and the modern subscriptions/listen bus are driven from here:
+   *
+   * - Legacy connections (primary / stdio / legacy HTTP sessions) that called
+   *   `resources/subscribe` for `uri` are pushed `notifications/resources/updated`
+   *   directly on their live session (subscription set kept in per-session state).
+   * - The modern handler's bus (W3) is published to as well; it does its own
+   *   per-stream filtering, delivering only to `subscriptions/listen` streams that
+   *   opted in to this URI. Optional chaining keeps it a no-op until the first
+   *   modern HTTP request has actually built the handler.
+   *
+   * Unsubscribed sessions (and the modern streams that never opted in) receive
+   * nothing, so calling this for a URI with no subscribers is safe and cheap.
+   */
+  notifyResourceUpdated(uri: string): void {
+    const pushIfSubscribed = (server: Server, state: Map<string, unknown> | null): void => {
+      const subs = state?.get(RESOURCE_SUBSCRIPTIONS_KEY) as Set<string> | undefined
+      if (subs?.has(uri)) server.sendResourceUpdated({ uri }).catch(() => {})
+    }
+    pushIfSubscribed(this._primaryServer, this._primaryState)
+    if (this._stdioServer) pushIfSubscribed(this._stdioServer, this._stdioState)
+    for (const { server, state } of this._sessions.values()) pushIfSubscribed(server, state)
+    this._modernHandler?.notify.resourceUpdated(uri)
+  }
+
+  /**
+   * Resolve a requested URI to a registered resource, mirroring the lookup order
+   * `resources/read` uses: exact static match, then original template match, then
+   * (only when transforms are registered) transformed-static and
+   * transformed-template matches. Returns the resource plus any template params, or
+   * undefined when nothing matches. Disabled static resources are still returned by
+   * exact match — callers apply the `disabled` check themselves (as read does), so
+   * a hidden-but-known URI is a not-found, not a silent miss.
+   */
+  private _resolveResource(
+    requestedUri: string,
+  ): { resource: RegisteredResource; templateParams?: Record<string, string> } | undefined {
+    let resource: RegisteredResource | undefined = this._staticResources.get(requestedUri)
+    let templateParams: Record<string, string> | undefined
+
+    // Direct template matching (original URIs — also handles hidden-but-callable resources)
+    if (!resource) {
+      for (const r of this._templateResources.values()) {
+        if (r.config.disabled) continue
+        const params = matchTemplate(r.config.uri, requestedUri)
+        if (params !== null) { resource = r; templateParams = params; break }
+      }
+    }
+
+    // Transformed static lookup
+    if (!resource && this._transforms.length > 0) {
+      for (const r of this._staticResources.values()) {
+        if (r.config.disabled) continue
+        const view = applyTransformChain<ResourceView>(
+          { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+          this._transforms,
+          (t, v) => t.transformResource?.(v),
+        )
+        if (view && view.uri === requestedUri) { resource = r; break }
+      }
+    }
+
+    // Transformed template matching
+    if (!resource && this._transforms.length > 0) {
+      for (const r of this._templateResources.values()) {
+        if (r.config.disabled) continue
+        const view = applyTransformChain<ResourceView>(
+          { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+          this._transforms,
+          (t, v) => t.transformResourceTemplate?.(v),
+        )
+        if (view) {
+          const params = matchTemplate(view.uri, requestedUri)
+          if (params !== null) { resource = r; templateParams = params; break }
+        }
+      }
+    }
+
+    if (!resource) return undefined
+    return { resource, templateParams }
   }
 
   // Overload: typed handler inferred from input schema
@@ -894,7 +1313,7 @@ export class FastMCP {
   ) {
     const tool = this._tools.get(name)
     if (!tool || tool.config.disabled) {
-      throw new McpError(ErrorCode.InvalidParams, `Unknown tool: "${name}"`)
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown tool: "${name}"`)
     }
     if (tool.config.auth) await runAuthCheck(tool.config.auth, ctx.auth)
 
@@ -926,7 +1345,7 @@ export class FastMCP {
         }),
       )
     } catch (err) {
-      if (err instanceof McpError) throw err
+      if (err instanceof ProtocolError) throw err
       return {
         content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
         isError: true,
@@ -949,7 +1368,9 @@ export class FastMCP {
       : this._staticResources.get(uri)
 
     if (!resource || resource.config.disabled) {
-      throw new McpError(ErrorCode.InvalidParams, `Unknown resource: "${uri}"`)
+      // See resources/read handler: ResourceNotFoundError carries data.uri so the
+      // miss is recognisable per the SDK contract (task-9 Req 3; task-7 F1).
+      throw new ResourceNotFoundError(uri, `Unknown resource: "${uri}"`)
     }
     if (resource.config.auth) await runAuthCheck(resource.config.auth, ctx.auth)
 
@@ -984,14 +1405,14 @@ export class FastMCP {
   ) {
     const prompt = this._prompts.get(name)
     if (!prompt || prompt.config.disabled) {
-      throw new McpError(ErrorCode.InvalidParams, `Unknown prompt: "${name}"`)
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown prompt: "${name}"`)
     }
     if (prompt.config.auth) await runAuthCheck(prompt.config.auth, ctx.auth)
 
     for (const arg of prompt.config.arguments ?? []) {
       if (arg.required && !(arg.name in args)) {
-        throw new McpError(
-          ErrorCode.InvalidParams,
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
           `Missing required argument "${arg.name}" for prompt "${name}"`,
         )
       }
@@ -1031,7 +1452,14 @@ export class FastMCP {
       const childCtx: typeof parentCtx = prefix
         ? { ...parentCtx, resolveToolName: (name) => `${prefix}_${name}` }
         : parentCtx
-      return child._dispatchTool(originalName, args, childCtx).then((result) => new ToolResult(result))
+      // _dispatchTool already ran the child's own convertResult, so its resolved
+      // value is either a finished CallToolResult (wrap in ToolResult so the parent's
+      // own convertResult passes it through unchanged) or an InputRequiredResult
+      // (multi-round-trip escape hatch — already recognized directly by convertResult,
+      // must not be wrapped).
+      return child._dispatchTool(originalName, args, childCtx).then((result) =>
+        isInputRequiredResult(result) ? result : new ToolResult(result),
+      )
     })
   }
 
@@ -1062,9 +1490,9 @@ export class FastMCP {
     const forwardedConfig: PromptConfig = { ...(prompt.config as PromptConfig), name: key }
     this.prompt(forwardedConfig, (args?: Record<string, string>) => {
       const ctx = contextStore.getStore()!
-      return child
-        ._dispatchPrompt(originalName, args ?? {}, ctx)
-        .then((result) => new PromptResult(result.messages, result.description))
+      return child._dispatchPrompt(originalName, args ?? {}, ctx).then((result) =>
+        isInputRequiredResult(result) ? result : new PromptResult(result.messages, result.description),
+      )
     })
   }
 
@@ -1280,6 +1708,21 @@ export class FastMCP {
     await this._primaryServer.connect(transport)
   }
 
+  /**
+   * Modern-era (2026-07-28) in-process fetch entrypoint — the `McpServerLike`
+   * duck-type hook `fastmcp-ts/client`'s `Client` looks for when a caller pins
+   * modern era for an in-process server (`versionNegotiation: { mode: { pin:
+   * '2026-07-28' } } }`). Delegates directly to the same `createMcpHandler`
+   * instance the real HTTP modern path uses (`_getModernHandler`), so this is
+   * the identical dispatch a real network connection would get — no sockets,
+   * same code. Modern-only (`legacy: 'reject'`): a client using `'auto'` or
+   * `'legacy'` negotiation instead goes through `connect()` + `InMemoryTransport`
+   * (2025-era only), unaffected by this method.
+   */
+  async _modernFetch(request: Request, options?: McpHandlerRequestOptions): Promise<Response> {
+    return this._getModernHandler().fetch(request, options)
+  }
+
   async run(options?: RunOptions): Promise<void> {
     this._isRunning = true
     const rawTransport = process.env.MCP_TRANSPORT ?? options?.transport ?? 'stdio'
@@ -1289,12 +1732,34 @@ export class FastMCP {
     const transport = rawTransport as 'stdio' | 'http'
 
     const port = options?.port ?? parseInt(process.env.MCP_PORT ?? process.env.PORT ?? '3000', 10)
-    const host = options?.host ?? process.env.MCP_HOST ?? '0.0.0.0'
+    const host = options?.host ?? process.env.MCP_HOST ?? '127.0.0.1'
     const path = options?.path ?? process.env.MCP_PATH ?? '/mcp'
 
     if (transport === 'stdio') {
-      const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js')
-      await this.connect(new StdioServerTransport(options?.stdin, options?.stdout))
+      const { StdioServerTransport, serveStdio } = await import('@modelcontextprotocol/server/stdio')
+      const stdioTransport = new StdioServerTransport(options?.stdin, options?.stdout)
+      // serveStdio owns the connection's era decision (from the opening exchange) and
+      // pins one instance from the factory for the connection's lifetime — unlike
+      // connect(), which is always 2025-era (used by in-process/test transports).
+      // The factory may be invoked twice (a discarded server/discover probe instance,
+      // then the real pinned one); _stdioServer always ends up holding the latter.
+      // The factory receives `ctx.era` because serveStdio always classifies the
+      // opening exchange's era before constructing an instance for it (including
+      // the discarded probe instance, which is itself a modern-era construction) —
+      // so `ctx.era` is used to fork `_makeServer`'s `modern` option the same way
+      // `_getModernHandler` does, and a modern connection no longer advertises the
+      // legacy-only `resources.subscribe` capability.
+      this._stdioHandle = serveStdio(
+        (ctx) => {
+          // Capture the state Map so the resource-updated fan-out can reach this
+          // connection's per-session subscription set (see _notifyResourceUpdated).
+          const stdioState = new Map<string, unknown>()
+          this._stdioState = stdioState
+          this._stdioServer = this._makeServer(stdioState, { modern: ctx.era === 'modern' })
+          return this._stdioServer
+        },
+        { transport: stdioTransport },
+      )
     } else if (this._oauth) {
       await this._runHttpOAuth(port, host, path)
     } else {
@@ -1302,14 +1767,146 @@ export class FastMCP {
     }
   }
 
+  /** Lazily builds the modern (2026-07-28) HTTP handler. One per FastMCP instance;
+   * builds a fresh Server (via _makeServer) per request, matching createMcpHandler's
+   * per-request-factory model. Modern-only (legacy: 'reject') — legacy (2025-era)
+   * traffic is routed to the existing sessionful transport by _dispatchHttp instead
+   * of createMcpHandler's own stateless legacy fallback, so session state and the
+   * legacy server-initiated-request shim keep working for 2025-era clients. */
+  private _getModernHandler(): McpHttpHandler {
+    if (!this._modernHandler) {
+      this._modernHandler = createMcpHandler(() => this._makeServer(new Map(), { modern: true }), {
+        legacy: 'reject',
+        ...(this._eventBus ? { bus: this._eventBus } : {}),
+      })
+    }
+    return this._modernHandler
+  }
+
+  /**
+   * Dual-era HTTP dispatch shared by the OAuth and non-OAuth serve paths. Assumes CORS
+   * and auth have already been handled by the caller (req.auth already set, if any —
+   * both the legacy transport and the modern handler read it as pass-through authInfo).
+   */
+  private async _dispatchHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // DNS-rebinding protection runs first and is header-only, so it never reads the
+    // request body — no contention with the body parsing the legacy/modern branches do
+    // below. Each guard writes the SDK's 403 JSON-RPC rejection and returns false when it
+    // rejects, covering BOTH the legacy sessionful transport and the modern
+    // createMcpHandler path from this one shared choke point.
+    if (this._hostGuard && !this._hostGuard(req, res)) return
+    if (this._originGuard && !this._originGuard(req, res)) return
+
+    const { toNodeHandler, toWebRequest } = await import('@modelcontextprotocol/node')
+
+    // Drains the raw Node req stream and builds a web-standard Request from the
+    // buffered bytes; req cannot be re-read as a stream after this.
+    const request = await toWebRequest(req)
+
+    if (req.method === 'POST' && !isJsonContentType(request.headers.get('content-type'))) {
+      res
+        .writeHead(415, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ error: 'Unsupported Media Type: expected application/json' }))
+      return
+    }
+
+    // No parsedBody passed here, so isLegacyRequest reads from an internal clone —
+    // `request` itself stays fully unread, so we can still read its body below.
+    const legacy = await isLegacyRequest(request)
+
+    const parsedBody = req.method === 'POST' ? await request.json().catch(() => undefined) : undefined
+
+    if (legacy) {
+      await this._dispatchLegacyHttp(req, res, parsedBody)
+    } else {
+      await toNodeHandler(this._getModernHandler())(req, res, parsedBody)
+    }
+  }
+
+  /** Existing sessionful Streamable HTTP handling for 2025-era clients — unchanged
+   * behavior from before the dual-era split, just shared between the OAuth and
+   * non-OAuth serve paths instead of duplicated. */
+  private async _dispatchLegacyHttp(
+    req: IncomingMessage,
+    res: ServerResponse,
+    parsedBody: unknown,
+  ): Promise<void> {
+    const { NodeStreamableHTTPServerTransport } = await import('@modelcontextprotocol/node')
+    const sessionId = req.headers['mcp-session-id'] as string | undefined
+    let mcpTransport: NodeStreamableHTTPServerTransport
+
+    if (sessionId) {
+      const existing = this._sessions.get(sessionId)
+      if (!existing) {
+        res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Session not found' }))
+        return
+      }
+      mcpTransport = existing.transport
+    } else {
+      const sessionState = new Map<string, unknown>()
+      const sessionServer = this._makeServer(sessionState)
+      mcpTransport = new NodeStreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        // SEP-1699 SSE resumability: a bounded per-session event store makes the
+        // transport prime each 2025-11-25+ POST SSE stream with an `id`+empty-`data`
+        // event (a Last-Event-ID resume anchor) and a `retry` hint, and lets a client
+        // replay missed events after reconnecting. Retention is bounded (see
+        // BoundedEventStore); the store is discarded with the session on close.
+        eventStore: new BoundedEventStore(),
+        retryInterval: LEGACY_SSE_RETRY_MS,
+        onsessioninitialized: (id) => {
+          this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
+        },
+        onsessionclosed: (id) => {
+          const session = this._sessions.get(id)
+          if (session) {
+            const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
+            for (const cb of callbacks) cb()
+          }
+          this._sessions.delete(id)
+        },
+      })
+      await sessionServer.connect(mcpTransport)
+    }
+
+    await mcpTransport.handleRequest(req, res, parsedBody)
+  }
+
+  /**
+   * Resolve the DNS-rebinding Host/Origin guards for this serve from
+   * `FastMCPOptions.dnsRebinding` and the bind `host`. Sets `_hostGuard` / `_originGuard`
+   * (null = protection off). See the `dnsRebinding` option doc for the default posture.
+   */
+  private _resolveDnsRebindingGuards(host: string): void {
+    const opt = this._dnsRebindingOptions
+    // No config at all + a routable bind = open by default. Warn once so the operator
+    // knows the posture; an explicit dnsRebinding (any shape) means they chose it.
+    if (opt === undefined && !isLoopbackHost(host) && !_dnsRebindingWarned) {
+      _dnsRebindingWarned = true
+      console.warn(
+        '[fastmcp] This HTTP server accepts requests from any Host or Origin. ' +
+          'Set dnsRebinding in FastMCPOptions to protect local deployments against DNS rebinding.',
+      )
+    }
+    const hasExplicitAllowlist = opt?.allowedHosts !== undefined || opt?.allowedOrigins !== undefined
+    // Explicit `enabled` wins; otherwise supplying an allowlist, or binding a loopback
+    // host, turns protection on. A routable bind with no config stays off (see option doc).
+    const enabled = opt?.enabled ?? (hasExplicitAllowlist || isLoopbackHost(host))
+    if (!enabled) {
+      this._hostGuard = null
+      this._originGuard = null
+      return
+    }
+    this._hostGuard = hostHeaderValidation(opt?.allowedHosts ?? localhostAllowedHostnames())
+    this._originGuard = originValidation(opt?.allowedOrigins ?? localhostAllowedOrigins())
+  }
+
   private async _runHttpOAuth(port: number, host: string, path: string): Promise<void> {
-    const { StreamableHTTPServerTransport } = await import(
-      '@modelcontextprotocol/sdk/server/streamableHttp.js'
-    )
+    this._resolveDnsRebindingGuards(host)
     const express = (await import('express')).default
-    const { mcpAuthRouter } = await import('@modelcontextprotocol/sdk/server/auth/router.js')
+    const { mcpAuthRouter } = await import('@modelcontextprotocol/server-legacy/auth')
     const { requireBearerAuth } = await import(
-      '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js'
+      '@modelcontextprotocol/server-legacy/auth'
     )
 
     const oauth = this._oauth!
@@ -1333,42 +1930,13 @@ export class FastMCP {
       }),
     )
 
-    // MCP endpoint — protected by bearer auth
+    // MCP endpoint — protected by bearer auth; requireBearerAuth sets req.auth, which
+    // both the legacy transport and the modern handler read as pass-through authInfo.
     app.all(
       path,
       requireBearerAuth({ verifier: oauth.provider }),
-      async (req, res, _next) => {
-        const sessionId = req.headers['mcp-session-id'] as string | undefined
-        let mcpTransport: StreamableHTTPServerTransport
-
-        if (sessionId) {
-          const existing = this._sessions.get(sessionId)
-          if (!existing) {
-            res.status(404).json({ error: 'Session not found' })
-            return
-          }
-          mcpTransport = existing.transport
-        } else {
-          const sessionState = new Map<string, unknown>()
-          const sessionServer = this._makeServer(sessionState)
-          mcpTransport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => {
-              this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
-            },
-            onsessionclosed: (id) => {
-              const session = this._sessions.get(id)
-              if (session) {
-                const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
-                for (const cb of callbacks) cb()
-              }
-              this._sessions.delete(id)
-            },
-          })
-          await sessionServer.connect(mcpTransport)
-        }
-
-        await mcpTransport.handleRequest(req, res)
+      async (req, res) => {
+        await this._dispatchHttp(req, res)
       },
     )
 
@@ -1377,9 +1945,7 @@ export class FastMCP {
   }
 
   private async _runHttpSimple(port: number, host: string, path: string): Promise<void> {
-    const { StreamableHTTPServerTransport } = await import(
-      '@modelcontextprotocol/sdk/server/streamableHttp.js'
-    )
+    this._resolveDnsRebindingGuards(host)
     const { createServer } = await import('node:http')
 
     const auth = this._auth
@@ -1387,7 +1953,14 @@ export class FastMCP {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
+      // Mcp-Session-Id: legacy (2025-era) session routing, still served alongside
+      // modern traffic. MCP-Protocol-Version/Mcp-Method/Mcp-Name: required standard
+      // headers for 2026-07-28 requests (SEP-2243). Mcp-Param-* (tool-argument
+      // mirroring) is deliberately not listed: browser clients skip that mirroring
+      // entirely (dynamically named headers cannot be statically allow-listed for
+      // credentialed CORS), so no browser ever needs to send it.
+      'Access-Control-Allow-Headers':
+        'Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name',
     }
 
     const httpServer = createServer(async (req, res) => {
@@ -1440,40 +2013,7 @@ export class FastMCP {
         }
       }
 
-      // Session routing: each client connection gets its own transport + server
-      const sessionId = req.headers['mcp-session-id'] as string | undefined
-      let mcpTransport: StreamableHTTPServerTransport
-
-      if (sessionId) {
-        const existing = this._sessions.get(sessionId)
-        if (!existing) {
-          res
-            .writeHead(404, { 'Content-Type': 'application/json' })
-            .end(JSON.stringify({ error: 'Session not found' }))
-          return
-        }
-        mcpTransport = existing.transport
-      } else {
-        const sessionState = new Map<string, unknown>()
-        const sessionServer = this._makeServer(sessionState)
-        mcpTransport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (id) => {
-            this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
-          },
-          onsessionclosed: (id) => {
-            const session = this._sessions.get(id)
-            if (session) {
-              const callbacks = (session.state.get(SESSION_CLOSE_CALLBACKS_KEY) as Array<() => void> | undefined) ?? []
-              for (const cb of callbacks) cb()
-            }
-            this._sessions.delete(id)
-          },
-        })
-        await sessionServer.connect(mcpTransport)
-      }
-
-      await mcpTransport.handleRequest(req, res)
+      await this._dispatchHttp(req, res)
     })
 
     this._httpServer = httpServer
@@ -1495,6 +2035,18 @@ export class FastMCP {
       [...this._sessions.values()].map(({ transport }) => transport.close().catch(() => {})),
     )
     this._sessions.clear()
+
+    if (this._modernHandler) {
+      await this._modernHandler.close()
+      this._modernHandler = null
+    }
+
+    if (this._stdioHandle) {
+      await this._stdioHandle.close()
+      this._stdioHandle = null
+      this._stdioServer = null
+      this._stdioState = null
+    }
 
     if (this._httpServer) {
       await new Promise<void>((resolve, reject) => {

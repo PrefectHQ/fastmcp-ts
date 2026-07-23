@@ -1,0 +1,158 @@
+# MCP conformance baseline — MAIN (nightly, unpinned).
+#
+# Tracks @modelcontextprotocol/conformance's `main` branch (resolved via
+# `npx --yes github:modelcontextprotocol/conformance`), NOT the pinned 0.1.16
+# used by ci.yml / conformance-baseline.yml. Main is a moving target: it gains
+# new scenarios (2026-07-28-era drafts, extension-tagged auth grants) ahead of
+# any tagged release, so this file's entry set is expected to change as main
+# moves and as fastmcp burns down real gaps.
+#
+# Format (parsed by `@modelcontextprotocol/conformance --expected-failures`):
+#   an object with `server` / `client` keys, each a list of SCENARIO names.
+# A scenario "fails" when any of its checks is FAILURE *or* WARNING. A listed
+# scenario that fails => expected (exit 0); one that passes => STALE ENTRY
+# (exit 1, remove it — this loud failure on a passing+listed scenario IS the
+# maintenance signal that keeps this file honest as main moves); an unlisted
+# scenario that fails => regression (exit 1). Verified empirically 2026-07-22:
+# a baseline entry for a scenario whose only bad checks are WARNING-status
+# (e.g. `input-required-result-missing-input-response`) is REQUIRED — omitting it
+# still trips "Unexpected failures (not in baseline)" even though the tool's own
+# bare per-scenario passed/failed tally shows "0 passed, 0 failed" for it.
+#
+# Regenerate the observed set — same two commands the nightly workflow runs
+# (.github/workflows/conformance-nightly.yml):
+#   server: PORT=39750 npx tsx tests/conformance/everything-server.ts &
+#           npx --yes github:modelcontextprotocol/conformance server \
+#             --url http://127.0.0.1:39750/mcp --suite all
+#   client: npx --yes github:modelcontextprotocol/conformance list --client
+#           # then, per scenario name (sequential — see client note below):
+#           npx --yes github:modelcontextprotocol/conformance client \
+#             --command "npx tsx tests/conformance/everything-client.ts" \
+#             --scenario <name>
+# Recorded from real runs on 2026-07-22 against conformance main (tool
+# reported version 0.2.0-alpha.9). Pre-phase (Task 14 start), main showed 53
+# unbaselined failures; Tasks 10-13 fixed dns-rebinding, subscribe/unsubscribe,
+# completion, and SEP-2243 custom-headers, and stood up the OAuth client
+# driver; Task 19 (2026-07-23) burned down the two client-credentials auth
+# methods (client_secret_basic + private_key_jwt); Task 20 (2026-07-23) burned
+# down auth/scope-step-up (post-connect interactive-OAuth step-up
+# re-authorization); Task 21 (2026-07-23) burned down the JWT-bearer grant
+# scenarios (auth/wif-jwt-bearer, auth/enterprise-managed-authorization) and
+# SEP-2352 auth/authorization-server-migration. Task 22 (2026-07-23) burned down
+# server-sse-polling (SEP-1699 SSE resumability). This file covers what's left:
+# 23 server + 3 client scenarios.
+
+# --- server (--suite all against the everything-server fixture) -------------
+server:
+  # Tasks extension — deferred post-1.0 (MIGRATION-PLAN-1.0.md §4 W5): the
+  # everything-server fixture registers no task-supporting tool, so every
+  # `[extension]`-tagged tasks-* scenario is unexercisable as-is.
+  - tasks-lifecycle                            # unknown tool "greet"/"slow_compute"/"failing_job"/"protocol_error_job" — no task-supporting tools on the fixture
+  - tasks-capability-negotiation                # capabilities.extensions["io.modelcontextprotocol/tasks"] absent; tasks/get|update|cancel return -32601 not -32021 — extension not advertised
+  - tasks-wire-fields                           # unknown tool "slow_compute" — no task-supporting tool to assert ttlMs/pollIntervalMs wire shape against
+  - tasks-request-state-removal                 # unknown tool "slow_compute" — cannot create a long-running task to exercise the absence-asserts
+  - tasks-mrtr-input                            # unknown tool "confirm_delete"/"multi_input" — no MRTR-over-task tool on the fixture
+  - tasks-request-headers                       # unknown tool "greet"/"slow_compute" — Mcp-Method/Mcp-Name routing-header checks need a task-supporting tool
+  - tasks-dispatch-and-envelope                 # unknown tool "failing_job"/"greet"/"slow_compute" — CreateTaskResult/resultType envelope checks need a task-supporting tool
+  - tasks-required-task-error                   # tools/call for a TaskSupport=required tool returns -32602 not -32021 — no such tool exists to dispatch to
+  - tasks-mrtr-composition                      # unknown tool "test_tool_with_task" — MRTR-then-escalate-to-task tool not on the fixture
+
+  # SEP-2322 input-required-result — 2026-07-28 draft scenarios. The MRTR
+  # mechanism itself shipped in W2 (src/server/mrtr.ts, isInputRequiredResult
+  # passthrough on tools/call, resources/read, prompts/get), but the
+  # everything-server fixture was never extended with the specific diagnostic
+  # tools/prompts these draft conformance checks dispatch to by name.
+  - input-required-result-basic-elicitation     # unknown tool "test_input_required_result_elicitation" — no diagnostic tool registered
+  - input-required-result-basic-sampling        # unknown tool "test_input_required_result_sampling" — no diagnostic tool registered
+  - input-required-result-basic-list-roots      # unknown tool "test_input_required_result_list_roots" — no diagnostic tool registered
+  - input-required-result-request-state         # unknown tool "test_input_required_result_request_state" — no diagnostic tool registered
+  - input-required-result-multiple-input-requests # unknown tool "test_input_required_result_multiple_inputs" — no diagnostic tool registered
+  - input-required-result-multi-round           # round-1 InputRequiredResult+requestState not observed — no multi-round diagnostic tool registered
+  - input-required-result-missing-input-response # WARNING: server errors instead of re-requesting via InputRequiredResult — no diagnostic tool to exercise the SHOULD
+  - input-required-result-non-tool-request      # unknown prompt "test_input_required_result_prompt" — no diagnostic prompt registered
+  - input-required-result-result-type           # unknown tool "test_input_required_result_elicitation" — no diagnostic tool registered
+  - input-required-result-tampered-state        # prerequisite InputRequiredResult+requestState unavailable — no diagnostic tool registered
+  - input-required-result-capability-check      # unknown tool "test_input_required_result_capabilities" — no diagnostic tool registered
+  - input-required-result-ignore-extra-params   # WARNING: server errors on extra inputResponses keys instead of ignoring — no diagnostic tool to exercise the SHOULD
+
+  # server-stateless — 2026-07-28 draft scenario, partially exercisable: the
+  # SEP-2575 envelope/version-negotiation checks pass (24/28); the remainder
+  # need three more diagnostic tools plus a real SHOULD gap.
+  - server-stateless                            # 4 sub-checks "not testable" (fixture has no test_missing_capability/test_streaming_elicitation/test_logging_tool diagnostic tools) + 2 WARNING (server doesn't send prompts/tools list_changed notifications on an open subscription listen-stream — a SHOULD)
+
+  # http-custom-header-server-validation — 2026-07-28 draft scenario, SERVER
+  # side of SEP-2243 (distinct from the CLIENT-side http-custom-headers
+  # scenario, which passes — see conformance-baseline.yml). The fixture
+  # declares no tool with x-mcp-header annotations for the server to validate.
+  - http-custom-header-server-validation        # "server exposes no tool with x-mcp-header annotations" — none of the 5 checks are exercisable
+
+  # BURNED DOWN (Task 22, 2026-07-23): server-sse-polling now PASSES (2/2, 0
+  # failed, 0 warnings, against conformance 0.2.0-alpha.9) and is no longer listed.
+  # SEP-1699 SSE resumability: fastmcp's legacy Streamable HTTP branch
+  # (_dispatchLegacyHttp) now constructs the sessionful SDK transport with a
+  # bounded per-session eventStore (src/server/legacyEventStore.ts) + a retryInterval,
+  # so each 2025-11-25+ POST SSE stream opens with a priming event (id + empty data
+  # = a Last-Event-ID resume anchor) carrying a retry field, and missed events can
+  # replay after reconnect. Both prior WARNINGs (no priming event, no retry field)
+  # now pass. Bounded memory: retention caps at DEFAULT_MAX_EVENTS (256) per session
+  # and is freed on session close — no unbounded event retention.
+
+# --- client (per-scenario, sequential — see run-client.mjs for why) ---------
+client:
+  # Carried forward from conformance-baseline.yml (pinned) — same root causes,
+  # observed to also fail on main.
+  - auth/basic-cimd                    # WARNING (SHOULD): server advertises client_id_metadata_document_supported but the harness passes the client no CIMD URL, so a spec-correct client falls back to DCR (CIMD is a SHOULD, not a MUST) — harness-contract limit
+
+  # BURNED DOWN (Task 20, 2026-07-23): auth/scope-step-up now PASSES (20/20, 0
+  # failed, 0 warnings, against conformance 0.2.0-alpha.9). fastmcp's Client
+  # gained post-connect step-up re-authorization: a post-connect request that
+  # rejects with the SDK's UnauthorizedError under the interactive OAuth provider
+  # (the transport already issued the scope-honoring authorization request during
+  # its own 401/403 handling) drives ONE waitForCallback→finishAuth round
+  # (single-flight) and retries the request once. tools/list (401, mcp:basic) and
+  # tools/call (403 insufficient_scope, mcp:write escalation) now both complete.
+
+  # DPoP (SEP-1932 / RFC 9449) — sender-constrained tokens. Investigated Task 21
+  # (2026-07-23) and KEPT-BASELINED as a transport-layer blast radius fastmcp
+  # cannot reach. The v2 client SDK ships ZERO DPoP support (grep of the client
+  # dist for dpop/DPoP/proof-of-possession finds only two AS-metadata FIELD names
+  # in @modelcontextprotocol/core — no proof signing, no DPoP auth scheme, no
+  # nonce handling). DPoP requires, per request the SDK builds and sends itself:
+  # (1) a DPoP-bound token — a fresh proof JWT on the token request so the AS
+  # stamps cnf.jkt; (2) `Authorization: DPoP <token>` instead of Bearer; (3) a
+  # fresh per-request proof (jti/htm/htu/iat/ath) in the DPoP header, computed
+  # from THAT request's method + URL + access-token hash; (4) use_dpop_nonce
+  # 401 retries at both AS and RS. All four live inside the SDK's
+  # StreamableHTTPClientTransport request construction / OAuth bridge, which sets
+  # Bearer and exposes no per-request proof hook. fastmcp's own auth providers
+  # inject only fixed header maps that carry no per-request method/URL/token-hash
+  # context, so they cannot build a proof bound to a given request; and the dpop
+  # scenario runs the request under SDK-driven interactive OAuth, where fastmcp
+  # has no request hook at all. Implementing it would ripple deep into SDK
+  # transports (the brief's STOP-and-record case), not src/client. Revisit when
+  # the SDK gains a DPoP provider / per-request proof hook.
+  - auth/dpop                          # RFC 9449 §5/§7.1: no DPoP proof at the token endpoint (token not sender-bound), token presented as Bearer, no per-request proof — SDK transport has no DPoP support fastmcp can wire
+  - auth/dpop-nonce                    # same DPoP gap, plus RFC 9449 §8/§9 nonce retries at the AS and RS — SDK transport has no DPoP support fastmcp can wire
+
+  # BURNED DOWN (Task 19, 2026-07-23): auth/client-credentials-basic and
+  # auth/client-credentials-jwt now PASS (each 8/8, 0 failed, against conformance
+  # 0.2.0-alpha.9) and are no longer listed. fastmcp's ClientCredentials gained
+  # client_secret_basic (RFC 6749 §2.3.1 Basic header) and private_key_jwt (a
+  # signed ES256 client_assertion via the SDK's createPrivateKeyJwtAuth), and
+  # everything-client's buildAuth() selects the method from the scenario context.
+
+  # BURNED DOWN (Task 21, 2026-07-23): auth/wif-jwt-bearer (8/8),
+  # auth/enterprise-managed-authorization (9/9), and
+  # auth/authorization-server-migration (34/34) now PASS (conformance
+  # 0.2.0-alpha.9) and are no longer listed.
+  #  - wif-jwt-bearer (SEP-1933 / RFC 7523 §2.1): fastmcp gained JwtBearerAuth —
+  #    presents a pre-issued workload JWT under grant_type=jwt-bearer (public
+  #    client) via the SDK's exchangeJwtAuthGrant wire helper.
+  #  - enterprise-managed-authorization (SEP-990): fastmcp gained
+  #    EnterpriseManagedAuth — RFC 8693 token exchange (ID token -> ID-JAG via the
+  #    SDK's requestJwtAuthorizationGrant) then a RFC 7523 JWT-bearer grant at the
+  #    AS (exchangeJwtAuthGrant, client_secret_basic).
+  #  - authorization-server-migration (SEP-2352): Client._reauthRetry now allows a
+  #    bounded second re-auth round and clears the cached discovery state after
+  #    each round, so a post-connect 401 whose PRM authorization_servers changed
+  #    re-discovers, re-registers (DCR), and re-authorizes at the new AS.

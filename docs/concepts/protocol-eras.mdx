@@ -1,0 +1,70 @@
+---
+title: "Protocol eras"
+description: "The two MCP protocol generations FastMCP speaks, how a server serves both, and how a client negotiates one"
+icon: "code-branch"
+---
+
+MCP has two protocol generations, and FastMCP speaks both. The **legacy era** is the 2025 protocol — revision 2025-11-25 and earlier. The **modern era** is protocol revision 2026-07-28, the largest change to MCP since launch. The two eras differ on the wire: how a session works, how a server asks the client for something, and which utility methods exist. This page installs the model that the rest of the documentation builds on. Learn it once, and every era-specific note elsewhere slots into it.
+
+The split has one governing rule. **A server serves both eras. A client chooses one.** A FastMCP server accepts a legacy client and a modern client at the same time, with no configuration. A FastMCP client connects with one era per connection, and you decide which through version negotiation.
+
+## The two eras
+
+The legacy era is stateful. A connection opens with an `initialize` handshake, the server assigns a session, and later requests ride that session. The server can turn a request around and call the client back mid-handler — for sampling, elicitation, or roots. State, subscriptions, and server-to-client calls all lean on the live session.
+
+The modern era is stateless. Protocol revision 2026-07-28 removes the `initialize` handshake and the protocol-level session. Each request stands alone and carries its own envelope — protocol version, client info, and client capabilities travel in per-request metadata. Without a persistent session, several things move: the server can no longer push a request back to the client, session state has nowhere to live across requests, and the `ping` and `logging/setLevel` utility methods are gone. Each of those has a modern replacement, covered below.
+
+## Serving both eras
+
+A FastMCP server needs no era configuration. Over HTTP it inspects each incoming request and routes it: a legacy request goes to a sessionful transport that preserves today's behavior, and a modern request goes to a stateless handler. Over stdio the era is pinned per connection, decided from the client's opening exchange. One server definition — the same tools, resources, and prompts — answers both. [Running a server](/servers/running) covers the transport details.
+
+Because one handler serves both eras, you write handler logic once. The features that changed most between the eras — asking the client for input, and remembering state — have era-agnostic APIs that do the right thing on each wire. Those are the [input-required](/concepts/input-required) and [state](/concepts/state-and-handles) concepts.
+
+## Negotiating an era
+
+A client picks its era through `versionNegotiation`. The default is `'legacy'`: `connect()` runs the plain 2025 sequence, byte-identical to today's behavior, with no probe and no new headers. You opt into the modern era explicitly.
+
+Pass `{ mode: 'auto' }` to probe the server with `server/discover` and use the modern era when the server supports it, falling back to legacy otherwise. Pass `{ mode: { pin: '2026-07-28' } }` to require the modern era outright — `connect()` throws if the server cannot speak it. After connecting, `getProtocolEra()` reports the negotiated result: `'modern'`, `'legacy'`, or `undefined` before you connect.
+
+```typescript
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+// Default: the legacy era, byte-identical to 2025 behavior.
+const legacy = await Client.connect('http://localhost:3000')
+legacy.getProtocolEra()   // 'legacy'
+
+// Opt in: use the modern era when the server supports it, else fall back.
+const auto = await Client.connect('http://localhost:3000', {
+  versionNegotiation: { mode: 'auto' },
+})
+auto.getProtocolEra()     // 'modern' or 'legacy'
+
+// Require the modern era; connect() throws if the server cannot speak it.
+const modern = await Client.connect('http://localhost:3000', {
+  versionNegotiation: { mode: { pin: '2026-07-28' } },
+})
+```
+
+The library default is `'legacy'` on every transport. This keeps existing code byte-identical until you ask for more. It also avoids a probe stall: a `server/discover` probe against an unresponsive legacy server can hang, so the safe default never probes.
+
+## The CLI's defaults
+
+The `fastmcp` CLI applies its own defaults on top of the library. This is a CLI choice, not a library default — the `Client` class always defaults to `'legacy'` unless you set `versionNegotiation` yourself.
+
+The CLI picks a default per transport. An HTTP URL defaults to `{ mode: 'auto' }`, because the HTTP transport already carries the headers a probe needs, so there is no stall risk. A CLI-spawned stdio server defaults to legacy; `--modern` opts it into `{ mode: 'auto' }`. On any transport, `--pin <version>` overrides the default and requires that exact version. These flags reach `run`, `list`, `call`, and `inspect` — see the [CLI reference](/cli).
+
+## What changes between eras
+
+Four behaviors differ between the eras. Each modern change has a replacement that a FastMCP API already routes to.
+
+Server-to-client requests move to a return value. On the legacy era a handler calls `ctx.sample()`, `ctx.elicit()`, or `ctx.listRoots()` to reach the client mid-handler. The modern era has no server-to-client channel, so a handler instead returns `inputRequired(...)` and the client retries the call with the answers. This is the [input-required](/concepts/input-required) pattern, and a handler written that way serves both eras.
+
+Session state loses its home on modern HTTP. `ctx.getState` / `setState` / `deleteState` remember values across requests on a connection. They work on stdio and on legacy HTTP. On a modern HTTP request each call is stateless, so the accessors throw a pointed error rather than drop the write silently. [State and handles](/concepts/state-and-handles) covers the boundary and the portable alternatives.
+
+The `ping` and `setLogLevel` utilities change shape. The modern era removes both wire methods. A FastMCP client keeps the same method names and routes them per era: `ping()` sends `server/discover` on modern, and `setLogLevel()` threads the level into per-request metadata instead of a `logging/setLevel` call.
+
+Resource subscriptions change transport. The legacy `resources/subscribe` / `resources/unsubscribe` RPCs become a single long-lived `subscriptions/listen` stream on the modern era. A FastMCP client routes `subscribeResource()` per era, so your subscription code is the same on both.
+
+## Unsupported versions
+
+When a client pins a version the server cannot speak, the connection fails with `-32022 UnsupportedProtocolVersion`. The error names the requested version and the versions the server supports. Through the CLI a `--pin` mismatch reports the same information and tells you to change or drop the flag. This is the one era decision that fails loudly — `'auto'` never reaches it, because auto falls back to legacy instead of throwing.

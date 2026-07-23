@@ -62,6 +62,8 @@ export default defineCommand({
     auth: { type: 'string', description: 'Bearer token' },
     'input-json': { type: 'string', description: 'Raw JSON input instead of key=value args' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
+    modern: { type: 'boolean', description: 'Turn on version negotiation for stdio and in-process connections', default: false },
+    pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args, rawArgs }) {
     if (args.json) setJsonMode(true)
@@ -86,10 +88,12 @@ export default defineCommand({
         ? { kind: 'stdio' as const, command: args.command }
         : { kind: 'url' as const, url: args.url! }
 
+    const era = { modern: args.modern, pin: args.pin }
+
     let client
     try {
       client = await withSpinner('Connecting to server…', () =>
-        connectClient(mode, authObj),
+        connectClient(mode, authObj, era),
       )
     } catch (err) {
       cliError(formatError(err), { code: EXIT.CONNECTION })
@@ -120,7 +124,7 @@ export default defineCommand({
       )
     }
 
-    const flagValues = new Set([target, args.url, args.command, args.file, args.export, args.auth, args['input-json']].filter(Boolean) as string[])
+    const flagValues = new Set([target, args.url, args.command, args.file, args.export, args.auth, args['input-json'], args.pin].filter(Boolean) as string[])
     const kvRaw = (rawArgs as string[]).filter((a) => !a.startsWith('-') && !flagValues.has(a))
     let input: Record<string, unknown> = args['input-json']
       ? (JSON.parse(args['input-json']) as Record<string, unknown>)

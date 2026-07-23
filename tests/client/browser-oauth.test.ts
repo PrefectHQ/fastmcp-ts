@@ -30,8 +30,27 @@ describe('BrowserOAuth popup flow', () => {
         data: { type: 'fastmcp:oauth', code: 'THE_CODE' },
       }),
     )
-    expect(await wait).toBe('THE_CODE')
+    const params = await wait
+    expect(params.get('code')).toBe('THE_CODE')
     expect(popup.close).toHaveBeenCalled()
+  })
+
+  it('carries the RFC 9207 iss parameter through from the postMessage', async () => {
+    const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
+    o._bind('https://srv.example')
+    vi.spyOn(window, 'open').mockReturnValue({ closed: false, close: vi.fn() } as unknown as Window)
+    await o.redirectToAuthorization(new URL('https://auth.example/authorize'))
+
+    const wait = o.waitForCallback(5000)
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'https://app.example',
+        data: { type: 'fastmcp:oauth', code: 'THE_CODE', iss: 'https://auth.example' },
+      }),
+    )
+    const params = await wait
+    expect(params.get('code')).toBe('THE_CODE')
+    expect(params.get('iss')).toBe('https://auth.example')
   })
 
   it('ignores messages from an unexpected origin', async () => {
@@ -83,7 +102,16 @@ describe('BrowserOAuth redirect mode', () => {
 
   it('resumeFromRedirect extracts the code from a returned URL', () => {
     const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback', mode: 'redirect' })
-    expect(o.resumeFromRedirect('https://app.example/callback?code=XYZ&state=s')).toBe('XYZ')
+    const params = o.resumeFromRedirect('https://app.example/callback?code=XYZ&state=s')
+    expect(params?.get('code')).toBe('XYZ')
+  })
+
+  it('resumeFromRedirect carries the iss parameter through when present', () => {
+    const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback', mode: 'redirect' })
+    const params = o.resumeFromRedirect(
+      `https://app.example/callback?code=XYZ&iss=${encodeURIComponent('https://auth.example.com')}`,
+    )
+    expect(params?.get('iss')).toBe('https://auth.example.com')
   })
 
   it('resumeFromRedirect returns null when there is no code', () => {

@@ -2,7 +2,7 @@
 title: "FileUploadOptions"
 ---
 
-Defined in: [server/apps/providers/FileUpload.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/apps/providers/FileUpload.ts#L30)
+Defined in: [server/apps/providers/FileUpload.ts:53](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/apps/providers/FileUpload.ts#L53)
 
 ## Properties
 
@@ -12,4 +12,18 @@ Defined in: [server/apps/providers/FileUpload.ts:30](https://github.com/PrefectH
 optional storage?: FileStorageAdapter;
 ```
 
-Defined in: [server/apps/providers/FileUpload.ts:31](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/apps/providers/FileUpload.ts#L31)
+Defined in: [server/apps/providers/FileUpload.ts:54](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/apps/providers/FileUpload.ts#L54)
+
+***
+
+### ttlMs?
+
+```ts
+optional ttlMs?: number;
+```
+
+Defined in: [server/apps/providers/FileUpload.ts:60](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/apps/providers/FileUpload.ts#L60)
+
+How long (ms) an uploaded file is retained by the default in-memory storage
+adapter before automatic expiry. Only applies when no custom `storage` is
+supplied. Default: 30 minutes.

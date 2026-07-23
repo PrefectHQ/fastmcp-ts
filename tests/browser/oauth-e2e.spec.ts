@@ -1,33 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { build } from 'esbuild'
-import type { Plugin } from 'esbuild'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-// The published ESM server uses extensionless MCP SDK subpath imports that only
-// a bundler's resolver handles (hence tsup's mcpSdkPlugin). To run the real
-// server under plain Node here, bundle it self-contained to a temp file first,
-// reusing that same resolve plugin.
-const MCP_SDK_NAMED_EXPORTS = new Set([
-  '@modelcontextprotocol/sdk/client',
-  '@modelcontextprotocol/sdk/server',
-  '@modelcontextprotocol/sdk/validation',
-  '@modelcontextprotocol/sdk/validation/ajv',
-  '@modelcontextprotocol/sdk/validation/cfworker',
-  '@modelcontextprotocol/sdk/experimental',
-  '@modelcontextprotocol/sdk/experimental/tasks',
-])
-const mcpSdkPlugin: Plugin = {
-  name: 'mcp-sdk-resolve',
-  setup(b) {
-    b.onResolve({ filter: /^@modelcontextprotocol\/sdk\// }, (args) => {
-      if (MCP_SDK_NAMED_EXPORTS.has(args.path)) return undefined
-      if (/\.[cm]?js$/.test(args.path)) return undefined
-      return b.resolve(args.path + '.js', { resolveDir: args.resolveDir, kind: args.kind })
-    })
-  },
-}
+// To run the real server under plain Node here, bundle it self-contained to a
+// temp file first. v2 MCP SDK packages ship well-formed package.json "exports"
+// maps for every public subpath, so esbuild resolves them natively — no
+// resolve-plugin workaround needed (unlike v1's extensionless subpath imports).
 
 // ---------------------------------------------------------------------------
 // End-to-end: a real Chromium loads the *bundled* browser client and completes
@@ -87,7 +67,6 @@ test.beforeAll(async () => {
     platform: 'node',
     format: 'cjs',
     outfile: serverOut,
-    plugins: [mcpSdkPlugin],
   })
   const require = createRequire(import.meta.url)
   const { FastMCP, oauthProvider } = require(serverOut) as {

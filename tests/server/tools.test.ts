@@ -1,29 +1,29 @@
 import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod'
-import { McpError, ErrorCode, ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
+import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
 import { FastMCP, Image, File, ToolResult } from 'fastmcp-ts/server'
-import { createTestClient } from '../helpers/createTestClient'
+import { connectEra, describeEachEra, type EraCombo } from '../helpers/eras'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function setup(mcp?: FastMCP) {
+async function setup(combo: EraCombo, mcp?: FastMCP) {
   const server = mcp ?? new FastMCP({ name: 'test' })
-  const { client, close } = await createTestClient(server)
+  const { client, close } = await connectEra(server, combo)
   return { server, client, close }
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Tests — every case runs across all four transport/era combos.
 // ---------------------------------------------------------------------------
 
-describe('Server — Tools', () => {
+describeEachEra('Server — Tools', (combo) => {
   describe('declaration', () => {
     it('a function registered as a tool is discoverable by clients via listTools', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'greet', description: 'Say hello' }, () => 'hello')
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.listTools()
         expect(result.tools).toHaveLength(1)
@@ -40,7 +40,7 @@ describe('Server — Tools', () => {
         ({ a, b }) => a + b,
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.listTools()
         const schema = result.tools[0].inputSchema as Record<string, unknown>
@@ -74,7 +74,7 @@ describe('Server — Tools', () => {
           () => 'ok',
         )
 
-        const { client, close } = await setup(mcp)
+        const { client, close } = await setup(combo, mcp)
         try {
           const result = await client.listTools()
           const schema = result.tools[0].inputSchema as Record<string, unknown>
@@ -96,7 +96,7 @@ describe('Server — Tools', () => {
         () => ({ id: 1, name: 'Alice' }),
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.listTools()
         const outputSchema = result.tools[0].outputSchema as Record<string, unknown> | undefined
@@ -118,7 +118,7 @@ describe('Server — Tools', () => {
         () => 'sunny',
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.listTools()
         expect(result.tools[0].name).toBe('fetch-weather')
@@ -134,15 +134,17 @@ describe('Server — Tools', () => {
       mcp.tool({ name: 'beta', description: 'test tool' }, () => 2)
       mcp.tool({ name: 'gamma', description: 'test tool' }, () => 3)
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
-        // First page
-        const page1 = await client.listTools()
+        // client.listTools() now auto-aggregates every page (v2 SDK behavior) — use
+        // the low-level request() to observe a single raw page, matching what this
+        // test is actually asserting about server-side pagination.
+        const page1 = await client.request({ method: 'tools/list', params: {} })
         expect(page1.tools.map((t) => t.name)).toEqual(['alpha', 'beta'])
         expect(page1.nextCursor).toBeDefined()
 
         // Second page
-        const page2 = await client.listTools({ cursor: page1.nextCursor! })
+        const page2 = await client.request({ method: 'tools/list', params: { cursor: page1.nextCursor! } })
         expect(page2.tools.map((t) => t.name)).toEqual(['gamma'])
         expect(page2.nextCursor).toBeUndefined()
       } finally {
@@ -155,7 +157,7 @@ describe('Server — Tools', () => {
       mcp.tool({ name: 'alpha', description: 'test tool' }, () => 1)
       mcp.tool({ name: 'beta', description: 'test tool' }, () => 2)
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.listTools()
         expect(result.tools).toHaveLength(2)
@@ -170,11 +172,35 @@ describe('Server — Tools', () => {
       mcp.tool({ name: 'alpha', description: 'test tool' }, () => 1)
       mcp.tool({ name: 'beta', description: 'test tool' }, () => 2)
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         await expect(
           client.listTools({ cursor: Buffer.from('nonexistent-tool').toString('base64url') }),
         ).rejects.toThrow()
+      } finally {
+        await close()
+      }
+    })
+  })
+
+  describe('ordering', () => {
+    it('tools/list returns tools in registration order, deterministically, across repeated calls', async () => {
+      // The 2026-07-28 spec: servers SHOULD return tools/list in a deterministic
+      // order to enable client-side caching and improve LLM prompt cache hit rates.
+      // Registration order relies on Map iteration order (insertion order in JS),
+      // which is not itself spec-mandated behavior — this test pins it down as a
+      // regression guard.
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'zebra', description: 'test tool' }, () => 1)
+      mcp.tool({ name: 'apple', description: 'test tool' }, () => 2)
+      mcp.tool({ name: 'mango', description: 'test tool' }, () => 3)
+
+      const { client, close } = await setup(combo, mcp)
+      try {
+        const first = await client.listTools()
+        const second = await client.listTools()
+        expect(first.tools.map((t) => t.name)).toEqual(['zebra', 'apple', 'mango'])
+        expect(second.tools.map((t) => t.name)).toEqual(['zebra', 'apple', 'mango'])
       } finally {
         await close()
       }
@@ -186,7 +212,7 @@ describe('Server — Tools', () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'ping', description: 'test tool' }, () => 'pong')
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'ping', arguments: {} })
         expect(result.isError).toBeFalsy()
@@ -203,7 +229,7 @@ describe('Server — Tools', () => {
         return 'fetched'
       })
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'fetch', arguments: {} })
         expect(result.isError).toBeFalsy()
@@ -219,7 +245,7 @@ describe('Server — Tools', () => {
         throw new Error('kaboom')
       })
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'explode', arguments: {} })
         expect(result.isError).toBe(true)
@@ -239,7 +265,7 @@ describe('Server — Tools', () => {
         () => new Promise((r) => setTimeout(r, 5000)),
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'slow', arguments: {} })
         expect(result.isError).toBe(true)
@@ -255,7 +281,7 @@ describe('Server — Tools', () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'fast', description: 'test tool', timeout: 1000 }, () => 'done')
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'fast', arguments: {} })
         expect(result.isError).toBeFalsy()
@@ -272,7 +298,7 @@ describe('Server — Tools', () => {
       const handlerSpy = vi.fn(() => 'ok')
       mcp.tool({ name: 'typed', description: 'test tool', input: z.object({ x: z.number() }) }, handlerSpy)
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         await expect(
           client.callTool({ name: 'typed', arguments: { x: 'not-a-number' } }),
@@ -288,7 +314,7 @@ describe('Server — Tools', () => {
       const handlerSpy = vi.fn(() => 'ok')
       mcp.tool({ name: 'greet', description: 'test tool', input: z.object({ name: z.string() }) }, handlerSpy)
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         await expect(
           client.callTool({ name: 'greet', arguments: {} }),
@@ -303,12 +329,12 @@ describe('Server — Tools', () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'typed', description: 'test tool', input: z.object({ x: z.string() }) }, ({ x }) => x)
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const err = await client.callTool({ name: 'typed', arguments: { x: 42 } }).catch((e: unknown) => e)
-        expect(err).toBeInstanceOf(McpError)
-        expect((err as McpError).code).toBe(ErrorCode.InvalidParams)
-        expect((err as McpError).message).toMatch(/Validation failed/)
+        expect(err).toBeInstanceOf(ProtocolError)
+        expect((err as ProtocolError).code).toBe(ProtocolErrorCode.InvalidParams)
+        expect((err as ProtocolError).message).toMatch(/Validation failed/)
       } finally {
         await close()
       }
@@ -321,7 +347,7 @@ describe('Server — Tools', () => {
         ({ name }) => `hello, ${name}`,
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'greet', arguments: {} })
         expect(result.isError).toBeFalsy()
@@ -342,7 +368,7 @@ describe('Server — Tools', () => {
         },
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         await client.callTool({ name: 'typed', arguments: { n: '42' } })
         expect(typeof received).toBe('number')
@@ -361,7 +387,7 @@ describe('Server — Tools', () => {
         () => 'hello',
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'greet', arguments: {} })
         expect(result.isError).toBeFalsy()
@@ -378,7 +404,7 @@ describe('Server — Tools', () => {
         () => 42 as unknown as string, // deliberate mismatch
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'typed', arguments: {} })
         expect(result.isError).toBe(true)
@@ -394,7 +420,7 @@ describe('Server — Tools', () => {
         () => 7,
       )
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.callTool({ name: 'count', arguments: {} })
         expect(result.isError).toBeFalsy()
@@ -410,7 +436,7 @@ describe('Server — Tools', () => {
     async function callTool(handler: () => unknown) {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'x', description: 'test tool' }, handler)
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         return await client.callTool({ name: 'x', arguments: {} })
       } finally {
@@ -498,7 +524,7 @@ describe('Server — Tools', () => {
       mcp.tool({ name: 'visible', description: 'test tool' }, () => 'yes')
       mcp.tool({ name: 'hidden', description: 'test tool', disabled: true }, () => 'shh')
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const result = await client.listTools()
         const names = result.tools.map((t) => t.name)
@@ -513,7 +539,7 @@ describe('Server — Tools', () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'hidden', description: 'test tool', disabled: true }, () => 'secret')
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         await expect(
           client.callTool({ name: 'hidden', arguments: {} }),
@@ -529,7 +555,7 @@ describe('Server — Tools', () => {
       mcp.tool({ name: 'beta', description: 'test tool', tags: ['text'] }, () => 'b')
       mcp.tool({ name: 'gamma', description: 'test tool', tags: ['math', 'text'] }, () => 'g')
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         // Without filtering all tools appear
         const all = await client.listTools()
@@ -545,7 +571,7 @@ describe('Server — Tools', () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.tool({ name: 'first', description: 'test tool' }, () => 1)
 
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
       try {
         const before = await client.listTools()
         expect(before.tools.map((t) => t.name)).toEqual(['first'])
@@ -559,20 +585,36 @@ describe('Server — Tools', () => {
       }
     })
 
-    it('registering a tool on a running server emits a tools/list_changed notification', async () => {
+    it('registering a tool on a running server surfaces the new tool to clients', async () => {
       const mcp = new FastMCP({ name: 'test' })
-      const { client, close } = await setup(mcp)
+      const { client, close } = await setup(combo, mcp)
 
       try {
-        const notified = new Promise<void>((resolve) => {
-          client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
-            resolve()
+        if (combo.era === 'legacy') {
+          // Legacy delivers list_changed as a server→client notification. Over HTTP the
+          // client must first open the standalone SSE download stream (an initial list)
+          // for a server-initiated notification to have anywhere to land; stdio's duplex
+          // is always open. A brief settle lets that stream establish before we register.
+          await client.listTools()
+          await new Promise((r) => setTimeout(r, 50))
+          const notified = new Promise<void>((resolve) => {
+            client.setNotificationHandler('notifications/tools/list_changed', () => resolve())
           })
-        })
-
-        mcp.tool({ name: 'new-tool', description: 'test tool' }, () => 'hi')
-
-        await expect(notified).resolves.toBeUndefined()
+          mcp.tool({ name: 'new-tool', description: 'test tool' }, () => 'hi')
+          await expect(notified).resolves.toBeUndefined()
+        } else {
+          // Modern list_changed rides the subscriptions/listen stream, not a plain
+          // server→client notification (the server pushes it onto _modernHandler's bus).
+          // A raw client without an open subscription therefore never sees the plain
+          // notification — it observes the change by re-listing.
+          let fired = false
+          client.setNotificationHandler('notifications/tools/list_changed', () => { fired = true })
+          mcp.tool({ name: 'new-tool', description: 'test tool' }, () => 'hi')
+          await new Promise((r) => setTimeout(r, 50))
+          expect(fired).toBe(false)
+          const after = await client.listTools()
+          expect(after.tools.map((t) => t.name)).toContain('new-tool')
+        }
       } finally {
         await close()
       }

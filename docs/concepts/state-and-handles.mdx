@@ -1,0 +1,83 @@
+---
+title: "State and handles"
+description: "How a handler remembers data — session state, request state, and durable server-minted handles — across protocol eras"
+icon: "database"
+---
+
+A handler often needs to remember something. It counts calls, caches a lookup, or carries a value from one step of a flow to the next. FastMCP gives you three ways to remember, each scoped to a different lifetime. Picking the right one is mostly a question of how long the value must live, and whether it must survive the [modern era](/concepts/protocol-eras)'s stateless requests.
+
+- **Session state** lives as long as one connection. Reach for it for per-connection scratch data.
+- **Request state** lives across the rounds of one [input-required](/concepts/input-required) flow. Reach for it to carry flow state the client cannot forge.
+- **Server-minted handles** live as long as you keep the data. Reach for them for anything durable or portable — this is the era-agnostic default.
+
+## Session state
+
+Session state is a per-connection key-value store. A handler writes with `ctx.setState(key, value)`, reads with `ctx.getState(key)`, and clears with `ctx.deleteState(key)`. Write a value in one request and read it back in the next, without a database.
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.tool({ name: 'increment', description: 'Increment a per-connection counter' }, () => {
+  const ctx = server.getContext()
+  const count = ((ctx.getState('count') as number) ?? 0) + 1
+  ctx.setState('count', count)
+  return count
+})
+```
+
+State is scoped to one connection, never shared across them. Two clients never see each other's values, and the store disappears when the connection closes.
+
+## The stateless modern boundary
+
+Session state depends on a persistent session, and the modern era's HTTP transport has none. Each modern HTTP request runs statelessly, against a fresh state store built for that one request. A value written in one call would be gone by the next.
+
+Rather than drop such a write silently, FastMCP makes the accessors throw a pointed error on a modern HTTP request. The message names the request-scoped replacements — `ctx.requestState()` to read per-request state, and `ctx.mintRequestState()` to carry state across a multi-round-trip flow. A silent no-op would hide the bug; the error surfaces it at the write.
+
+Where session state survives depends on the transport, not only the era. Stdio pins one server instance — and its state store — for the whole connection, so state persists on both eras. HTTP persists on the legacy era, which is sessionful, and throws on the modern era, which is stateless.
+
+| Transport | Legacy era | Modern era |
+|---|---|---|
+| stdio | Persists | Persists |
+| HTTP | Persists | Throws |
+
+The practical read: session state is safe on stdio and on legacy HTTP. For a server that must serve modern HTTP clients, treat session state as unavailable and use request state or a handle instead.
+
+## Request state
+
+Request state carries data across the rounds of one input-required flow — the state the client echoes back verbatim when it retries a call. It exists precisely because modern HTTP has no session: it is how a multi-round-trip handler threads a value from the round that asks for input to the round that receives it.
+
+A handler mints state with `ctx.mintRequestState(payload)`, returns it from `inputRequired({ requestState })`, and reads it back with `ctx.requestState<T>()` on the retry. Because the state passes through the client, it comes back as untrusted input. Configure `FastMCPOptions.requestState` with an HMAC key so every minted state is signed and verified — a tampered or expired state is rejected with `-32602` before your handler runs. Without a key, `mintRequestState` returns an unsigned string and warns; never let unsigned state influence authorization, resource access, or business logic. The [input-required guide](/concepts/input-required) shows request state in a full flow.
+
+## Server-minted handles
+
+The durable, portable answer is a handle. Store the real data server-side under an identifier you mint, and return the identifier as an ordinary value. The model threads that handle back as a tool argument on later calls. Nothing rides the session, so the pattern works identically on stdio, legacy HTTP, and modern HTTP — the handle is the durable reference the spec recommends in place of session state.
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+import { randomUUID } from 'node:crypto'
+
+const server = new FastMCP({ name: 'my-server' })
+const store = new Map<string, { name: string; data: Buffer }>()
+
+server.tool(
+  { name: 'stash', description: 'Store a value and return a handle to it' },
+  (args: Record<string, unknown>) => {
+    const handle = randomUUID()
+    store.set(handle, { name: args.name as string, data: Buffer.from(args.data as string, 'base64') })
+    return { handle }
+  },
+)
+
+server.tool(
+  { name: 'fetch', description: 'Read a stashed value back by its handle' },
+  (args: Record<string, unknown>) => {
+    const entry = store.get(args.handle as string)
+    if (!entry) throw new Error('Handle not found')
+    return entry.name
+  },
+)
+```
+
+Give the store a cleanup policy that does not depend on a session closing. A time-to-live sweep works on every transport, where a session-close callback fires only when there is a session. FastMCP's built-in [file upload provider](/apps/providers) is the worked example: it mints a handle for each upload, stores the bytes under it, and expires them on a TTL, so an upload survives on stateless modern HTTP exactly as it does on stdio.

@@ -1,0 +1,234 @@
+---
+title: "Migrating from 0.x"
+sidebarTitle: "Migration"
+description: "Upgrade a 0.x server or client to FastMCP 1.0 — what breaks, what to change, and in what order"
+icon: "arrow-up-right-dots"
+---
+
+FastMCP 1.0 adds the 2026-07-28 modern protocol era alongside the 2025 protocol your 0.x code already speaks. The upgrade is designed so it does not rewrite your server or client. A 1.0 server serves both eras with no configuration, and a 1.0 client defaults to the legacy era — byte-identical to 2025 — until you opt into the modern one. Most 0.x code compiles and runs against 1.0 unchanged. [Protocol eras](/concepts/protocol-eras) installs that model; this page is the mechanical upgrade path.
+
+The breaks fall into two groups. A small set applies the moment you upgrade, whatever era you speak. A larger set takes effect only once you opt a client into the modern era. Clear the first group to get onto 1.0, then adopt the modern era deliberately.
+
+The package name and entrypoints do not change. You still `npm install @prefecthq/fastmcp-ts`, and you still import from `@prefecthq/fastmcp-ts/server` and `@prefecthq/fastmcp-ts/client`. What changed underneath is the SDK: 1.0 drops `@modelcontextprotocol/sdk` 1.x for the version-2 scoped packages, `@modelcontextprotocol/server` and `@modelcontextprotocol/client`. FastMCP wraps them, so the repackaging only reaches you if your own code imported the SDK directly — most often its error classes, which come first.
+
+## Error handling
+
+Two things moved with the SDK repackaging: the error class names, and one error code.
+
+The `McpError` class and its `ErrorCode` enum are renamed. 0.x threw and caught `McpError` with codes from `ErrorCode`, both imported from `@modelcontextprotocol/sdk`. Version 2 renames them to `ProtocolError` and `ProtocolErrorCode`, exported from `@modelcontextprotocol/server` on the server side and `@modelcontextprotocol/client` on the client side. FastMCP does not re-export them, so a handler that constructs a protocol error, or client code that catches one by class, needs the new import and the new name.
+
+```typescript 0.x
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js'
+
+throw new McpError(ErrorCode.InvalidParams, 'Bad argument')
+```
+
+```typescript 1.0
+import { ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/server'
+
+throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Bad argument')
+```
+
+One error code changed value, and three are new. Resource-not-found moved from `-32002` to `-32602` (invalid params): a `resources/read` for an unknown resource now answers `-32602`. To raise it from your own handler, throw `ResourceNotFoundError` from `@modelcontextprotocol/server` — it extends `ProtocolError` and carries `-32602`. If you match the numeric code to detect a missing resource, switch to `ProtocolErrorCode.InvalidParams`. That code is no longer unique to resource-not-found, so match on it as "the resource was not found or the params were otherwise invalid", not as a precise not-found signal. The `ResourceNotFound = -32002` member stays importable only so a client can still recognize `-32002` sent by an older peer.
+
+```typescript 1.0
+import { ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/server'
+
+try {
+  await client.readResource('config://missing')
+} catch (err) {
+  if (err instanceof ProtocolError && err.code === ProtocolErrorCode.InvalidParams) {
+    // -32602 — an unknown resource reports here now, not -32002
+  }
+}
+```
+
+The modern era also introduces three codes you may meet for the first time. `-32020` marks a Streamable HTTP request whose protocol-version header disagrees with its body; it surfaces as a plain `ProtocolError` with that code. `-32021` (`MissingRequiredClientCapability`) means the server needs a client capability the connection did not declare. `-32022` (`UnsupportedProtocolVersion`) means the client pinned a version the server cannot speak. The `fastmcp` CLI already maps all three to plain-English messages; in library code, the SDK raises dedicated `MissingRequiredClientCapabilityError` and `UnsupportedProtocolVersionError` classes for the last two.
+
+## SSE transport
+
+0.x connected to a Streamable HTTP URL and an HTTP+SSE URL the same way, falling back to SSE on a `4xx` response. 1.0 makes SSE an explicit, deprecated opt-in. A plain URL connects over Streamable HTTP only. A URL that names an SSE endpoint — a path segment `sse`, or a path ending in `/sse` — throws, and the error points you at Streamable HTTP and the opt-in flag.
+
+If you must keep talking to an SSE-only server, set `legacySSE: true`. The client warns once and connects.
+
+```typescript 0.x
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+// 0.x auto-detected SSE from the URL.
+const client = await Client.connect('http://localhost:3000/sse')
+```
+
+```typescript 1.0
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+// 1.0 needs the explicit opt-in for an SSE endpoint.
+const client = await Client.connect('http://localhost:3000/sse', { legacySSE: true })
+```
+
+Prefer moving the server to Streamable HTTP. The 2026-07-28 spec deprecates the HTTP+SSE transport, so `legacySSE` is a bridge, not a destination. This break applies on both eras, because the transport is a connection choice rather than an era choice. [Transports](/clients/transports) covers the full picture.
+
+## Server binding
+
+1.0 adds DNS-rebinding protection, and it changes the default posture for an HTTP server. When you bind to a loopback address, the guard turns on automatically and validates the `Host` and `Origin` headers against the loopback set. When you bind to a routable address with no `dnsRebinding` configuration, the guard stays off and the server warns once, because it cannot know which hosts and origins are legitimate for your deployment.
+
+Configure `dnsRebinding` for a routable bind to enable the guard and silence the warning. List the hostnames the server answers to and the browser origins allowed to reach it.
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'my-server',
+  dnsRebinding: {
+    allowedHosts: ['mcp.example.com'],
+    allowedOrigins: ['https://app.example.com'],
+  },
+})
+
+await server.run({ transport: 'http', port: 3000 })
+```
+
+The bind host and this guard are coupled, so 1.0 also changes the default bind host — see [Default bind host](#default-bind-host) below. `MCP_HOST` sets the address an HTTP server binds to. Choose it on purpose, because the host you bind selects the guard's default posture. [Running a server](/servers/running) covers binding and the guard in full.
+
+## Default bind host
+
+0.x bound an HTTP server to `0.0.0.0` by default, which exposes it on every network interface. 1.0 binds `127.0.0.1` by default, which keeps it on the local machine. This matches the parent fastmcp project, and it turns the DNS-rebinding guard on out of the box, because a loopback bind enables the guard automatically.
+
+A deployment that relied on the default-exposed bind must now set the host explicitly. Set `MCP_HOST=0.0.0.0`, or pass `host: '0.0.0.0'` to `run()`, and configure `dnsRebinding` to protect the exposed bind. The loopback default no longer answers requests from other machines.
+
+```typescript 0.x
+// 0.x exposed the server on every interface by default.
+await server.run({ transport: 'http', port: 3000 })
+```
+
+```typescript 1.0
+// 1.0 binds loopback by default; set the host to expose the server.
+await server.run({ transport: 'http', host: '0.0.0.0', port: 3000 })
+```
+
+The bind host and the DNS-rebinding guard are coupled, so choose the host on purpose. The [Server binding](#server-binding) break above covers the guard. [Running a server](/servers/running) covers binding and the guard in full.
+
+## Caching keys
+
+If you register `CachingMiddleware` with its default cache key, 1.0 changes what counts as a cache hit. The default key gained an auth partition: it is now the request method, plus an identity partition, plus the serialized params, where 0.x keyed on the method and params alone. The change reaches you only on an authenticated server that serves more than one identity through the default key — there, a result computed for one caller is no longer served to another. Cache entries that 0.x could share across identities no longer merge, so the cache fails safe: correctness improves, while hit rate and memory use may shift. When you deliberately shared a response across callers, restore that with a custom `keyFn` that omits identity — and hash any token material the key includes, never store a raw token. [Caching](/concepts/caching) covers the default key and custom keys in full.
+
+## Modern era
+
+Everything below changes behavior only when a client negotiates the modern era. A client that keeps the default legacy era sees none of it, so you can adopt the modern era one connection at a time.
+
+### Negotiation defaults
+
+The library `Client` defaults to the legacy era on every transport. `Client.connect(url)` runs the plain 2025 sequence — no probe, no new headers — exactly as in 0.x. You opt into the modern era per connection through `versionNegotiation`. `{ mode: 'auto' }` probes the server with `server/discover` and uses the modern era when the server offers it, falling back to legacy otherwise. `{ mode: { pin: '2026-07-28' } }` requires it and throws `-32022` if the server cannot speak it. After connecting, `getProtocolEra()` reports the negotiated era.
+
+```typescript 0.x
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('http://localhost:3000')
+```
+
+```typescript 1.0
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+// Opt into the modern era; fall back to legacy when the server is 0.x-only.
+const client = await Client.connect('http://localhost:3000', {
+  versionNegotiation: { mode: 'auto' },
+})
+
+client.getProtocolEra()   // 'modern' or 'legacy'
+```
+
+The `fastmcp` CLI layers its own defaults on top: an HTTP `--url` negotiates automatically, a spawned stdio server stays legacy until you pass `--modern`, and `--pin <version>` forces an exact era on any transport. That auto-for-HTTP behavior belongs to the CLI, not to the `Client` class. The [CLI reference](/cli) has the flags.
+
+### Session state
+
+`ctx.getState`, `ctx.setState`, and `ctx.deleteState` keep working on stdio and on legacy HTTP, where a session persists them across requests. A modern HTTP request has no session, so each call runs statelessly against a fresh store. Rather than drop a write silently, the accessors throw a pointed error on a modern HTTP request, and the message names the request-scoped replacements.
+
+A handler that relied on session state and must serve modern HTTP clients moves the value off the session. For anything durable or portable, mint a server-side handle and thread it back as a tool argument — the pattern works identically on every transport.
+
+```typescript 0.x
+server.tool({ name: 'stash', description: 'Remember a value for later calls' }, (args: Record<string, unknown>) => {
+  const ctx = server.getContext()
+  ctx.setState('blob', args.data)   // 1.0: throws on a modern HTTP request
+  return 'stored'
+})
+```
+
+```typescript 1.0
+import { randomUUID } from 'node:crypto'
+
+const store = new Map<string, unknown>()
+
+server.tool({ name: 'stash', description: 'Store a value and return a handle to it' }, (args: Record<string, unknown>) => {
+  const handle = randomUUID()
+  store.set(handle, args.data)
+  return { handle }
+})
+
+server.tool({ name: 'fetch', description: 'Read a stashed value back by its handle' }, (args: Record<string, unknown>) => {
+  return store.get(args.handle as string)
+})
+```
+
+For state that only needs to survive the rounds of one input-required flow, use `ctx.mintRequestState` and `ctx.requestState` instead. [State and handles](/concepts/state-and-handles) covers both, including a time-to-live cleanup policy that does not depend on a session closing.
+
+### Server-initiated requests
+
+0.x handlers called the client back mid-execution with `ctx.sample`, `ctx.elicit`, and `ctx.listRoots`. These are deprecated and era-gated in 1.0. They still work on a legacy connection. A modern request has no server-to-client channel, so they throw an error that names `inputRequired(...)` as the replacement.
+
+Rewrite an interactive handler to ask by returning. Return `inputRequired(...)` with the requests the client must fulfil; the client fulfils them and retries the same call, this time carrying the answers on `ctx.inputResponses`. A handler written this way serves both eras from one code path, because a built-in legacy shim turns the return value into a real server-to-client request for 2025-era clients.
+
+```typescript 0.x
+server.tool({ name: 'deleteFiles', description: 'Delete files after confirmation' }, async (args: Record<string, unknown>) => {
+  const ctx = server.getContext()
+  const { action } = await ctx.elicit(`Delete ${args.count} files?`, {
+    type: 'object',
+    properties: { confirm: { type: 'boolean' } },
+    required: ['confirm'],
+  })
+  if (action !== 'accept') return 'Cancelled'
+  return `Deleted ${args.count} files`
+})
+```
+
+```typescript 1.0
+import { inputRequired, acceptedContent } from '@prefecthq/fastmcp-ts/server'
+
+server.tool({ name: 'deleteFiles', description: 'Delete files after confirmation' }, async (args: Record<string, unknown>) => {
+  const ctx = server.getContext()
+  const accepted = acceptedContent<{ confirm: boolean }>(ctx.inputResponses, 'confirm')
+  if (!accepted?.confirm) {
+    return inputRequired({
+      inputRequests: {
+        confirm: inputRequired.elicit({
+          message: `Delete ${args.count} files?`,
+          requestedSchema: {
+            type: 'object',
+            properties: { confirm: { type: 'boolean' } },
+            required: ['confirm'],
+          },
+        }),
+      },
+    })
+  }
+  return `Deleted ${args.count} files`
+})
+```
+
+[Input required](/concepts/input-required) covers the return-value pattern, reading responses, and carrying signed state across rounds.
+
+## New capabilities
+
+1.0 is not only breaks. Several additions are worth adopting as you migrate, each taught on the page it belongs to.
+
+- **Return-value interactivity** — `inputRequired(...)` with the `ctx.inputResponses` readers is the one interactive pattern that serves both eras from a single handler ([input required](/concepts/input-required)).
+- **Request state and handles** — `ctx.mintRequestState` and `ctx.requestState` carry signed state across a flow, and the server-minted-handle pattern holds anything that must outlive a session ([state and handles](/concepts/state-and-handles)).
+- **Resource change signals** — `server.notifyResourceUpdated(uri)` pushes a resource update, backed by server-side `resources/subscribe` and `resources/unsubscribe` on the legacy era and a `subscriptions/listen` stream on the modern era ([resources](/servers/resources)).
+- **Argument completion** — a `complete` callback supplies suggestions for prompt arguments and resource-template variables ([prompts](/servers/prompts), [resources](/servers/resources)).
+- **Modern client hardening** — `versionNegotiation` and `getProtocolEra()` control the era, and OAuth gains client-ID metadata documents (`clientMetadataUrl`, CIMD) and RFC 9207 `iss` validation ([client auth](/clients/auth)).
+- **Cache hints** — `FastMCPOptions.cacheHints` attaches per-operation `ttlMs` and `cacheScope` to cacheable results (SEP-2549), so a modern client can reuse them; FastMCP fills conservative defaults for the operations you omit ([caching](/concepts/caching)).
+- **DNS-rebinding protection** — the `dnsRebinding` option, covered above ([running a server](/servers/running)).
+
+## Conformance
+
+1.0 verifies against the official MCP conformance suite, and the repository tracks results with two expected-failure baselines. `conformance-baseline.yml` gates every pull request against the pinned suite release; its server list is empty, so any server-scenario failure is a regression. `conformance-baseline-main.yml` runs nightly against the suite's moving `main` branch, which carries draft 2026-07-28 scenarios ahead of any tagged release, so its entry set is expected to churn. A listed scenario that starts passing fails the build as a stale entry — that loud failure is what keeps the baselines honest as the suite moves.
+
+1.0 implements OAuth step-up. A `401` raised after `connect()` triggers a bounded re-authorization when an interactive OAuth flow is configured, so the client completes the second, step-up request. This covers the scenario that leaves `initialize` unauthenticated and first challenges on `tools/list` ([client auth](/clients/auth)). One client OAuth gap is recorded rather than fixed on the pinned baseline. `auth/basic-cimd` is a harness-contract limit: the scenario server advertises CIMD support but passes the client no metadata URL, so a spec-correct client falls back to Dynamic Client Registration, and CIMD is a `SHOULD`. Two DPoP scenarios stay on the main-tracking baseline instead, because the SDK ships no DPoP support. The `MultiServerClient` has no interactive-OAuth flow at all — bearer and client-credentials work per server, but a redirect flow does not. Plan for these if your client depends on DPoP or on interactive OAuth across multiple servers.

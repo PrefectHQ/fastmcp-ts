@@ -7,7 +7,7 @@ type McpServerEntry =
   | {
   auth?:   | BearerAuth
      | OAuth
-     | ClientCredentials
+     | AsyncHeaderAuth
      | string;
   headers?: Record<string, string>;
   url: string;
@@ -16,11 +16,11 @@ type McpServerEntry =
   args?: string[];
   auth?:   | BearerAuth
      | OAuth
-     | ClientCredentials
+     | AsyncHeaderAuth
      | string;
   command: string;
   env?: Record<string, string>;
 };
 ```
 
-Defined in: [client/transports.ts:48](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/transports.ts#L48)
+Defined in: [client/transports.ts:77](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/transports.ts#L77)

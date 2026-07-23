@@ -1,0 +1,20 @@
+---
+title: "CompletionContext"
+---
+
+Defined in: [server/completion.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/completion.ts#L24)
+
+Optional context the client forwards with a completion request: the values it
+has already resolved for the prompt's OTHER arguments (or the template's other
+variables). Use it to narrow suggestions — e.g. offer cities once a country is
+chosen.
+
+## Properties
+
+### arguments?
+
+```ts
+optional arguments?: Record<string, string>;
+```
+
+Defined in: [server/completion.ts:25](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/completion.ts#L25)

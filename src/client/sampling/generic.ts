@@ -1,14 +1,8 @@
-import type {
-  SamplingMessage,
-  Tool,
-  ToolChoice,
-} from '@modelcontextprotocol/sdk/types.js'
+import type { SamplingMessage, Tool, ToolChoice, CreateMessageRequestParams } from "@modelcontextprotocol/server";
 import type { AnySamplingResult } from '../results.js'
 import type { SamplingAdapter, SamplingAdapterOptions, ModelSelector, OnTokenCallback } from './types.js'
 import type { SamplingHandler } from '../handlers.js'
 import { resolveModel } from './types.js'
-import type { CreateMessageRequestParams } from '@modelcontextprotocol/sdk/types.js'
-
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------

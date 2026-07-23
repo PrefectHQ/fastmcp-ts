@@ -1,17 +1,12 @@
-/**
- * Fixture MCP server whose only tool always throws.
- * Used to test CLI error-handling paths.
- */
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { Server } from "@modelcontextprotocol/server";
 
 const server = new Server(
   { name: 'error-server', version: '1.0.0' },
   { capabilities: { tools: {} } },
 )
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
+server.setRequestHandler('tools/list', async () => ({
   tools: [
     {
       name: 'always-fails',
@@ -21,7 +16,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }))
 
-server.setRequestHandler(CallToolRequestSchema, async () => {
+server.setRequestHandler('tools/call', async () => {
   throw new Error('intentional tool error')
 })
 

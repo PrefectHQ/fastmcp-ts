@@ -1,0 +1,110 @@
+---
+title: "Input required"
+description: "Ask the client for input by returning inputRequired, and serve both protocol eras from one handler"
+icon: "arrows-rotate"
+---
+
+Sometimes a handler cannot finish in one shot. It needs the user to confirm something, or it needs the client's LLM to draft a value. On the [legacy era](/concepts/protocol-eras) a handler asks by calling the client back mid-execution — `ctx.sample()`, `ctx.elicit()`, `ctx.listRoots()`. The [modern era](/concepts/protocol-eras) has no server-to-client channel, so a handler cannot push a request back. It **asks by returning** instead.
+
+A handler returns `inputRequired(...)` with the requests the client must fulfil. The client fulfils them and retries the same call, this time carrying the answers. The handler runs again, reads the answers, and finishes. This back-and-forth is a multi-round-trip request (MRTR). The key property is write-once: a handler written with `inputRequired(...)` serves both eras unchanged.
+
+## Returning inputRequired
+
+`inputRequired`, `acceptedContent`, and `inputResponse` are exported from `@prefecthq/fastmcp-ts/server`. To ask for input, return `inputRequired({ inputRequests })`. Each entry in `inputRequests` is one embedded request, built with a per-kind helper: `inputRequired.elicit(...)` for a form, `inputRequired.createMessage(...)` for LLM sampling, and `inputRequired.listRoots()` for the client's roots.
+
+A handler that asks for confirmation returns early with an elicitation request, then completes on the retry once the answer arrives.
+
+```typescript server.ts
+import { FastMCP, inputRequired, acceptedContent } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.tool(
+  { name: 'deleteFiles', description: 'Delete files, asking for confirmation first' },
+  async (args: Record<string, unknown>) => {
+    const count = args.count as number
+    const ctx = server.getContext()
+
+    const accepted = acceptedContent<{ confirm: boolean }>(ctx.inputResponses, 'confirm')
+    if (!accepted?.confirm) {
+      return inputRequired({
+        inputRequests: {
+          confirm: inputRequired.elicit({
+            message: `Delete ${count} files?`,
+            requestedSchema: {
+              type: 'object',
+              properties: { confirm: { type: 'boolean' } },
+              required: ['confirm'],
+            },
+          }),
+        },
+      })
+    }
+
+    return `Deleted ${count} files`
+  },
+)
+```
+
+## Reading the response
+
+On the retry, the client's answers arrive on `ctx.inputResponses`, keyed by the same names you used in `inputRequests`. Read them through `acceptedContent(ctx.inputResponses, key)` rather than by indexing the object. The reader validates the response shape and returns the accepted content, or `undefined` when the entry is missing, declined, or cancelled. For a non-elicitation answer — a sampling result or a roots list — use `inputResponse(ctx.inputResponses, key)`, which returns the raw response view.
+
+`ctx.inputResponses` is `undefined` on the flow's first call, because there is no prior round to answer. That is why the handler above tests `accepted?.confirm`: an undefined or unconfirmed answer means "ask", and an accepted answer means "proceed". The same branch drives both rounds.
+
+The values arrive from the client and are untrusted. `acceptedContent` checks the response shape, not your business rules — validate the content against your own schema before acting on it.
+
+## Carrying state across rounds
+
+The confirmation handler above needs no carried state: the retry re-sends the original tool arguments, so `count` is present on both rounds. A longer flow — several questions, or a value computed in an early round — needs to carry state the client cannot forge. That is `requestState`.
+
+Mint state with `ctx.mintRequestState(payload)` and return it alongside the requests. On the retry, read it back with `ctx.requestState<T>()`. The state round-trips through the client as an opaque string.
+
+```typescript server.ts
+server.tool(
+  { name: 'deleteFilesStateful', description: 'Confirm, carrying server-minted state across the round-trip' },
+  async (args: Record<string, unknown>) => {
+    const count = args.count as number
+    const ctx = server.getContext()
+
+    const accepted = acceptedContent<{ confirm: boolean }>(ctx.inputResponses, 'confirm')
+    if (!accepted?.confirm) {
+      return inputRequired({
+        inputRequests: {
+          confirm: inputRequired.elicit({
+            message: `Delete ${count} files?`,
+            requestedSchema: {
+              type: 'object',
+              properties: { confirm: { type: 'boolean' } },
+              required: ['confirm'],
+            },
+          }),
+        },
+        requestState: await ctx.mintRequestState({ count }),
+      })
+    }
+
+    const state = ctx.requestState<{ count: number }>()
+    return `Deleted ${state?.count} files`
+  },
+)
+```
+
+`requestState` comes back as attacker-controlled input, so integrity matters. Configure `FastMCPOptions.requestState` with an HMAC key, and every minted state is signed and verified before your handler sees it. A tampered or expired state is rejected with `-32602` before the handler runs. Without that option, `mintRequestState` falls back to an unsigned string and warns — never let unsigned state influence authorization, resource access, or business logic. [State and handles](/concepts/state-and-handles) covers `requestState` in full.
+
+```typescript server.ts
+const server = new FastMCP({
+  name: 'my-server',
+  requestState: { key: process.env.REQUEST_STATE_KEY! },   // at least 32 bytes
+})
+```
+
+## One handler, both eras
+
+The handlers above are modern-era code by shape, yet they serve legacy clients unchanged. On a legacy connection the SDK's legacy shim turns an `inputRequired(...)` return into a real server-to-client request over the live session, collects the answer, and re-enters the handler with `ctx.inputResponses` populated. You write the flow once; the shim bridges it for 2025-era clients.
+
+This is why `inputRequired(...)` is the recommended way to ask for input in new code. The older `ctx.sample()`, `ctx.elicit()`, and `ctx.listRoots()` calls still work on a legacy connection, but they throw on a modern request — the error names `inputRequired(...)` as the replacement. Reaching for the return-value form from the start means one code path for both eras. The client side of fulfilment is covered in [handlers](/clients/handlers) and [sampling](/clients/sampling).
+
+## Serving knobs
+
+`FastMCPOptions.inputRequired` tunes the legacy shim. `maxRounds` caps how many times the shim re-enters a handler before it fails — the default is 8. `roundTimeoutMs` sets the per-leg timeout for the shim's embedded requests, defaulting to 10 minutes to allow for human-paced answers. Set `legacyShim: false` to disable the bridge, so an `inputRequired(...)` return on a legacy request fails loudly instead. These knobs affect the legacy era only; a modern client fulfils the requests itself.

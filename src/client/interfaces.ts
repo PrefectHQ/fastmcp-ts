@@ -10,7 +10,7 @@ import type {
   GetPromptResult,
 } from './results.js'
 import type { ProgressHandler, ResourceUpdateHandler } from './handlers.js'
-import type { LoggingLevel } from '@modelcontextprotocol/sdk/types.js'
+import type { LoggingLevel } from "@modelcontextprotocol/server";
 
 export interface RequestOptions {
   /** Per-request timeout in seconds. Overrides client-level defaultOptions. */

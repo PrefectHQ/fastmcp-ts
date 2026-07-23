@@ -1,5 +1,5 @@
-import { McpError, ErrorCode, CancelledNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
-import type { Server } from '@modelcontextprotocol/sdk/server'
+import { ProtocolError, ProtocolErrorCode, Server } from "@modelcontextprotocol/server";
+import { createHash } from 'node:crypto'
 import type { McpContext } from './context'
 
 // ---------------------------------------------------------------------------
@@ -115,41 +115,129 @@ export class LoggingMiddleware implements Middleware {
  * Custom cache key function. Receives the full middleware context so callers can
  * incorporate auth identity or any other dimension into the key.
  *
- * **Required when using per-component auth checks.** The default key is
- * `"method:JSON(params)"`, which contains no auth information. If auth-filtered
- * list results (tools, resources, prompts) are cached with the default key, one
- * session's filtered results can be served to a session with different permissions.
- * Pass a `keyFn` that includes the caller identity, e.g.:
+ * **The default key already partitions by auth identity — you do not need a `keyFn`
+ * for auth safety.** The default is
+ * `"method:<auth-partition>:JSON(params)"`, where the auth partition is `anon` for a
+ * request with no bearer token and the SHA-256 hash of the bearer token for an
+ * authenticated request. So a result computed under one identity is never served under
+ * another (anonymous and authenticated included, both directions), and auth-filtered
+ * list results (tools, resources, prompts) stay per identity.
+ *
+ * **A custom `keyFn` REPLACES the default partitioning entirely — you then own it.**
+ * The key you return is used verbatim; the auth partition is not merged in. If your
+ * cached values depend on the caller identity, include an identity dimension yourself.
+ * Use the same dimension the default uses — the bearer token, HASHED. Never place the
+ * raw token in a cache key:
  *
  * ```ts
- * new CachingMiddleware(60_000, (ctx) =>
- *   `${ctx.method}:${ctx.mcpContext.auth?.clientId ?? ''}:${JSON.stringify(ctx.request)}`
- * )
+ * import { createHash } from 'node:crypto'
+ *
+ * new CachingMiddleware(60_000, (ctx) => {
+ *   const token = ctx.mcpContext.auth?.token
+ *   const id = token ? createHash('sha256').update(token).digest('hex') : 'anon'
+ *   return `${ctx.method}:${id}:${JSON.stringify(ctx.request)}`
+ * })
  * ```
+ *
+ * `clientId` is a coarser alternative (`ctx.mcpContext.auth?.clientId`), but two tokens
+ * may share a `clientId` yet differ in scope, so a `clientId` key can merge identities
+ * that must stay apart. Prefer the hashed token.
  */
 export type CacheKeyFn = (ctx: MiddlewareContext) => string
 
-/** TTL-based response cache keyed on method + serialised request params by default.
- *  Pass a custom `keyFn` when using per-component auth so cached results are
- *  partitioned by caller identity. */
+/** TTL-based response cache. The default key is method + auth partition + serialised
+ *  request params, so a cached result is served only to the identity that produced it
+ *  (anonymous is its own partition; authenticated requests partition by bearer-token
+ *  hash). Auth-filtered results (tools/list visibility, resources/read contents,
+ *  prompts, completion) therefore never cross identities. Pass a custom `keyFn` to
+ *  replace this partitioning — the caller then owns identity partitioning (see
+ *  {@link CacheKeyFn}). */
 export class CachingMiddleware implements Middleware {
   private readonly _cache = new Map<string, { value: unknown; expiresAt: number }>()
+
+  /**
+   * Side-effectful control RPCs that must never be cached. The cache keys on method
+   * + params, but these methods MUTATE per-session state (the resource subscription
+   * set) instead of computing a pure function of their params. A repeated
+   * `resources/subscribe` sends byte-identical params, so serving the cached `{}`
+   * would skip the handler: after subscribe → unsubscribe → subscribe within the
+   * TTL the client believes it re-subscribed, but the server never re-added the URI
+   * and `notifyResourceUpdated` delivers nothing. Same class as the inputRequired
+   * exclusion in `onRequest`.
+   *
+   * `completion/complete` is deliberately NOT here: it is read-only — a pure
+   * function of `ref` + `argument` with no state mutation — so caching it is correct,
+   * exactly like `tools/list` or `resources/read`. (Its auth-per-identity concern is
+   * the same one every read method has and is handled by the default key's auth
+   * partitioning — see _authPartition — not by excluding it here.)
+   */
+  private static readonly _nonCacheableMethods = new Set<string>([
+    'resources/subscribe',
+    'resources/unsubscribe',
+  ])
 
   constructor(
     readonly ttl: number = 60_000,
     private readonly _keyFn?: CacheKeyFn,
   ) {}
 
+  /**
+   * Auth partition for the default cache key. A cache entry written under one auth
+   * identity must never be served under another, so the identity is folded into the
+   * key. Anonymous requests (`mcpContext.auth` undefined — a stdio request without a
+   * CLI env token, and every request to a server with no auth configured) share the
+   * single `anon` partition, matching the pre-partition default. An authenticated request is
+   * partitioned by the SHA-256 hash of its bearer token: the token is the identity
+   * credential, so two callers can never collide, and its hash — never the raw token —
+   * goes in the key. The bearer token is used rather than `clientId` because two tokens
+   * may share a `clientId` yet differ in scope, which must NOT share a partition. A
+   * 64-char hex hash can never equal the literal `anon`, so anonymous and authenticated
+   * partitions are disjoint in both directions.
+   */
+  private static _authPartition(ctx: MiddlewareContext): string {
+    const token = ctx.mcpContext.auth?.token
+    if (token === undefined) return 'anon'
+    return createHash('sha256').update(token).digest('hex')
+  }
+
   async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
+    // Side-effectful control RPC exclusion: never serve or store a method that
+    // mutates per-session state (see _nonCacheableMethods).
+    if (CachingMiddleware._nonCacheableMethods.has(ctx.method)) return next()
+
+    // Multi-round-trip (inputRequired) exclusion. A retry re-sends byte-identical
+    // tools/call params — the SDK lifts inputResponses / requestState out of params —
+    // so the default cache key is identical across every round. Caching would replay
+    // the first round's input_required result forever and the tool could never
+    // complete. Rule: never serve/store when the request carries per-round input, and
+    // never store an input_required result (each embeds a single-use flow token).
+    const mc = ctx.mcpContext
+    const carriesRoundInput = mc.inputResponses !== undefined || mc.requestState() !== undefined
+    if (carriesRoundInput) return next()
+
+    // Default key partitions by auth identity (see _authPartition) so a result cached
+    // for one identity is never served to another. A custom keyFn REPLACES this — its
+    // owner is then responsible for any identity partitioning (see CacheKeyFn docs).
     const key = this._keyFn
       ? this._keyFn(ctx as MiddlewareContext)
-      : `${ctx.method}:${JSON.stringify(ctx.request)}`
+      : `${ctx.method}:${CachingMiddleware._authPartition(ctx)}:${JSON.stringify(ctx.request)}`
     const entry = this._cache.get(key)
     if (entry && entry.expiresAt > Date.now()) return entry.value
     const result = await next()
-    this._cache.set(key, { value: result, expiresAt: Date.now() + this.ttl })
+    if (!isInputRequiredResultValue(result)) {
+      this._cache.set(key, { value: result, expiresAt: Date.now() + this.ttl })
+    }
     return result
   }
+}
+
+/** True when a handler result is a multi-round-trip `input_required` round (never cacheable). */
+function isInputRequiredResultValue(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { resultType?: unknown }).resultType === 'input_required'
+  )
 }
 
 /** Fixed-window counter rate limiter. Resets to full capacity after every windowMs interval. */
@@ -172,7 +260,7 @@ export class RateLimitingMiddleware implements Middleware {
       this._lastRefill = now
     }
     if (this._tokens <= 0) {
-      throw new McpError(ErrorCode.InvalidRequest, 'Rate limit exceeded')
+      throw new ProtocolError(ProtocolErrorCode.InvalidRequest, 'Rate limit exceeded')
     }
     this._tokens--
     return next()
@@ -187,8 +275,8 @@ export class SizeLimitingMiddleware implements Middleware {
     const result = await next()
     const size = Buffer.byteLength(JSON.stringify(result), 'utf8')
     if (size > this.maxBytes) {
-      throw new McpError(
-        ErrorCode.InternalError,
+      throw new ProtocolError(
+        ProtocolErrorCode.InternalError,
         `Response size (${size} bytes) exceeds limit (${this.maxBytes} bytes)`,
       )
     }
@@ -212,7 +300,7 @@ export class ErrorNormalizationMiddleware implements Middleware {
     try {
       return await next()
     } catch (err) {
-      if (err instanceof McpError) throw err
+      if (err instanceof ProtocolError) throw err
       return {
         content: [{ type: 'text' as const, text: err instanceof Error ? err.message : String(err) }],
         isError: true,
@@ -224,9 +312,9 @@ export class ErrorNormalizationMiddleware implements Middleware {
     try {
       return await next()
     } catch (err) {
-      if (err instanceof McpError) throw err
-      throw new McpError(
-        ErrorCode.InternalError,
+      if (err instanceof ProtocolError) throw err
+      throw new ProtocolError(
+        ProtocolErrorCode.InternalError,
         err instanceof Error ? err.message : String(err),
       )
     }
@@ -236,12 +324,22 @@ export class ErrorNormalizationMiddleware implements Middleware {
 /**
  * Intercepts `notifications/cancelled` from the client and aborts the matching
  * in-flight handler via Promise.race + AbortController.
+ *
+ * KNOWN GAP (2026-07-28): this only covers legacy (2025-era) and stdio cancellation.
+ * On a modern Streamable HTTP connection, the SDK signals cancellation by closing the
+ * request's response stream rather than sending `notifications/cancelled` — the client
+ * is correctly told the call was cancelled either way, but a handler registered here
+ * keeps running server-side to completion on the modern path, since this middleware
+ * never observes that stream closure. The SDK exposes it per-request as
+ * `ctx.mcpReq.signal` (a `BaseContext` field, present on every era) — unifying this
+ * middleware with that signal (so long-running handlers actually stop executing on
+ * both eras) is tracked as follow-up work, not yet implemented here.
  */
 export class CancellationMiddleware implements Middleware {
   private readonly _inFlight = new Map<string, AbortController>()
 
   setup(server: Server): void {
-    server.setNotificationHandler(CancelledNotificationSchema, (notification) => {
+    server.setNotificationHandler('notifications/cancelled', (notification) => {
       const requestId = String(notification.params.requestId)
       this._inFlight.get(requestId)?.abort()
     })
@@ -256,7 +354,7 @@ export class CancellationMiddleware implements Middleware {
 
     const abortPromise = new Promise<never>((_, reject) => {
       controller.signal.addEventListener('abort', () =>
-        reject(new McpError(ErrorCode.InternalError, 'Request was cancelled by the client')),
+        reject(new ProtocolError(ProtocolErrorCode.InternalError, 'Request was cancelled by the client')),
       )
     })
 

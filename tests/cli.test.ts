@@ -4,7 +4,13 @@ import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import yaml from 'yaml'
+import {
+  ProtocolError,
+  MissingRequiredClientCapabilityError,
+  UnsupportedProtocolVersionError,
+} from '@modelcontextprotocol/client'
 import { runCli } from './helpers/cli.js'
+import { formatError } from '../src/cli/utils/error.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -852,6 +858,79 @@ describe.sequential('CLI — call (--file flag)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// era negotiation — stdio / in-process (--modern, --pin)
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — era negotiation (stdio / in-process)', () => {
+  it('--file --modern against a dual-era FastMCP server succeeds', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', FASTMCP_HTTP_SERVER, '--modern',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--command --modern against a legacy-only stdio server still succeeds (probe falls back)', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--command', `node ${SIMPLE_SERVER}`, '--modern',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--file --pin 2026-07-28 against a dual-era FastMCP server succeeds', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', FASTMCP_HTTP_SERVER, '--pin', '2026-07-28',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--modern and --pin together: --pin governs and the connection succeeds', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', FASTMCP_HTTP_SERVER, '--modern', '--pin', '2026-07-28',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('call --file --pin: the pin value is not treated as a tool key=value argument', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--file', FASTMCP_HTTP_SERVER,
+      '--pin', '2026-07-28',
+      'message=hello',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stdout.trim()).toBe('hello')
+  })
+
+  it('inspect --modern against a dual-era FastMCP server succeeds', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', FASTMCP_HTTP_SERVER, '--modern',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('default (no --modern/--pin) behavior over --file is unchanged (legacy)', async () => {
+    const { exitCode, stderr } = await runCli(['list', '--file', SIMPLE_SERVER])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+    expect(stderr).toMatch(/add/)
+  })
+
+  it('--file --pin <version the server does not offer> exits non-zero with the mapped message', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', FASTMCP_HTTP_SERVER, '--pin', '2027-01-01',
+    ], { timeout: 20_000 })
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/does not support protocol version/i)
+    expect(stderr).toMatch(/--pin/)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // run
 // ---------------------------------------------------------------------------
 
@@ -1110,6 +1189,77 @@ describe.sequential('CLI — list (URL mode)', () => {
     expect(stderr).toMatch(/echo/)
     expect(stderr).toMatch(/add/)
   })
+
+  it('--url default (auto) falls back to legacy against a legacy-only server', async () => {
+    const subprocess = execa('node', [HTTP_SERVER], {
+      reject: false,
+      timeout: 15_000,
+      env: { ...process.env, MCP_TRANSPORT: 'http', MCP_PORT: '0' },
+    })
+
+    const port = await waitForPort(subprocess)
+
+    const { exitCode, stderr } = await runCli([
+      'list', '--url', `http://localhost:${port}/mcp`,
+    ])
+
+    subprocess.kill()
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// era negotiation — HTTP (--modern is a no-op; --pin overrides auto default)
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — era negotiation (HTTP)', () => {
+  let subprocess: ReturnType<typeof execa>
+  let port: number
+
+  beforeAll(async () => {
+    subprocess = execa(
+      'node',
+      [process.env['FASTMCP_BIN']!, 'run', FASTMCP_HTTP_SERVER, '--transport', 'http', '--port', '0'],
+      { reject: false, timeout: 30_000, env: { ...process.env } },
+    )
+    port = await waitForPort(subprocess)
+  }, 30_000)
+
+  afterAll(() => {
+    subprocess.kill()
+  })
+
+  it('--url default (auto) connects to a dual-era FastMCP server', async () => {
+    const { exitCode, stderr } = await runCli(['list', '--url', `http://localhost:${port}/mcp`])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--url --pin 2026-07-28 connects at the pinned modern revision', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--url', `http://localhost:${port}/mcp`, '--pin', '2026-07-28',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--url --modern is a harmless no-op (HTTP already defaults to auto)', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--url', `http://localhost:${port}/mcp`, '--modern',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--url --pin <version the server does not offer> exits non-zero with the mapped message', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--url', `http://localhost:${port}/mcp`, '--pin', '2027-01-01',
+    ])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/does not support protocol version/i)
+    expect(stderr).toMatch(/--pin/)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1257,6 +1407,53 @@ describe.sequential('CLI — auth (--command and --file wiring)', () => {
     ], { timeout: 20_000 })
     expect(exitCode).toBe(0)
     expect(stdout).toMatch(/wired/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// formatError — era protocol error mapping (-32020 / -32021 / -32022)
+// ---------------------------------------------------------------------------
+
+describe('formatError — era protocol errors', () => {
+  it('maps -32020 HeaderMismatch to a plain-language message', () => {
+    const err = new ProtocolError(-32020, 'Header mismatch')
+    const message = formatError(err)
+    expect(message).toMatch(/protocol version header/i)
+    expect(message).toMatch(/does not match/i)
+  })
+
+  it('maps -32021 MissingRequiredClientCapability and includes the capability name', () => {
+    const err = new MissingRequiredClientCapabilityError({ requiredCapabilities: { sampling: {} } })
+    const message = formatError(err)
+    expect(message).toMatch(/client capability/i)
+    expect(message).toMatch(/sampling/)
+  })
+
+  it('maps -32021 MissingRequiredClientCapability with a plural capability list using agreeing grammar', () => {
+    const err = new MissingRequiredClientCapabilityError({ requiredCapabilities: { sampling: {}, roots: {} } })
+    const message = formatError(err)
+    expect(message).toMatch(/client capability/i)
+    expect(message).toMatch(/did not declare these capabilities: sampling, roots/i)
+  })
+
+  it('maps -32021 MissingRequiredClientCapability without a data payload', () => {
+    const err = new MissingRequiredClientCapabilityError({ requiredCapabilities: {} })
+    const message = formatError(err)
+    expect(message).toMatch(/client capability/i)
+  })
+
+  it('maps -32022 UnsupportedProtocolVersion and hints at --pin', () => {
+    const err = new UnsupportedProtocolVersionError({ supported: ['2026-07-28'], requested: '2027-01-01' })
+    const message = formatError(err)
+    expect(message).toMatch(/does not support protocol version/i)
+    expect(message).toMatch(/2027-01-01/)
+    expect(message).toMatch(/--pin/)
+  })
+
+  it('keeps the existing fallbacks working for non-era errors', () => {
+    expect(formatError(new Error('connect ECONNREFUSED 127.0.0.1:1234'))).toMatch(/Connection refused/)
+    expect(formatError(new Error('401 unauthorized'))).toMatch(/Authentication failed/)
+    expect(formatError('not an Error instance')).toBe('not an Error instance')
   })
 })
 

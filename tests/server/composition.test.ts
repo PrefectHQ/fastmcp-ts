@@ -1,9 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { FastMCP } from '../../src/server/FastMCP'
 import { createProxy } from '../../src/server/proxy'
-import { Client } from '@modelcontextprotocol/sdk/client/index'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory'
-import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types'
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { z } from 'zod'
 
 async function makeClient(server: FastMCP): Promise<Client> {
@@ -119,7 +117,7 @@ describe('Server — Composition', () => {
       await client.connect(clientTransport)
 
       const notified = new Promise<void>((resolve) => {
-        client.setNotificationHandler(ToolListChangedNotificationSchema, () => { resolve() })
+        client.setNotificationHandler('notifications/tools/list_changed', () => { resolve() })
       })
 
       child.tool({ name: 'new_tool', description: 'triggers notification' }, () => 'ok')
@@ -390,8 +388,6 @@ describe('Server — Composition', () => {
     })
 
     it('ctx.log() called inside a mounted child handler reaches the parent client', async () => {
-      const { LoggingMessageNotificationSchema } = await import('@modelcontextprotocol/sdk/types')
-
       const child = track(new FastMCP({ name: 'child' }))
       child.tool({ name: 'logger', description: 'logs' }, async () => {
         await child.getContext().info('hello from child')
@@ -408,7 +404,7 @@ describe('Server — Composition', () => {
       await client.connect(clientTransport)
 
       const received: string[] = []
-      client.setNotificationHandler(LoggingMessageNotificationSchema, (notif) => {
+      client.setNotificationHandler('notifications/message', (notif) => {
         received.push(notif.params.data as string)
       })
 

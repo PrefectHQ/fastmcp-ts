@@ -27,40 +27,51 @@ A middleware can intercept requests at three levels of granularity, and you impl
 
 Per-method hooks — `onCallTool`, `onListTools`, `onReadResource`, `onListResources`, `onListResourceTemplates`, `onGetPrompt`, `onListPrompts` — target a single MCP method. When a middleware defines one, it takes precedence over that instance's `onRequest` for the matching method. Reach for these when a concern only makes sense for one kind of request: rate-limiting tool calls but not list operations, or caching reads while leaving writes untouched.
 
+Not every method has a dedicated hook. `resources/subscribe`, `resources/unsubscribe`, and `completion/complete` have none, so they always reach `onRequest` — a middleware sees them at the coarse level or not at all.
+
 ## Built-in middleware
 
 The built-ins cover the concerns most servers need, so you compose them rather than write them. Each is a class you instantiate and pass to `use()`, and you choose which to layer on based on what the deployment requires.
 
-`LoggingMiddleware` records every request's method, outcome, and elapsed time through a configurable emit function — the first thing to reach for when you want visibility into what a server is doing. `CachingMiddleware` holds responses in a TTL cache so repeated identical calls skip the handler entirely; its default cache key is `method` plus the JSON-serialized params, which is correct for public data but dangerous when responses depend on the caller — see the caveat below. `RateLimitingMiddleware` enforces a fixed-window request budget and throws when a caller exceeds it, protecting expensive handlers from abuse. `SizeLimitingMiddleware` guards the other direction, throwing when a serialized response grows past a byte ceiling. `ErrorNormalizationMiddleware` gives uncaught tool errors a consistent shape, and `CancellationMiddleware` lets a client abort in-flight work it no longer needs.
+`LoggingMiddleware` records every request's method, outcome, and elapsed time through a configurable emit function — the first thing to reach for when you want visibility into what a server is doing. `CachingMiddleware` holds responses in a TTL cache so repeated identical calls skip the handler entirely; its default cache key already partitions by the caller's auth identity, so a cached result never crosses identities — [caching](/concepts/caching) covers the full contract. `RateLimitingMiddleware` enforces a fixed-window request budget and throws when a caller exceeds it, protecting expensive handlers from abuse. `SizeLimitingMiddleware` guards the other direction, throwing when a serialized response grows past a byte ceiling. `ErrorNormalizationMiddleware` gives uncaught tool errors a consistent shape, and `CancellationMiddleware` lets a client abort in-flight work it no longer needs.
 
 | Middleware | Use it to |
 |---|---|
 | `LoggingMiddleware` | Log method, outcome, and elapsed time via a configurable emit function |
-| `CachingMiddleware(ttl, keyFn?)` | Cache responses for `ttl`; pass a `keyFn` to partition by caller when responses are caller-specific |
-| `RateLimitingMiddleware(limit, windowMs)` | Cap requests per fixed window; throws `McpError(InvalidRequest)` when exceeded |
+| `CachingMiddleware(ttl, keyFn?)` | Cache responses for `ttl`; the default key partitions by auth identity, so it is caller-safe without a `keyFn` |
+| `RateLimitingMiddleware(limit, windowMs)` | Cap requests per fixed window; throws `ProtocolError(InvalidRequest)` when exceeded |
 | `SizeLimitingMiddleware(maxBytes)` | Reject responses whose serialized size exceeds `maxBytes` |
-| `ErrorNormalizationMiddleware` | Convert uncaught tool errors to `isError` results; re-throw `McpError` unchanged |
-| `CancellationMiddleware` | Cancel in-flight requests when the client sends a cancellation notification |
+| `ErrorNormalizationMiddleware` | Convert uncaught tool errors to `isError` results; re-throw `ProtocolError` unchanged |
+| `CancellationMiddleware` | Cancel in-flight requests when the client sends a cancellation notification (legacy and stdio only) |
 
-`CachingMiddleware`'s default key is the place a multi-tenant server gets surprised. When a tool's result depends on who is calling — anything gated by [per-component auth](/servers/auth/authorization) — the default `method:params` key serves one caller's cached response to the next. Pass a `CacheKeyFn` that folds the caller's identity into the key so each caller gets its own cache partition.
+`CachingMiddleware` is safe under [per-component auth](/servers/auth/authorization) with no tuning. The default key is `method`, plus an auth partition, plus the serialized params, so a result computed for one caller is never served to another. An anonymous request uses a single `anon` partition; an authenticated request is partitioned by the SHA-256 hash of its bearer token. Auth-filtered results such as a per-caller `tools/list` therefore stay correct out of the box.
+
+A custom `CacheKeyFn` replaces the default key entirely — the auth partition is not merged back in. So when your cached values depend on the caller and you supply a key function, fold identity in yourself, using the hashed bearer token exactly as the default does. Read the token from `ctx.mcpContext.auth`, and never place a raw token in a key.
 
 ```typescript
+import { createHash } from 'node:crypto'
 import { FastMCP, CachingMiddleware } from '@prefecthq/fastmcp-ts/server'
 
 const server = new FastMCP({ name: 'my-server' })
 
 server.use(
-  new CachingMiddleware(30_000, (ctx) => `${ctx.auth?.subject}:${ctx.method}:${JSON.stringify(ctx.params)}`)
+  new CachingMiddleware(30_000, (ctx) => {
+    const token = ctx.mcpContext.auth?.token
+    const id = token ? createHash('sha256').update(token).digest('hex') : 'anon'
+    return `${ctx.method}:${id}:${JSON.stringify(ctx.request)}`
+  }),
 )
 ```
+
+Two kinds of request the cache never touches, whatever your key. It never serves or stores an [input-required](/concepts/input-required) round — a retry re-sends byte-identical params, so a cache would replay the first round's result forever and the flow could never finish. And it never caches the `resources/subscribe` or `resources/unsubscribe` control RPCs, because serving a cached acknowledgement would skip the real subscription change and later updates would never arrive. [Caching](/concepts/caching) covers the full key contract and these exclusions.
 
 ## Error semantics
 
 Two kinds of failure travel through the chain, and FastMCP keeps them distinct on purpose. A tool that fails its own work — a lookup miss, a downstream timeout — represents a *tool* error: the request was valid, but the operation didn't succeed. The client should see that as a result with `isError: true` and decide what to do. A failure in the request machinery itself — a rate limit tripped, a malformed request, an exhausted resource — represents a *protocol* error, and the client should see a JSON-RPC error.
 
-The mechanism that enforces this is deliberate: the try/catch that converts a thrown error into an `isError` result sits *outside* the middleware chain, and it only catches errors that are not `McpError`. So when any middleware throws an `McpError` — rate limiting throwing `InvalidRequest`, size limiting throwing `InternalError` — it sails past that catch and reaches the client as a protocol error, exactly as intended. A plain `Error` thrown from a tool handler is caught and becomes an `isError` tool result. `ErrorNormalizationMiddleware` follows the same rule from the inside: its `onCallTool` converts ordinary errors to `isError` but explicitly re-throws `McpError`, so wrapping it never downgrades a protocol error into a tool result.
+The mechanism that enforces this is deliberate: the try/catch that converts a thrown error into an `isError` result sits *outside* the middleware chain, and it only catches errors that are not `ProtocolError`. So when any middleware throws a `ProtocolError` — rate limiting throwing `InvalidRequest`, size limiting throwing `InternalError` — it sails past that catch and reaches the client as a protocol error, exactly as intended. A plain `Error` thrown from a tool handler is caught and becomes an `isError` tool result. `ErrorNormalizationMiddleware` follows the same rule from the inside: its `onCallTool` converts ordinary errors to `isError` but explicitly re-throws `ProtocolError`, so wrapping it never downgrades a protocol error into a tool result.
 
-The practical consequence: throw `McpError` when something is wrong with the request or the server, and throw or return a plain error when a tool's work fails. The chain routes each to the right place automatically.
+The practical consequence: throw `ProtocolError` when something is wrong with the request or the server, and throw or return a plain error when a tool's work fails. The chain routes each to the right place automatically.
 
 ## Writing middleware
 
@@ -82,3 +93,5 @@ export class TimingMiddleware implements Middleware {
 ```
 
 Because middleware composes on top of the registration system, it works the same way regardless of where a component came from. A middleware you write sees [mounted and proxied](/servers/composition) components and [transformed](/servers/transforms) ones identically to locally registered ones — they are all just requests flowing through the same chain. When a middleware needs to participate in client-initiated traffic rather than wrap a request, register a notification handler in `setup` instead of using a request hook; `CancellationMiddleware` works exactly this way, registering its cancellation handler in `setup` and aborting matching in-flight requests.
+
+Cancellation carries one era boundary worth knowing. `CancellationMiddleware` observes the legacy `notifications/cancelled` message, which covers stdio and legacy HTTP connections. A modern Streamable HTTP client signals cancellation by closing the request's response stream instead of sending that notification, so this middleware never observes it — the client is correctly told the call was cancelled, but the handler keeps running to completion server-side. Unifying the middleware with the modern stream-close signal is tracked work, not yet implemented, so on the modern era treat a long-running handler as uncancellable by this middleware.

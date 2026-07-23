@@ -1,0 +1,36 @@
+---
+title: "AsyncHeaderAuth"
+---
+
+Defined in: [client/auth.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L44)
+
+An auth provider that acquires a token asynchronously and injects it as a
+request header per request. [ClientCredentials](/api/client/classes/ClientCredentials), [JwtBearerAuth](/api/client/classes/JwtBearerAuth),
+and [EnterpriseManagedAuth](/api/client/classes/EnterpriseManagedAuth) all implement it. The transport recognizes
+these by their `kind` discriminant and injects `getHeaders()` on every
+request via a custom fetch wrapper (unlike static `BearerAuth`, whose header
+never changes, or interactive `OAuth`, which the SDK transport drives itself).
+
+## Properties
+
+### kind
+
+```ts
+readonly kind: string;
+```
+
+Defined in: [client/auth.ts:45](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L45)
+
+## Methods
+
+### getHeaders()
+
+```ts
+getHeaders(): Promise<Record<string, string>>;
+```
+
+Defined in: [client/auth.ts:46](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/client/auth.ts#L46)
+
+#### Returns
+
+`Promise`&lt;`Record`&lt;`string`, `string`&gt;&gt;
