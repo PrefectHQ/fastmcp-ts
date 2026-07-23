@@ -43,4 +43,20 @@ export default defineConfig([
       __MCP_SDK_VERSION__: JSON.stringify(sdkVersion),
     },
   },
+  {
+    // The entrypoint bootstrap is spawned as its own process (by run/inspect/
+    // list/call/dev) rather than imported by the CLI bundle, so it's built as
+    // a separate sibling file in dist/cli/ instead of being inlined above.
+    // It has no dependency on the MCP SDK or the rest of the CLI, so it needs
+    // none of the plugins/externals configured for the main cli/index entry.
+    entry: { 'cli/entrypoint-runtime': 'src/cli/entrypoint-runtime.ts' },
+    format: ['cjs'],
+    platform: 'node',
+    dts: false,
+    clean: false,
+    sourcemap: true,
+    banner: { js: '#!/usr/bin/env node' },
+    splitting: false,
+    outExtension: () => ({ js: '.cjs' }),
+  },
 ])

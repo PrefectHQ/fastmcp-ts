@@ -33,6 +33,12 @@ const HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/http-server.mjs')
 const FASTMCP_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/fastmcp-http-server.ts')
 const AUTH_HTTP_SERVER = resolve(import.meta.dirname, 'fixtures/auth-http-server.ts')
 const ENV_SERVER = resolve(import.meta.dirname, 'fixtures/env-server.mjs')
+const ENTRYPOINT_NAMED_SERVER = resolve(import.meta.dirname, 'fixtures/entrypoint-named-server.ts')
+const ENTRYPOINT_DEFAULT_SERVER = resolve(import.meta.dirname, 'fixtures/entrypoint-default-server.ts')
+const ENTRYPOINT_FACTORY_SERVER = resolve(import.meta.dirname, 'fixtures/entrypoint-factory-server.ts')
+const ENTRYPOINT_ALREADY_RUNNING_SERVER = resolve(import.meta.dirname, 'fixtures/entrypoint-already-running-server.ts')
+const ENTRYPOINT_INVALID_EXPORT = resolve(import.meta.dirname, 'fixtures/entrypoint-invalid-export.ts')
+const ENTRYPOINT_AUTODETECT_SKIP = resolve(import.meta.dirname, 'fixtures/entrypoint-autodetect-skip-fixture.ts')
 
 // Claude Desktop's config directory is OS-specific (mirrors the branching in
 // src/cli/utils/config-paths.ts). Resolve it relative to HOME on the current
@@ -970,6 +976,193 @@ describe.sequential('CLI — run', () => {
     subprocess.kill()
     expect(exitCode).toBe(0)
     expect(stderr).toMatch(/echo/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// entrypoint exports — file:export / --export resolve a FastMCP export
+// rather than requiring the file to call .run()/.connect() itself
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — entrypoint exports', () => {
+  it('inspect auto-detects a named `server` export with no explicit --export', async () => {
+    const { exitCode, stderr } = await runCli(['inspect', '--file', ENTRYPOINT_NAMED_SERVER])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('inspect resolves an explicit export via file:export colon syntax', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', `${ENTRYPOINT_NAMED_SERVER}:server`,
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('inspect resolves an explicit export via --export, overriding auto-detection', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', ENTRYPOINT_NAMED_SERVER, '--export', 'server',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('inspect auto-detects a `default` export', async () => {
+    const { exitCode, stderr } = await runCli(['inspect', '--file', ENTRYPOINT_DEFAULT_SERVER])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('list resolves a named export via --export', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', ENTRYPOINT_NAMED_SERVER, '--export', 'server',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('call invokes a tool on a named export resolved via --export', async () => {
+    const { exitCode, stdout } = await runCli([
+      'call', 'echo',
+      '--file', ENTRYPOINT_NAMED_SERVER, '--export', 'server',
+      'message=hello-entrypoint',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stdout).toMatch(/hello-entrypoint/)
+  })
+
+  it('run starts a server resolved from a named export via file:export', async () => {
+    const subprocess = execa(
+      'node',
+      [process.env['FASTMCP_BIN']!, 'run', `${ENTRYPOINT_NAMED_SERVER}:server`],
+      { reject: false, timeout: 5_000 },
+    )
+
+    const stillRunning = await Promise.race([
+      new Promise<boolean>((resolve) => { subprocess.stderr!.on('data', () => resolve(true)) }),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 2_000)),
+      subprocess.then(() => false),
+    ])
+
+    subprocess.kill()
+    expect(stillRunning).toBe(true)
+  })
+
+  it('run --transport http starts an exported FastMCP server reachable via list --url', async () => {
+    const subprocess = execa(
+      'node',
+      [
+        process.env['FASTMCP_BIN']!, 'run', `${ENTRYPOINT_NAMED_SERVER}:server`,
+        '--transport', 'http', '--port', '0',
+      ],
+      { reject: false, timeout: 15_000 },
+    )
+
+    const port = await waitForPort(subprocess)
+
+    const { exitCode, stderr } = await runCli(['list', '--url', `http://localhost:${port}/mcp`])
+
+    subprocess.kill()
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('run --host and --path are honored for an exported FastMCP server', async () => {
+    const subprocess = execa(
+      'node',
+      [
+        process.env['FASTMCP_BIN']!, 'run', `${ENTRYPOINT_NAMED_SERVER}:server`,
+        '--transport', 'http', '--host', '127.0.0.1', '--port', '0', '--path', '/custom-mcp',
+      ],
+      { reject: false, timeout: 15_000 },
+    )
+
+    const port = await waitForPort(subprocess)
+
+    // A wrong --path (still defaulting to /mcp) would 404 here, so success
+    // confirms both --host and --path were passed through to the server.
+    const { exitCode, stderr } = await runCli(['list', '--url', `http://127.0.0.1:${port}/custom-mcp`])
+
+    subprocess.kill()
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('resolves a sync factory function export via --export', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', ENTRYPOINT_FACTORY_SERVER, '--export', 'createServer',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('resolves an async factory function export via --export', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', ENTRYPOINT_FACTORY_SERVER, '--export', 'createServerAsync',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('does not call .run() twice when the file already self-started the exported server', async () => {
+    // If the bootstrap incorrectly called .run() a second time on an
+    // already-running stdio server, the second stdio connect would error and
+    // inspect would fail or hang instead of cleanly listing tools.
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', ENTRYPOINT_ALREADY_RUNNING_SERVER,
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('exits non-zero with a clear error when an explicit --export is not found', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', ENTRYPOINT_NAMED_SERVER, '--export', 'doesNotExist',
+    ])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/doesNotExist/)
+    expect(stderr).toMatch(/not found/i)
+  })
+
+  it('exits non-zero with a clear error when an explicit --export is not a FastMCP server', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', ENTRYPOINT_INVALID_EXPORT, '--export', 'server',
+    ])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/not a FastMCP server/i)
+  })
+
+  it('exits non-zero with a clear error when an explicit --export is not a function or object', async () => {
+    const { exitCode, stderr } = await runCli([
+      'inspect', '--file', ENTRYPOINT_INVALID_EXPORT, '--export', 'notAFunction',
+    ])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/not a FastMCP server/i)
+  })
+
+  it('auto-detect skips a non-instance `default` and a function-valued `mcp` to find `server`', async () => {
+    // entrypoint-autodetect-skip-fixture.ts exports, in auto-detect order:
+    // a non-FastMCP `default`, a function-valued `mcp` (whose body throws if
+    // ever called), and a real FastMCP instance as `server`. If auto-detect
+    // committed to the first name match instead of skipping invalid
+    // candidates, or if it invoked `mcp` speculatively, this would fail.
+    const { exitCode, stderr } = await runCli(['inspect', '--file', ENTRYPOINT_AUTODETECT_SKIP])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('falls back quietly instead of erroring when auto-detect matches a non-FastMCP `server` export', async () => {
+    // entrypoint-invalid-export.ts exports `server` (matching the auto-detect
+    // name) but it isn't a FastMCP instance, and the file has no other
+    // side effects. With no explicit --export, this should be treated as a
+    // "nothing to start" legacy case rather than an error.
+    const subprocess = execa(
+      'node',
+      [process.env['FASTMCP_BIN']!, 'run', ENTRYPOINT_INVALID_EXPORT],
+      { reject: false, timeout: 5_000 },
+    )
+    const result = await subprocess
+    expect(result.exitCode).toBe(0)
   })
 })
 

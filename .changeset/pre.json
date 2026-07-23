@@ -2,7 +2,7 @@
   "mode": "pre",
   "tag": "rc",
   "initialVersions": {
-    "@prefecthq/fastmcp-ts": "0.0.6"
+    "@prefecthq/fastmcp-ts": "0.1.0"
   },
   "changesets": []
 }

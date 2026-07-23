@@ -3,6 +3,7 @@ import type { ClientOptions } from '../../client/client.js'
 import { StdioTransport } from '../../client/transports.js'
 import type { CliAuth } from './auth.js'
 import type { FileSpec } from './file-spec.js'
+import { resolveEntrypointBootstrapPath, buildEntrypointEnv } from './entrypoint-bootstrap.js'
 
 export type TransportMode =
   | { kind: 'url'; url: string }
@@ -59,13 +60,18 @@ export async function connectClient(mode: TransportMode, auth?: CliAuth, era?: E
     return client
   }
 
-  // in-process: spawn the server file via tsx/node and connect via stdio
+  // in-process: spawn the entrypoint bootstrap via tsx/node and connect via stdio.
+  // The bootstrap imports the user's file, resolves the server export, and
+  // calls .run() — which honors MCP_TRANSPORT=stdio set in stdioEnv below.
   const { spec } = mode
+  const bootstrapPath = resolveEntrypointBootstrapPath()
   const [command, cmdArgs] = spec.isTypeScript
-    ? ['npx', ['tsx', spec.filePath]]
-    : ['node', [spec.filePath]]
+    ? ['npx', ['tsx', bootstrapPath]]
+    : ['node', [bootstrapPath]]
 
-  const transport = new StdioTransport(command, cmdArgs, { env: stdioEnv })
+  const transport = new StdioTransport(command, cmdArgs, {
+    env: { ...stdioEnv, ...buildEntrypointEnv(spec) },
+  })
   const client = new Client(transport, { auth, versionNegotiation })
   await client.connect()
   return client

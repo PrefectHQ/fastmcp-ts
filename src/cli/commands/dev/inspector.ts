@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty'
 import { spawn } from 'node:child_process'
 import { parseFileSpec } from '../../utils/file-spec.js'
+import { resolveEntrypointBootstrapPath, buildEntrypointEnv } from '../../utils/entrypoint-bootstrap.js'
 import { cliError, formatError } from '../../utils/error.js'
 import { log } from '../../ui/output.js'
 import { theme } from '../../ui/theme.js'
@@ -10,16 +11,25 @@ import { withSpinner } from '../../ui/spinner.js'
 /**
  * Builds the server command + args the inspector expects as trailing
  * positional arguments — tsx for TypeScript, node for JS — e.g.
- * `['node', '/abs/path/server.js']`.
+ * `['node', '/abs/dist/cli/entrypoint-runtime.cjs']`.
  *
  * The inspector's CLI takes the server's command and args this way
  * (`npx @modelcontextprotocol/inspector node file.js`), not as a single
  * quoted string. Inspector 1.0 repurposed `--server <name>` to select a
  * server from a `--config` file, so passing a command string to `--server`
  * fails outright ("--server requires --config to be specified").
+ *
+ * The command spawns the entrypoint bootstrap rather than the user's file
+ * directly, so `file:export` entrypoint specs resolve the same way `run` and
+ * `inspect` do — the user's file travels in the entrypoint env
+ * (see `buildEntrypointEnv`), and the runner (tsx vs node) still follows the
+ * USER file's type so the bootstrap can import a TypeScript entrypoint.
  */
-export function buildInspectorServerArgs(fileSpec: { filePath: string; isTypeScript: boolean }): string[] {
-  return fileSpec.isTypeScript ? ['npx', 'tsx', fileSpec.filePath] : ['node', fileSpec.filePath]
+export function buildInspectorServerArgs(
+  fileSpec: { isTypeScript: boolean },
+  bootstrapPath: string,
+): string[] {
+  return fileSpec.isTypeScript ? ['npx', 'tsx', bootstrapPath] : ['node', bootstrapPath]
 }
 
 export default defineCommand({
@@ -36,7 +46,7 @@ export default defineCommand({
       cliError(formatError(err))
     }
 
-    const serverArgs = buildInspectorServerArgs(fileSpec)
+    const serverArgs = buildInspectorServerArgs(fileSpec, resolveEntrypointBootstrapPath())
 
     await withSpinner('Starting inspector…', () =>
       new Promise<void>((resolve) => setTimeout(resolve, 300)),
@@ -51,7 +61,11 @@ export default defineCommand({
     const inspectorProcess = spawn(
       'npx',
       ['@modelcontextprotocol/inspector', ...serverArgs],
-      { stdio: 'inherit', shell: true, env: { ...process.env, MCP_TRANSPORT: 'stdio' } },
+      {
+        stdio: 'inherit',
+        shell: true,
+        env: { ...process.env, MCP_TRANSPORT: 'stdio', ...buildEntrypointEnv(fileSpec) },
+      },
     )
 
     log.info(`Inspector running — ${theme.url(`http://localhost:${args.port}`)}`)

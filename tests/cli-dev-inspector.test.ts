@@ -9,19 +9,26 @@ import { buildInspectorServerArgs } from '../src/cli/commands/dev/inspector.js'
 // published inspector). The fix passes the server's command and args as
 // trailing positional arguments instead, matching the inspector's documented
 // CLI contract (`npx @modelcontextprotocol/inspector node file.js`).
+//
+// Since the entrypoints feature, the spawned target is the entrypoint
+// bootstrap, not the user's file — the user's file travels in the entrypoint
+// env (FASTMCP_ENTRYPOINT_FILE). The runner still follows the USER file's
+// type: tsx is required for the bootstrap to import a TypeScript entrypoint.
+const BOOTSTRAP = '/abs/dist/cli/entrypoint-runtime.cjs'
+
 describe('buildInspectorServerArgs', () => {
-  it('runs a JS server file through node', () => {
-    expect(buildInspectorServerArgs({ filePath: '/abs/server.mjs', isTypeScript: false })).toEqual([
+  it('runs the bootstrap through node for a JS server file', () => {
+    expect(buildInspectorServerArgs({ isTypeScript: false }, BOOTSTRAP)).toEqual([
       'node',
-      '/abs/server.mjs',
+      BOOTSTRAP,
     ])
   })
 
-  it('runs a TypeScript server file through npx tsx', () => {
-    expect(buildInspectorServerArgs({ filePath: '/abs/server.ts', isTypeScript: true })).toEqual([
+  it('runs the bootstrap through npx tsx for a TypeScript server file', () => {
+    expect(buildInspectorServerArgs({ isTypeScript: true }, BOOTSTRAP)).toEqual([
       'npx',
       'tsx',
-      '/abs/server.ts',
+      BOOTSTRAP,
     ])
   })
 })
