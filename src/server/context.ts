@@ -271,6 +271,31 @@ export function createContext(
   const isModernEra = sdkCtx.mcpReq.envelope !== undefined
   const isModernHttpRequest = isModernEra && sdkCtx.http !== undefined
 
+  // Route the push-style server→client requests (sampling/createMessage,
+  // elicitation/create, roots/list) raised INSIDE this tool call onto the
+  // in-flight request's own response stream.
+  //
+  // These requests carry `relatedRequestId === undefined` by default, which the
+  // SDK routes to the STANDALONE server→client stream — on legacy sessionful HTTP
+  // the "_GET_stream". The sessionful transport DROPS such a message silently when
+  // that stream is not yet attached (the client opens it fire-and-forget after
+  // `initialize`, and a fresh GET carries no Last-Event-ID so nothing replays it).
+  // A real client whose first post-connect operation is a sampling/elicit tool can
+  // therefore hang to its timeout, awaiting a reply the server already dropped.
+  //
+  // Threading the in-flight request id makes the transport pick the POST stream
+  // keyed by that id in `_requestToStreamMapping` — the very stream the client is
+  // already awaiting the tools/call response on — so the round-trip completes with
+  // no dependence on the standalone stream. This is exactly what the SDK's own
+  // legacy `inputRequired` shim does for its embedded input-request legs.
+  //
+  // Threaded unconditionally, which is correct on every combo: the modern era gate
+  // (`_assertPushApiInServedEra`) throws before any wire send, and the stdio
+  // transport ignores send options entirely (a single bidirectional pipe). Only the
+  // legacy sessionful-HTTP transport reads `relatedRequestId` — the path this fixes.
+  // (task-25)
+  const serverRequestOptions = { relatedRequestId: sdkCtx.mcpReq.id }
+
   async function log(level: LogLevel, message: string, loggerName?: string): Promise<void> {
     await sdkCtx.mcpReq.log(level, message, loggerName)
   }
@@ -315,16 +340,19 @@ export function createContext(
           )
         }
       }
-      const result = await server.createMessage({
-        messages: params.messages,
-        maxTokens: params.maxTokens ?? 1024,
-        ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
-        ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
-        ...(params.stopSequences !== undefined ? { stopSequences: params.stopSequences } : {}),
-        ...(params.modelPreferences !== undefined
-          ? { modelPreferences: params.modelPreferences }
-          : {}),
-      })
+      const result = await server.createMessage(
+        {
+          messages: params.messages,
+          maxTokens: params.maxTokens ?? 1024,
+          ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
+          ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+          ...(params.stopSequences !== undefined ? { stopSequences: params.stopSequences } : {}),
+          ...(params.modelPreferences !== undefined
+            ? { modelPreferences: params.modelPreferences }
+            : {}),
+        },
+        serverRequestOptions,
+      )
       return {
         role: 'assistant' as const,
         content: result.content as SamplingResult['content'],
@@ -344,12 +372,15 @@ export function createContext(
           )
         }
       }
-      const result = await server.elicitInput({
-        message,
-        // Cast: our simplified ElicitationSchema is a subset of the SDK's PrimitiveSchemaDefinition union
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        requestedSchema: schema as any,
-      })
+      const result = await server.elicitInput(
+        {
+          message,
+          // Cast: our simplified ElicitationSchema is a subset of the SDK's PrimitiveSchemaDefinition union
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          requestedSchema: schema as any,
+        },
+        serverRequestOptions,
+      )
       return {
         action: result.action,
         content: result.content as ElicitationResult['content'],
@@ -367,7 +398,7 @@ export function createContext(
           )
         }
       }
-      const result = await server.listRoots()
+      const result = await server.listRoots(undefined, serverRequestOptions)
       return result.roots
     },
 

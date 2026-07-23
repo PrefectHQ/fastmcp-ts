@@ -123,12 +123,14 @@ Content types for `PromptMessage.content`: `text`, `image`, `audio`, `resource` 
 | `log(level, message, loggerName?)` | Send a log notification to the client (RFC 5424 levels) |
 | `debug/info/notice/warning/error/critical/alert/emergency(msg, loggerName?)` | Convenience log shorthands |
 | `reportProgress(progress, total?, message?)` | Send `notifications/progress` — no-op when no `progressToken` in the request |
-| `sample(params)` | Ask the client to perform LLM inference (`sampling/createMessage`) — throws if client lacks `sampling` capability |
-| `elicit(message, schema)` | Ask the client to collect user input via a form — throws if client lacks `elicitation` capability |
-| `listRoots()` | Fetch declared filesystem roots from the client — throws if client lacks `roots` capability |
+| `sample(params)` | Ask the client to perform LLM inference (`sampling/createMessage`) — throws if client lacks `sampling` capability; on legacy HTTP the request rides the in-flight call's stream (see push routing below) |
+| `elicit(message, schema)` | Ask the client to collect user input via a form — throws if client lacks `elicitation` capability; on legacy HTTP the request rides the in-flight call's stream (see push routing below) |
+| `listRoots()` | Fetch declared filesystem roots from the client — throws if client lacks `roots` capability; on legacy HTTP the request rides the in-flight call's stream (see push routing below) |
 | `getState(key)` | Read a value from per-session state |
 | `setState(key, value)` | Write a value to per-session state (survives across requests in the same session) |
 | `deleteState(key)` | Remove a value from per-session state |
+
+**Legacy-HTTP push routing:** `sample`, `elicit`, and `listRoots` raise a server→client request. On a legacy sessionful HTTP connection FastMCP tags each with the in-flight tool call's request id (`relatedRequestId = sdkCtx.mcpReq.id`), so the request rides that call's POST response stream instead of the standalone server→client stream (`_GET_stream`). This removes a startup hang: the standalone stream opens only after the client's post-`initialize` `GET`, and the sessionful SDK transport drops a request sent before that stream attaches (a fresh `GET` carries no `Last-Event-ID`, so nothing replays it). The threading is unconditional and safe on the other paths — the modern era gate throws before any wire send, and the stdio transport ignores send options (single pipe). Same pattern the SDK's own legacy `inputRequired` shim uses for its embedded legs. See `src/server/context.ts` and the discriminating regression in `tests/server/legacy-http-push-routing.test.ts` (which never opens a `GET`).
 
 Session state is available on stdio (a single shared map for the transport's lifetime) and legacy HTTP sessions (each an isolated `Map<string, unknown>`). On a modern (2026-07-28) HTTP request there is no session store — every request runs statelessly — so `getState` / `setState` / `deleteState` each throw a pointed error (`SESSION_STATE_MODERN_HTTP_ERROR`) rather than silently reading or writing a fresh per-request map. Use `ctx.requestState()` for per-request state and `ctx.mintRequestState()` to carry state across a multi-round-trip flow (see MRTR).
 

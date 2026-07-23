@@ -137,20 +137,22 @@ export async function connectEra(
  * racing the channel coming up.
  *
  * WHY THIS EXISTS. Server→client messages that are NOT correlated to an in-flight
- * client request — `notifications/resources/updated` (from `notifyResourceUpdated`),
- * and the `sampling/createMessage` / `elicitation/create` server→client REQUESTS
- * raised by `ctx.sample()` / `ctx.elicit()` — travel over a single "standalone" SSE
- * stream (the SDK keys it `_GET_stream`). The SDK client opens that stream
- * fire-and-forget when it sends `notifications/initialized` during `connect()`, and
- * the SDK server DROPS any such message sent before the stream is registered — a
- * freshly-opened GET carries no `Last-Event-ID`, so the event store never replays it.
- * A push triggered in the window between `connect()` resolving and the stream
- * attaching is therefore lost forever: a dropped notification reads as an empty array,
- * and an undeliverable server→client request leaves the tool awaiting a reply that
- * never comes (a 10s test timeout). The window is invisible on fast local runners but
- * real on slower/contended CI runners (PR #38: Linux, Node 22 and Node "latest").
- * (Request-correlated pushes — `ctx.log`, `ctx.reportProgress` — ride the in-flight
- * request's own stream, which is always attached, so they are unaffected.)
+ * client request — `notifications/resources/updated` (from `notifyResourceUpdated`) —
+ * travel over a single "standalone" SSE stream (the SDK keys it `_GET_stream`).
+ * The SDK client opens that stream fire-and-forget when it sends
+ * `notifications/initialized` during `connect()`, and the SDK server DROPS any such
+ * message sent before the stream is registered — a freshly-opened GET carries no
+ * `Last-Event-ID`, so the event store never replays it. A notification triggered in
+ * the window between `connect()` resolving and the stream attaching is therefore
+ * lost forever: a dropped notification reads as an empty array. The window is
+ * invisible on fast local runners but real on slower/contended CI runners
+ * (PR #38: Linux, Node 22 and Node "latest").
+ * (Request-correlated pushes ride the in-flight request's own stream, which is
+ * always attached, so they are unaffected: `ctx.log`, `ctx.reportProgress`, and —
+ * since the legacy-HTTP push-routing fix threaded `relatedRequestId` — the
+ * `ctx.sample()` / `ctx.elicit()` / `ctx.listRoots()` server→client requests too.
+ * The barrier is only needed for the genuinely-uncorrelated notifications above;
+ * see tests/server/legacy-http-push-routing.test.ts for the routing proof.)
  *
  * NO-OP for stdio (one pinned bidirectional pipe — the push channel is live the moment
  * `connect()` resolves) and for modern HTTP (stateless; sampling/elicit never cross the
