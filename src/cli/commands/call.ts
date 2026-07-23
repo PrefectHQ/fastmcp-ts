@@ -61,7 +61,7 @@ export default defineCommand({
     auth: { type: 'string', description: 'Bearer token' },
     'input-json': { type: 'string', description: 'Raw JSON input instead of key=value args' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
-    modern: { type: 'boolean', description: 'Opt stdio/in-process connections into version negotiation', default: false },
+    modern: { type: 'boolean', description: 'Turn on version negotiation for stdio and in-process connections', default: false },
     pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args, rawArgs }) {

@@ -7,9 +7,10 @@ import type {
   PriorDiscovery,
   InputRequiredOptions,
   ResponseCacheStore,
+  Transport,
 } from "@modelcontextprotocol/client";
 import { BearerAuth, OAuth } from './auth.js'
-import type { ClientCredentials } from './auth.js'
+import type { AsyncHeaderAuth } from './auth.js'
 import type { ClientHandlers, ListChangedHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
 import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
@@ -73,7 +74,7 @@ export interface ClientOptions {
    * Authentication to attach to HTTP requests.
    * A plain string is treated as a Bearer token.
    */
-  auth?: BearerAuth | OAuth | ClientCredentials | string
+  auth?: BearerAuth | OAuth | AsyncHeaderAuth | string
   handlers?: ClientHandlers
   /**
    * Filesystem roots to advertise to the server.
@@ -170,9 +171,22 @@ export class Client implements IClient {
    * 2025-only RPCs, physically absent from the modern method registry. Unused
    * (stays undefined) on a legacy connection. */
   private _resourceListenSubscription: McpSubscription | undefined
+  /** The live SDK transport captured at connect(). Its `finishAuth()` redeems the
+   * authorization code both during connect-time recovery and a post-connect
+   * step-up re-authorization. */
+  private _transport: Transport | undefined
+  /** Single-flight guard for a post-connect re-authorization round: concurrent
+   * interactive-OAuth 401s share one `waitForCallback`→`finishAuth` round rather
+   * than each opening its own. Cleared when the round settles. */
+  private _reauthPromise: Promise<void> | null = null
+  /** Max post-connect re-authorization rounds per request (see `_reauthRetry`):
+   * 1 for ordinary step-up, 2 to also cover SEP-2352 authorization-server
+   * migration (the AS changes mid-request). Bounded so a genuinely unauthorized
+   * request cannot loop forever. */
+  private static readonly _MAX_REAUTH_ROUNDS = 2
 
   private readonly _input: ClientTransportInput
-  private readonly _auth: BearerAuth | OAuth | ClientCredentials | undefined
+  private readonly _auth: BearerAuth | OAuth | AsyncHeaderAuth | undefined
   private readonly _handlers: Required<Omit<ClientHandlers, OptionalHandlerKeys>> &
     Pick<ClientHandlers, OptionalHandlerKeys>
   private readonly _roots: (() => Promise<Root[]>) | undefined
@@ -275,6 +289,7 @@ export class Client implements IClient {
 
     if (beforeConnect) await beforeConnect()
 
+    this._transport = transport
     try {
       await sdkClient.connect(transport, this._prior ? { prior: this._prior } : undefined)
     } catch (err) {
@@ -287,19 +302,13 @@ export class Client implements IClient {
         // code string) lets the SDK validate `iss` against the recorded
         // issuer before redeeming the code.
         const callbackParams = await this._auth.waitForCallback()
-        if (
-          'finishAuth' in transport &&
-          typeof (transport as Record<string, unknown>).finishAuth === 'function'
-        ) {
-          await (
-            transport as { finishAuth(params: URLSearchParams): Promise<void> }
-          ).finishAuth(callbackParams)
-        }
+        await this._finishAuth(transport, callbackParams)
         // The original transport is already started and cannot be reconnected;
         // build a fresh one for the authenticated attempt. It reads the tokens
         // finishAuth stored in the auth provider.
         const retry = await resolveTransport(this._input, this._auth)
         if (retry.beforeConnect) await retry.beforeConnect()
+        this._transport = retry.transport
         await sdkClient.connect(retry.transport)
       } else {
         throw err
@@ -392,10 +401,10 @@ export class Client implements IClient {
    */
   async ping(options?: RequestOptions): Promise<boolean> {
     if (this.getProtocolEra() === 'modern') {
-      await this._sdk().discover(this._toSdkOptions(options))
+      await this._reauthRetry(() => this._sdk().discover(this._toSdkOptions(options)))
       return true
     }
-    await this._sdk().ping(this._toSdkOptions(options))
+    await this._reauthRetry(() => this._sdk().ping(this._toSdkOptions(options)))
     return true
   }
 
@@ -413,9 +422,11 @@ export class Client implements IClient {
   // -------------------------------------------------------------------------
 
   async listTools(options?: RequestOptions): Promise<Tool[]> {
-    const result = await this._sdk().listTools(
-      this._metaParams(),
-      this._toSdkOptions(options, undefined, this._defaultOptions.tool?.timeout),
+    const result = await this._reauthRetry(() =>
+      this._sdk().listTools(
+        this._metaParams(),
+        this._toSdkOptions(options, undefined, this._defaultOptions.tool?.timeout),
+      ),
     )
     return result.tools as Tool[]
   }
@@ -448,9 +459,8 @@ export class Client implements IClient {
       options?.onProgress,
       this._defaultOptions.tool?.timeout,
     )
-    const result = await this._sdk().callTool(
-      { name, arguments: args ?? {}, ...this._metaParams() },
-      sdkOptions,
+    const result = await this._reauthRetry(() =>
+      this._sdk().callTool({ name, arguments: args ?? {}, ...this._metaParams() }, sdkOptions),
     )
     return {
       content: result.content as ContentBlock[],
@@ -464,17 +474,21 @@ export class Client implements IClient {
   // -------------------------------------------------------------------------
 
   async listResources(options?: RequestOptions): Promise<Resource[]> {
-    const result = await this._sdk().listResources(
-      this._metaParams(),
-      this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+    const result = await this._reauthRetry(() =>
+      this._sdk().listResources(
+        this._metaParams(),
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      ),
     )
     return result.resources as Resource[]
   }
 
   async listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]> {
-    const result = await this._sdk().listResourceTemplates(
-      this._metaParams(),
-      this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+    const result = await this._reauthRetry(() =>
+      this._sdk().listResourceTemplates(
+        this._metaParams(),
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      ),
     )
     return result.resourceTemplates as ResourceTemplate[]
   }
@@ -483,18 +497,22 @@ export class Client implements IClient {
     uri: string,
     options?: RequestOptions,
   ): Promise<Array<TextResourceContents | BlobResourceContents>> {
-    const result = await this._sdk().readResource(
-      { uri, ...this._metaParams() },
-      this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+    const result = await this._reauthRetry(() =>
+      this._sdk().readResource(
+        { uri, ...this._metaParams() },
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      ),
     )
     return result.contents
   }
 
   /** Returns the raw SDK ReadResourceResult without unwrapping. */
   async readResourceRaw(uri: string, options?: RequestOptions) {
-    return this._sdk().readResource(
-      { uri, ...this._metaParams() },
-      this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+    return this._reauthRetry(() =>
+      this._sdk().readResource(
+        { uri, ...this._metaParams() },
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      ),
     )
   }
 
@@ -516,9 +534,11 @@ export class Client implements IClient {
     if (this._sdk().getProtocolEra() === 'modern') {
       await this._refreshResourceListenSubscription()
     } else {
-      await this._sdk().subscribeResource(
-        { uri, ...this._metaParams() },
-        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      await this._reauthRetry(() =>
+        this._sdk().subscribeResource(
+          { uri, ...this._metaParams() },
+          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+        ),
       )
     }
   }
@@ -528,9 +548,11 @@ export class Client implements IClient {
     if (this._sdk().getProtocolEra() === 'modern') {
       await this._refreshResourceListenSubscription()
     } else {
-      await this._sdk().unsubscribeResource(
-        { uri, ...this._metaParams() },
-        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      await this._reauthRetry(() =>
+        this._sdk().unsubscribeResource(
+          { uri, ...this._metaParams() },
+          this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+        ),
       )
     }
   }
@@ -550,7 +572,12 @@ export class Client implements IClient {
     const uris = [...this._resourceSubscriptions.keys()]
     if (uris.length === 0) return
 
-    const subscription = await this._sdk().listen({ resourceSubscriptions: uris })
+    // The modern subscribeResource/unsubscribeResource leg: opening the
+    // `subscriptions/listen` stream is a server-auth-gated request, so it steps
+    // up on a post-connect 401 like every other request method.
+    const subscription = await this._reauthRetry(() =>
+      this._sdk().listen({ resourceSubscriptions: uris }),
+    )
     this._resourceListenSubscription = subscription
 
     // Robustness: an unexpected disconnect ('remote') re-establishes the stream so
@@ -572,9 +599,11 @@ export class Client implements IClient {
   // -------------------------------------------------------------------------
 
   async listPrompts(options?: RequestOptions): Promise<Prompt[]> {
-    const result = await this._sdk().listPrompts(
-      this._metaParams(),
-      this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
+    const result = await this._reauthRetry(() =>
+      this._sdk().listPrompts(
+        this._metaParams(),
+        this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
+      ),
     )
     return result.prompts as Prompt[]
   }
@@ -584,9 +613,11 @@ export class Client implements IClient {
     args?: Record<string, string>,
     options?: RequestOptions,
   ): Promise<GetPromptResult> {
-    const result = await this._sdk().getPrompt(
-      { name, arguments: args, ...this._metaParams() },
-      this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
+    const result = await this._reauthRetry(() =>
+      this._sdk().getPrompt(
+        { name, arguments: args, ...this._metaParams() },
+        this._toSdkOptions(options, undefined, this._defaultOptions.prompt?.timeout),
+      ),
     )
     return result as GetPromptResult
   }
@@ -601,9 +632,11 @@ export class Client implements IClient {
     context?: { arguments?: Record<string, string> },
     options?: RequestOptions,
   ): Promise<CompletionResult> {
-    const result = await this._sdk().complete(
-      { ref, argument, ...(context ? { context } : {}), ...this._metaParams() },
-      this._toSdkOptions(options),
+    const result = await this._reauthRetry(() =>
+      this._sdk().complete(
+        { ref, argument, ...(context ? { context } : {}), ...this._metaParams() },
+        this._toSdkOptions(options),
+      ),
     )
     return result.completion as CompletionResult
   }
@@ -627,7 +660,9 @@ export class Client implements IClient {
       this._logLevel = level
       return
     }
-    await this._sdk().setLoggingLevel(level, this._toSdkOptions(options))
+    await this._reauthRetry(() =>
+      this._sdk().setLoggingLevel(level, this._toSdkOptions(options)),
+    )
   }
 
   // -------------------------------------------------------------------------
@@ -639,6 +674,127 @@ export class Client implements IClient {
       throw new Error('Client is not connected. Call connect() first.')
     }
     return this._sdkClient
+  }
+
+  /**
+   * Runs a post-connect SDK request and, when it rejects with the SDK's
+   * `UnauthorizedError` under an interactive {@link OAuth} provider, performs a
+   * bounded number of step-up re-authorization rounds — the same
+   * `waitForCallback`→`finishAuth` machinery `connect()` uses — retrying the
+   * request after each.
+   *
+   * This closes the post-connect gap for interactive OAuth: a request that 401s
+   * (missing/expired token) or 403s with an `insufficient_scope` challenge (a
+   * broader scope is required for that operation) drives the SDK transport to
+   * issue a fresh, scope-honoring authorization request and re-throw
+   * `UnauthorizedError` — the transport picks the challenged/union scope itself
+   * (`extractWWWAuthenticateParams` + `computeScopeUnion`); this wrapper only
+   * completes the interrupted round and retries.
+   *
+   * The bound is {@link Client._MAX_REAUTH_ROUNDS}. One round covers ordinary
+   * step-up (a single 401/403). Two rounds cover SEP-2352 authorization-server
+   * migration: the first authenticated request flips the MCP server to a new
+   * authorization server (its Protected Resource Metadata now lists a different
+   * issuer), so the very next request 401s and must re-discover, re-register, and
+   * re-authorize at the NEW server — a second round on the same wrapped request.
+   * Beyond the bound the `UnauthorizedError` propagates, so a genuinely
+   * unauthorized request never loops forever.
+   *
+   * Each round is single-flight: concurrent 401s share one `_reauthPromise`, and
+   * each caller retries its own request after it resolves — a burst never opens
+   * multiple browsers.
+   *
+   * Non-interactive auth is never re-authorized here — the original error
+   * propagates unchanged. `BearerAuth` and custom headers carry no interactive
+   * step, and a {@link ClientCredentials} scope failure is a machine-to-machine
+   * misconfiguration (no user, no browser), not a step-up flow.
+   * `MultiServerClient` configures no interactive OAuth by design, so this path
+   * stays inert there.
+   *
+   * Every outbound request method routes through this wrapper, with one
+   * exception: {@link Client.notifyRootsChanged} calls the SDK directly. It sends
+   * a notification, not a request, so there is no response to 401/403 and
+   * nothing to retry.
+   *
+   * `BrowserOAuth` (`extends OAuth`) is covered by the same guard, and its
+   * `waitForCallback` is sound for a post-connect round — `redirectToAuthorization`
+   * arms the callback promise before the transport re-throws. Two browser-only
+   * caveats apply, honestly: in **popup** mode `window.open` needs a user gesture,
+   * so a step-up fired from a request not within one is blocked and the re-auth
+   * error propagates (call from a click); **redirect** mode navigates the whole
+   * tab away (`window.location.assign`), destroying this in-flight retry — the app
+   * recovers via `resumeFromRedirect()` on the return load and a fresh request,
+   * not by this wrapper. The migration second round inherits the popup caveat: it
+   * runs outside the original user gesture, so under `BrowserOAuth` popup mode it
+   * hits the user-gesture block and surfaces as that error rather than opening a
+   * second popup.
+   */
+  private async _reauthRetry<T>(op: () => Promise<T>): Promise<T> {
+    let rounds = 0
+    for (;;) {
+      try {
+        return await op()
+      } catch (err) {
+        if (!(err instanceof UnauthorizedError) || !(this._auth instanceof OAuth)) throw err
+        // Bounded — see _MAX_REAUTH_ROUNDS. Beyond the bound the error propagates
+        // so a genuinely unauthorized request never loops forever.
+        if (rounds >= Client._MAX_REAUTH_ROUNDS) throw err
+        rounds++
+        await this._reauthorize(this._auth)
+      }
+    }
+  }
+
+  /** Single-flight wrapper around one re-authorization round. */
+  private async _reauthorize(auth: OAuth): Promise<void> {
+    this._reauthPromise ??= this._doReauthorize(auth).finally(() => {
+      this._reauthPromise = null
+    })
+    await this._reauthPromise
+  }
+
+  /**
+   * One re-authorization round: await the authorization callback the SDK
+   * transport already armed (its 401/403 handling ran discovery + opened the
+   * browser with the challenged scope), then `finishAuth()` redeems the code for
+   * the broader-scope token on the live transport. The very next request reads
+   * that token via the transport's per-request bearer-token bridge.
+   *
+   * After redeeming, the cached discovery state is invalidated so that the NEXT
+   * authorization leg re-discovers the Protected Resource Metadata from scratch.
+   * The SDK's `auth()` otherwise pins to the authorization server it first cached
+   * and re-fetches PRM only when it has none — so it never notices a SEP-2352
+   * migration (PRM `authorization_servers` changing to a new issuer). Clearing it
+   * here (after the current round's callback leg has already consumed it) makes a
+   * subsequent 401 re-run discovery, land on the new server, and register there.
+   * Re-discovery is idempotent when the server has NOT migrated, so ordinary
+   * step-up and token-refresh rounds are unaffected beyond one extra metadata
+   * fetch.
+   */
+  private async _doReauthorize(auth: OAuth): Promise<void> {
+    const callbackParams = await auth.waitForCallback()
+    // `_transport` is always set post-connect (assigned in _doConnect before
+    // `_sdkClient`), and this round only ever runs after a successful request —
+    // so the guard is theoretical. It stays only to keep the type non-null
+    // without a non-null assertion; a missing transport silently no-ops rather
+    // than throwing, which is the safer degradation if that invariant ever breaks.
+    if (this._transport) await this._finishAuth(this._transport, callbackParams)
+    await auth.invalidateCredentials('discovery')
+  }
+
+  /**
+   * Redeems the authorization callback params for tokens on `transport`, if it
+   * exposes `finishAuth` (StreamableHTTP and SSE do). Shared by connect-time
+   * recovery and post-connect step-up. Passing `URLSearchParams` (not a bare
+   * code) lets the SDK validate the RFC 9207 `iss` before redeeming.
+   */
+  private async _finishAuth(transport: Transport, params: URLSearchParams): Promise<void> {
+    if (
+      'finishAuth' in transport &&
+      typeof (transport as Record<string, unknown>).finishAuth === 'function'
+    ) {
+      await (transport as { finishAuth(p: URLSearchParams): Promise<void> }).finishAuth(params)
+    }
   }
 
   /**
@@ -759,8 +915,8 @@ export class Client implements IClient {
 // ---------------------------------------------------------------------------
 
 function resolveAuth(
-  auth: BearerAuth | OAuth | ClientCredentials | string | undefined,
-): BearerAuth | OAuth | ClientCredentials | undefined {
+  auth: BearerAuth | OAuth | AsyncHeaderAuth | string | undefined,
+): BearerAuth | OAuth | AsyncHeaderAuth | undefined {
   if (!auth) return undefined
   if (typeof auth === 'string') return new BearerAuth(auth)
   return auth

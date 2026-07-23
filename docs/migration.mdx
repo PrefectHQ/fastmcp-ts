@@ -87,7 +87,25 @@ const server = new FastMCP({
 await server.run({ transport: 'http', port: 3000 })
 ```
 
-The bind address itself is under review for 1.0. `MCP_HOST` sets the address an HTTP server binds to, and its default is being reconsidered alongside this security posture. Set `MCP_HOST` to the address you intend rather than relying on the default, and choose it deliberately — the host you bind and the rebinding guard are coupled. [Running a server](/servers/running) covers binding and the guard in full.
+The bind host and this guard are coupled, so 1.0 also changes the default bind host — see [Default bind host](#default-bind-host) below. `MCP_HOST` sets the address an HTTP server binds to. Choose it on purpose, because the host you bind selects the guard's default posture. [Running a server](/servers/running) covers binding and the guard in full.
+
+## Default bind host
+
+0.x bound an HTTP server to `0.0.0.0` by default, which exposes it on every network interface. 1.0 binds `127.0.0.1` by default, which keeps it on the local machine. This matches the parent fastmcp project, and it turns the DNS-rebinding guard on out of the box, because a loopback bind enables the guard automatically.
+
+A deployment that relied on the default-exposed bind must now set the host explicitly. Set `MCP_HOST=0.0.0.0`, or pass `host: '0.0.0.0'` to `run()`, and configure `dnsRebinding` to protect the exposed bind. The loopback default no longer answers requests from other machines.
+
+```typescript 0.x
+// 0.x exposed the server on every interface by default.
+await server.run({ transport: 'http', port: 3000 })
+```
+
+```typescript 1.0
+// 1.0 binds loopback by default; set the host to expose the server.
+await server.run({ transport: 'http', host: '0.0.0.0', port: 3000 })
+```
+
+The bind host and the DNS-rebinding guard are coupled, so choose the host on purpose. The [Server binding](#server-binding) break above covers the guard. [Running a server](/servers/running) covers binding and the guard in full.
 
 ## Caching keys
 

@@ -6,8 +6,8 @@ import {
 } from '@modelcontextprotocol/client'
 import type { ClientCapabilities } from '@modelcontextprotocol/client'
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
-import { PassThrough } from 'node:stream'
 import type { FastMCP } from 'fastmcp-ts/server'
+import { stdioPipePair } from './stdio.js'
 
 // ---------------------------------------------------------------------------
 // Dual-era test harness
@@ -96,8 +96,7 @@ export async function connectEra(
     // pipe. serveStdio negotiates the era from the client's opening exchange over
     // these pipes, exercising the real stdio serving path for BOTH eras with no child
     // process (the server definition lives in the test).
-    const clientToServer = new PassThrough()
-    const serverToClient = new PassThrough()
+    const { clientToServer, serverToClient } = stdioPipePair()
     await mcp.run({ transport: 'stdio', stdin: clientToServer, stdout: serverToClient })
     await client.connect(new StdioServerTransport(serverToClient, clientToServer))
   } else {

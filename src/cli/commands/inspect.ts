@@ -16,7 +16,7 @@ export default defineCommand({
     file: { type: 'string', description: 'Server file (e.g. server.ts)' },
     auth: { type: 'string', description: 'Bearer token' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
-    modern: { type: 'boolean', description: 'Opt stdio/in-process connections into version negotiation', default: false },
+    modern: { type: 'boolean', description: 'Turn on version negotiation for stdio and in-process connections', default: false },
     pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args }) {

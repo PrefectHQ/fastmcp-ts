@@ -2,7 +2,7 @@
 title: "Middleware"
 ---
 
-Defined in: [server/middleware.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L24)
+Defined in: [server/middleware.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L24)
 
 A middleware hook. Either call `next()` and return (optionally transforming) its
 result, or short-circuit by returning your own result without calling `next()`.
@@ -18,7 +18,7 @@ the call boundary.
 optional onCallTool(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L32)
+Defined in: [server/middleware.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L32)
 
 #### Parameters
 
@@ -42,7 +42,7 @@ Defined in: [server/middleware.ts:32](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional onGetPrompt(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L37)
+Defined in: [server/middleware.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L37)
 
 #### Parameters
 
@@ -66,7 +66,7 @@ Defined in: [server/middleware.ts:37](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional onListPrompts(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L38)
+Defined in: [server/middleware.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L38)
 
 #### Parameters
 
@@ -90,7 +90,7 @@ Defined in: [server/middleware.ts:38](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional onListResources(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L35)
+Defined in: [server/middleware.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L35)
 
 #### Parameters
 
@@ -114,7 +114,7 @@ Defined in: [server/middleware.ts:35](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional onListResourceTemplates(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L36)
+Defined in: [server/middleware.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L36)
 
 #### Parameters
 
@@ -138,7 +138,7 @@ Defined in: [server/middleware.ts:36](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional onListTools(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L33)
+Defined in: [server/middleware.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L33)
 
 #### Parameters
 
@@ -162,7 +162,7 @@ Defined in: [server/middleware.ts:33](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional onReadResource(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L34)
+Defined in: [server/middleware.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L34)
 
 #### Parameters
 
@@ -186,7 +186,7 @@ Defined in: [server/middleware.ts:34](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:29](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L29)
+Defined in: [server/middleware.ts:29](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L29)
 
 #### Parameters
 
@@ -210,7 +210,7 @@ Defined in: [server/middleware.ts:29](https://github.com/PrefectHQ/fastmcp-ts/bl
 optional setup(server): void;
 ```
 
-Defined in: [server/middleware.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L26)
+Defined in: [server/middleware.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L26)
 
 Called once per Server instance. Use to register notification handlers or other server-level setup.
 

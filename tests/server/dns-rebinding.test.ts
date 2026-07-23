@@ -88,6 +88,28 @@ function dnsWarnCount(): number {
 
 describe('DNS-rebinding protection', () => {
   describe('default posture — loopback bind auto-enables', () => {
+    it('applies out of the box: a default-bind server (no host, no dnsRebinding) rejects an evil Host with 403', async () => {
+      // No `host` and no `dnsRebinding` config: run() falls back to the loopback
+      // default (127.0.0.1, parent-fastmcp parity), so the guard auto-enables with
+      // zero configuration. This is the 1.0 posture — protection is the out-of-the-box
+      // behaviour, not an opt-in.
+      const mcp = new FastMCP({ name: 'dns' })
+      await mcp.run({ transport: 'http', port: 0 })
+      const { host, port, path } = mcp.address!
+      const connectHost = host === '0.0.0.0' ? '127.0.0.1' : host
+      try {
+        const evil = await rawInitialize(connectHost, port, path, {
+          host: 'evil.example.com',
+          origin: 'http://evil.example.com',
+        })
+        expect(evil.status).toBe(403)
+        // Zero-config default binds loopback, so the open-posture warning never fires.
+        expect(dnsWarnCount()).toBe(0)
+      } finally {
+        await mcp.close()
+      }
+    })
+
     it('rejects a non-localhost Host with 403 and accepts a localhost Host', async () => {
       const mcp = new FastMCP({ name: 'dns' })
       await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })

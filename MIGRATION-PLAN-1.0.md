@@ -727,7 +727,7 @@ Docs are a release gate, not an afterthought. A feature does not ship until its 
 *(Burn-down addendum, 2026-07-23 — new surface the pages below must also cover:
 `FastMCPOptions.dnsRebinding` + the security posture (auto-on loopback, warn-once on routable
 binds; reconcile with running.mdx's `MCP_HOST=0.0.0.0` default and the open default-host
-decision); server-side `resources/subscribe`/`unsubscribe` + the new public
+decision — settled: 127.0.0.1, burn phase 2 Task 18); server-side `resources/subscribe`/`unsubscribe` + the new public
 `mcp.notifyResourceUpdated(uri)` and the legacy-vs-modern subscriptions era fork; argument
 completion (`PromptArgument.complete`, `ResourceConfig.complete`, `CompleteCallback` — fix the
 stale config tables in prompts.mdx:87 and resources.mdx); modern-HTTP state pointed errors incl.

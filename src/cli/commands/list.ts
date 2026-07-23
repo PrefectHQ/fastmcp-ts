@@ -20,7 +20,7 @@ export default defineCommand({
     prompts: { type: 'boolean', description: 'Also list prompts', default: false },
     'input-schema': { type: 'boolean', description: 'Expand input schemas', default: false },
     json: { type: 'boolean', description: 'Output JSON', default: false },
-    modern: { type: 'boolean', description: 'Opt stdio/in-process connections into version negotiation', default: false },
+    modern: { type: 'boolean', description: 'Turn on version negotiation for stdio and in-process connections', default: false },
     pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args }) {

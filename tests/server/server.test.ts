@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/client'
 import { FastMCP } from 'fastmcp-ts/server'
 import { contextStore } from '../../src/server/context.js'
 import { createTestClient } from '../helpers/createTestClient.js'
+import { LEGACY_INITIALIZE_PROTOCOL_VERSION } from '../helpers/http.js'
 
 describe('Server', () => {
   describe('instantiation', () => {
@@ -49,7 +50,7 @@ describe('Server', () => {
           id: 1,
           method: 'initialize',
           params: {
-            protocolVersion: '2024-11-05',
+            protocolVersion: LEGACY_INITIALIZE_PROTOCOL_VERSION,
             capabilities: {},
             clientInfo: { name: 'test-client', version: '0.0.0' },
           },
@@ -95,6 +96,71 @@ describe('Server', () => {
       expect(msg.result.capabilities.tools).toBeDefined()
     })
 
+    it('stdio-legacy initialize advertises resources.subscribe (the legacy RPC path is live)', async () => {
+      const mcp = new FastMCP({ name: 'test-server' })
+      const stdin = new PassThrough()
+      const stdout = new PassThrough()
+
+      const responsePromise = new Promise<string>((resolve) => {
+        stdout.once('data', (chunk: Buffer) => resolve(chunk.toString()))
+      })
+
+      await mcp.run({ transport: 'stdio', stdin, stdout })
+      close = () => mcp.close()
+
+      stdin.write(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: LEGACY_INITIALIZE_PROTOCOL_VERSION,
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '0.0.0' },
+          },
+        }) + '\n',
+      )
+
+      const msg = JSON.parse(await responsePromise)
+      expect(msg.result.capabilities.resources.subscribe).toBe(true)
+    })
+
+    it('stdio-modern discover does NOT advertise resources.subscribe (the legacy-only RPCs do not exist on this era)', async () => {
+      const mcp = new FastMCP({ name: 'test-server' })
+      const stdin = new PassThrough()
+      const stdout = new PassThrough()
+
+      const responsePromise = new Promise<string>((resolve) => {
+        stdout.once('data', (chunk: Buffer) => resolve(chunk.toString()))
+      })
+
+      await mcp.run({ transport: 'stdio', stdin, stdout })
+      close = () => mcp.close()
+
+      // Same modern opening exchange as the test above — server/discover pins the
+      // connection's era to modern from this first message.
+      stdin.write(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'server/discover',
+          params: {
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientCapabilities': {},
+            },
+          },
+        }) + '\n',
+      )
+
+      const msg = JSON.parse(await responsePromise)
+      // Mirrors the modern HTTP path (_getModernHandler): `resources.subscribe` is
+      // omitted entirely, matching the modern `server/discover` document's pinned
+      // `resources: { listChanged: true }` shape — no legacy-only surface leaks in.
+      expect(msg.result.capabilities.resources.subscribe).toBeUndefined()
+      expect(msg.result.capabilities.resources.listChanged).toBe(true)
+    })
+
     it('runs over HTTP (Streamable HTTP)', async () => {
       const mcp = new FastMCP({ name: 'test-server' })
       await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
@@ -110,6 +176,35 @@ describe('Server', () => {
       )
       await client.connect(clientTransport)
       await client.close()
+    })
+  })
+
+  describe('env overrides', () => {
+    let close: () => Promise<void>
+    const originalMcpHost = process.env.MCP_HOST
+
+    afterEach(async () => {
+      await close?.()
+      if (originalMcpHost === undefined) delete process.env.MCP_HOST
+      else process.env.MCP_HOST = originalMcpHost
+    })
+
+    it('MCP_HOST overrides the default bind host when run() is not given an explicit host', async () => {
+      process.env.MCP_HOST = '0.0.0.0'
+      const mcp = new FastMCP({ name: 'mcp-host-env-test' })
+      await mcp.run({ transport: 'http', port: 0 })
+      close = () => mcp.close()
+
+      expect(mcp.address!.host).toBe('0.0.0.0')
+    })
+
+    it('an explicit run() host option still wins over MCP_HOST', async () => {
+      process.env.MCP_HOST = '0.0.0.0'
+      const mcp = new FastMCP({ name: 'mcp-host-env-precedence-test' })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      close = () => mcp.close()
+
+      expect(mcp.address!.host).toBe('127.0.0.1')
     })
   })
 
@@ -263,7 +358,7 @@ describe('Server', () => {
       const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } } }),
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: LEGACY_INITIALIZE_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'test', version: '1' } } }),
       })
       expect(res.headers.get('access-control-allow-origin')).toBeTruthy()
     })

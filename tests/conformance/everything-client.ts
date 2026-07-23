@@ -39,16 +39,20 @@
  *     `finishAuth()`. Pre-registration scenarios also hand the client a
  *     `client_id` / `client_secret` via the context.
  *   - `auth/client-credentials-*` scenarios use the OAuth 2.0 client-credentials
- *     grant instead. When the context carries a `client_secret`, the fixture
- *     discovers the token endpoint (RFC 9728 protected-resource metadata ->
- *     RFC 8414 authorization-server metadata) and drives fastmcp's
- *     `ClientCredentials` provider (which authenticates with client_secret_post).
- *     The `-basic` (client_secret_basic) and `-jwt` (private_key_jwt) variants
- *     demand token-endpoint auth methods fastmcp's `ClientCredentials` does not
- *     implement, so they remain expected failures in
- *     conformance-baseline-main.yml — product gaps, not fixture-wiring gaps.
+ *     grant instead. The fixture discovers the token endpoint (RFC 9728
+ *     protected-resource metadata -> RFC 8414 authorization-server metadata) and
+ *     drives fastmcp's `ClientCredentials` provider, selecting the token-endpoint
+ *     auth method from the context: `client_secret_post` (default),
+ *     `client_secret_basic` (the `-basic` scenario), or `private_key_jwt` (the
+ *     `-jwt` scenario, whose context hands the client a `private_key_pem`).
  */
-import { Client, OAuth, ClientCredentials } from '../../src/client/index.js'
+import {
+  Client,
+  OAuth,
+  ClientCredentials,
+  JwtBearerAuth,
+  EnterpriseManagedAuth,
+} from '../../src/client/index.js'
 import type {
   SamplingHandler,
   ElicitationHandler,
@@ -75,6 +79,16 @@ type ScenarioContext = {
   name?: string
   client_id?: string
   client_secret?: string
+  /** private_key_jwt scenarios: PEM-encoded signing key + its algorithm. */
+  private_key_pem?: string
+  signing_algorithm?: string
+  /** wif-jwt-bearer: the pre-issued workload assertion (a signed JWT). */
+  valid_jwt?: string
+  /** enterprise-managed-authorization (SEP-990): the IdP token-exchange inputs. */
+  idp_client_id?: string
+  idp_id_token?: string
+  idp_issuer?: string
+  idp_token_endpoint?: string
   toolCalls?: ScriptedToolCall[]
 }
 
@@ -108,9 +122,13 @@ const OAUTH_CALLBACK_PORT = 39876
  * metadata (well-known path carries the resource path) -> its first
  * `authorization_servers` entry -> RFC 8414 authorization-server metadata ->
  * `token_endpoint`. `ClientCredentials` needs the concrete endpoint up front
- * (it does no discovery of its own).
+ * (it does no discovery of its own). The `issuer` is returned alongside it —
+ * the private_key_jwt variant signs its assertion with `aud` = issuer, which is
+ * what the conformance authorization server verifies against.
  */
-async function discoverTokenEndpoint(mcpUrl: string): Promise<string> {
+async function discoverTokenEndpoint(
+  mcpUrl: string,
+): Promise<{ tokenEndpoint: string; issuer: string }> {
   const server = new URL(mcpUrl)
   const prmUrl = new URL(`/.well-known/oauth-protected-resource${server.pathname}`, server.origin)
   const prm = (await fetch(prmUrl.toString()).then((r) => (r.ok ? r.json() : null))) as {
@@ -125,21 +143,24 @@ async function discoverTokenEndpoint(mcpUrl: string): Promise<string> {
   )
   const asMeta = (await fetch(asMetaUrl.toString()).then((r) => (r.ok ? r.json() : null))) as {
     token_endpoint?: string
+    issuer?: string
   } | null
   if (!asMeta?.token_endpoint) throw new Error(`no token_endpoint in ${asMetaUrl.toString()}`)
-  return asMeta.token_endpoint
+  return { tokenEndpoint: asMeta.token_endpoint, issuer: asMeta.issuer ?? issuer }
 }
 
 /**
  * Builds the auth provider for an `auth/*` scenario, or undefined otherwise.
  *
- * For `auth/client-credentials-*` scenarios whose context carries a
- * `client_secret`, drives fastmcp's `ClientCredentials` provider (OAuth 2.0
- * client-credentials grant, client_secret_post token-endpoint auth) against the
- * discovered token endpoint. The `-jwt` variant carries no `client_secret`
- * (it hands the client a `private_key_pem` for private_key_jwt, which fastmcp
- * does not implement), so it falls through to the OAuth path below and remains
- * an expected failure.
+ * `auth/client-credentials-*` scenarios drive fastmcp's `ClientCredentials`
+ * provider (OAuth 2.0 client-credentials grant) against the discovered token
+ * endpoint, selecting the token-endpoint auth method from the context:
+ *   - `private_key_pem` present → `private_key_jwt` (a signed ES256 assertion,
+ *     `aud` = discovered issuer).
+ *   - `client_secret` present, scenario is `-basic` → `client_secret_basic`
+ *     (RFC 6749 §2.3.1 Basic header).
+ *   - `client_secret` present, any other client-credentials scenario →
+ *     `client_secret_post` (the default).
  *
  * Every other `auth/*` scenario uses the interactive OAuth provider.
  * `onRedirect` stands in for the user's browser: it GETs the authorization URL,
@@ -151,20 +172,73 @@ async function discoverTokenEndpoint(mcpUrl: string): Promise<string> {
  * authorization request deterministically reach the AS before the flow
  * proceeds, rather than relying on an in-flight fire-and-forget GET.
  */
-async function buildAuth(): Promise<OAuth | ClientCredentials | undefined> {
+async function buildAuth(): Promise<
+  OAuth | ClientCredentials | JwtBearerAuth | EnterpriseManagedAuth | undefined
+> {
   if (!scenario.startsWith('auth/')) return undefined
 
+  // wif-jwt-bearer (SEP-1933 / RFC 7523 §2.1): present the pre-issued workload
+  // JWT directly under grant_type=jwt-bearer against the discovered token
+  // endpoint. Public client (authMethod defaults to none) — the assertion is
+  // the credential.
+  if (scenario === 'auth/wif-jwt-bearer' && typeof context.valid_jwt === 'string') {
+    const { tokenEndpoint } = await discoverTokenEndpoint(serverUrl)
+    return new JwtBearerAuth({
+      tokenEndpoint,
+      assertion: context.valid_jwt,
+      ...(typeof context.client_id === 'string' ? { clientId: context.client_id } : {}),
+    })
+  }
+
+  // enterprise-managed-authorization (SEP-990): token exchange at the IdP
+  // (ID token -> ID-JAG, RFC 8693) then a JWT-bearer grant at the MCP server's
+  // authorization server (RFC 7523). `audience` is the AS issuer; `resource` is
+  // the MCP server URL — both are what the AS verifies the ID-JAG against.
   if (
-    scenario.startsWith('auth/client-credentials-') &&
+    scenario === 'auth/enterprise-managed-authorization' &&
     typeof context.client_id === 'string' &&
-    typeof context.client_secret === 'string'
+    typeof context.idp_id_token === 'string' &&
+    typeof context.idp_token_endpoint === 'string'
   ) {
-    const tokenEndpoint = await discoverTokenEndpoint(serverUrl)
-    return new ClientCredentials({
+    const { tokenEndpoint, issuer } = await discoverTokenEndpoint(serverUrl)
+    return new EnterpriseManagedAuth({
       tokenEndpoint,
       clientId: context.client_id,
-      clientSecret: context.client_secret,
+      ...(typeof context.client_secret === 'string' ? { clientSecret: context.client_secret } : {}),
+      audience: issuer,
+      resource: serverUrl,
+      idpTokenEndpoint: context.idp_token_endpoint,
+      idpClientId: context.idp_client_id ?? context.client_id,
+      idToken: context.idp_id_token,
     })
+  }
+
+  if (scenario.startsWith('auth/client-credentials-') && typeof context.client_id === 'string') {
+    // private_key_jwt: the context carries a PEM signing key and no secret.
+    if (typeof context.private_key_pem === 'string') {
+      const { tokenEndpoint, issuer } = await discoverTokenEndpoint(serverUrl)
+      return new ClientCredentials({
+        tokenEndpoint,
+        clientId: context.client_id,
+        privateKey: context.private_key_pem,
+        algorithm: context.signing_algorithm ?? 'ES256',
+        audience: issuer,
+      })
+    }
+    // client_secret_basic (the `-basic` scenario) or client_secret_post (any
+    // other client-credentials scenario carrying a client_secret).
+    if (typeof context.client_secret === 'string') {
+      const { tokenEndpoint } = await discoverTokenEndpoint(serverUrl)
+      return new ClientCredentials({
+        tokenEndpoint,
+        clientId: context.client_id,
+        clientSecret: context.client_secret,
+        authMethod:
+          scenario === 'auth/client-credentials-basic'
+            ? 'client_secret_basic'
+            : 'client_secret_post',
+      })
+    }
   }
 
   return new OAuth({

@@ -2,7 +2,7 @@
 title: "CompletionResult"
 ---
 
-Defined in: server/completion.ts:33
+Defined in: [server/completion.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/completion.ts#L33)
 
 The paginated shape a completion callback MAY return for full control over the
 `total` / `hasMore` hints. Mirrors the wire `CompleteResult.completion` object.
@@ -16,7 +16,7 @@ Returning a bare `string[]` instead is the common case.
 optional hasMore?: boolean;
 ```
 
-Defined in: server/completion.ts:39
+Defined in: [server/completion.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/completion.ts#L39)
 
 Whether more matches exist beyond `values`.
 
@@ -28,7 +28,7 @@ Whether more matches exist beyond `values`.
 optional total?: number;
 ```
 
-Defined in: server/completion.ts:37
+Defined in: [server/completion.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/completion.ts#L37)
 
 Total number of matches available, if larger than `values`.
 
@@ -40,6 +40,6 @@ Total number of matches available, if larger than `values`.
 values: string[];
 ```
 
-Defined in: server/completion.ts:35
+Defined in: [server/completion.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/completion.ts#L35)
 
 Suggested values. Capped to 100 on the wire (the spec's maximum).

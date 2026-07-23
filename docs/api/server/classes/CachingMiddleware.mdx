@@ -2,7 +2,7 @@
 title: "CachingMiddleware"
 ---
 
-Defined in: [server/middleware.ts:155](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L155)
+Defined in: [server/middleware.ts:155](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L155)
 
 TTL-based response cache. The default key is method + auth partition + serialised
  request params, so a cached result is served only to the identity that produced it
@@ -24,7 +24,7 @@ TTL-based response cache. The default key is method + auth partition + serialise
 new CachingMiddleware(ttl?, _keyFn?): CachingMiddleware;
 ```
 
-Defined in: [server/middleware.ts:179](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L179)
+Defined in: [server/middleware.ts:179](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L179)
 
 #### Parameters
 
@@ -48,7 +48,7 @@ Defined in: [server/middleware.ts:179](https://github.com/PrefectHQ/fastmcp-ts/b
 readonly ttl: number = 60_000;
 ```
 
-Defined in: [server/middleware.ts:180](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L180)
+Defined in: [server/middleware.ts:180](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L180)
 
 ## Methods
 
@@ -58,7 +58,7 @@ Defined in: [server/middleware.ts:180](https://github.com/PrefectHQ/fastmcp-ts/b
 onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:203](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L203)
+Defined in: [server/middleware.ts:203](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/middleware.ts#L203)
 
 #### Parameters
 

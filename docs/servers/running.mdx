@@ -25,7 +25,11 @@ Stdio is the default. The server reads MCP messages from standard input and writ
 
 Streamable HTTP is the choice when the server is a long-lived service that clients connect to over the network. The server listens on a host and port and serves MCP over HTTP, so many clients can reach one deployed instance. Reach for it when you're deploying a server rather than handing one to a host to launch. Over HTTP the routing is per request: FastMCP inspects each incoming request and sends a legacy request to a sessionful transport that preserves today's behavior, and a modern request to a stateless handler. One HTTP endpoint answers both eras, so a mixed fleet of clients needs no separate route.
 
-SSE is not supported. Server-Sent Events transport is deprecated in the MCP SDK and Streamable HTTP supersedes it, so there is nothing to configure — HTTP means Streamable HTTP.
+Over HTTP the response for a request is a short Server-Sent Events stream, and a dropped connection does not lose the reply. On a legacy (2025-era) session the server opens each stream with a priming event that carries a resume anchor and a reconnect hint, tags each event with an id, and remembers recent events per session. If the network drops mid-stream, the client reconnects with the last event id it saw and the server replays what it missed; a reconnect from an id the server no longer holds is refused so the client never mistakes a lost gap for nothing missed. This works out of the box with no configuration, so a slow tool call survives a brief connection blip. Modern (2026-07-28) streams have their own resumable channel and need no setup either.
+
+The memory this uses is bounded but worth understanding for a busy deployment. The server keeps a fixed count of recent events per session (256), not a fixed number of bytes, so a session that streams large tool results can hold up to that many large messages. The buffer is released when the session ends cleanly — the client sends a shutdown request, or the server calls `close()`. A client that simply drops its connection without a clean shutdown leaves its session, and this buffer, in memory until the server process stops. This matches how legacy HTTP sessions already behave; resumability adds the per-session event buffer on top.
+
+SSE is not supported as a standalone transport. The deprecated Server-Sent Events transport is a separate thing from the SSE framing that Streamable HTTP uses for its responses; the standalone transport is gone from the MCP SDK and Streamable HTTP supersedes it, so there is nothing to configure — HTTP means Streamable HTTP.
 
 ## Configuration
 
@@ -42,13 +46,13 @@ The environment variables fill the middle of the chain. Each maps to one setting
 | Variable | Sets | Default |
 |---|---|---|
 | `MCP_TRANSPORT` | Transport (`stdio` or `http`) | `stdio` |
-| `MCP_HOST` | Bind host (HTTP) | Under review — set it explicitly |
+| `MCP_HOST` | Bind host (HTTP) | `127.0.0.1` |
 | `MCP_PORT` | Bind port (HTTP) | `3000` |
 | `MCP_PATH` | HTTP path | `/mcp` |
 
 One extra rule smooths deployment to managed platforms: when `MCP_PORT` is unset, FastMCP reads plain `PORT` as a fallback. Railway, Render, and Heroku assign a port through `PORT` automatically, so a server deployed there binds the right port with no configuration of its own.
 
-The default bind host is an open decision, so pin the host you intend with `MCP_HOST` or the `host` run option rather than depend on the built-in fallback. The bind host also selects the DNS-rebinding posture below, which is why the two are decided together.
+The default bind host is `127.0.0.1`. This matches the parent fastmcp project, which binds a loopback host by default. A loopback bind keeps the server on the local machine, and it turns on the DNS-rebinding guard automatically (see below). To reach the server from other machines, set the host on purpose: use `MCP_HOST=0.0.0.0` or the `host: '0.0.0.0'` run option, and configure `dnsRebinding` to protect the exposed bind.
 
 ## HTTP options
 
@@ -87,7 +91,7 @@ const server = new FastMCP({
 await server.run({ transport: 'http', host: '0.0.0.0', port: 3000 })
 ```
 
-The bind host and this posture are coupled, which is why the default bind host is still an open decision: a routable default would leave a server open unless the operator opts in. Pin the host you intend, and set `dnsRebinding` to match the interface you bind.
+The bind host and this posture are coupled. The default bind host is `127.0.0.1`, so the guard is on out of the box. A routable bind turns the guard off unless you opt in, so pin the host you intend, and set `dnsRebinding` to match the interface you bind.
 
 ## Stream overrides
 

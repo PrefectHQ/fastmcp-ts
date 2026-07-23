@@ -2,7 +2,7 @@
 title: "FastMCP"
 ---
 
-Defined in: [server/FastMCP.ts:324](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L324)
+Defined in: [server/FastMCP.ts:325](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L325)
 
 ## Constructors
 
@@ -12,7 +12,7 @@ Defined in: [server/FastMCP.ts:324](https://github.com/PrefectHQ/fastmcp-ts/blob
 new FastMCP(options): FastMCP;
 ```
 
-Defined in: [server/FastMCP.ts:373](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L373)
+Defined in: [server/FastMCP.ts:374](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L374)
 
 #### Parameters
 
@@ -32,7 +32,7 @@ Defined in: [server/FastMCP.ts:373](https://github.com/PrefectHQ/fastmcp-ts/blob
 readonly name: string;
 ```
 
-Defined in: [server/FastMCP.ts:325](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L325)
+Defined in: [server/FastMCP.ts:326](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L326)
 
 ***
 
@@ -42,7 +42,7 @@ Defined in: [server/FastMCP.ts:325](https://github.com/PrefectHQ/fastmcp-ts/blob
 readonly version: string;
 ```
 
-Defined in: [server/FastMCP.ts:326](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L326)
+Defined in: [server/FastMCP.ts:327](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L327)
 
 ## Accessors
 
@@ -54,7 +54,7 @@ Defined in: [server/FastMCP.ts:326](https://github.com/PrefectHQ/fastmcp-ts/blob
 get address(): ServerAddress | null;
 ```
 
-Defined in: [server/FastMCP.ts:1684](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1684)
+Defined in: [server/FastMCP.ts:1690](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1690)
 
 The bound address after run() resolves for the http transport. Null for stdio or before run().
 
@@ -70,7 +70,7 @@ The bound address after run() resolves for the http transport. Null for stdio or
 _addCloseCallback(cb): void;
 ```
 
-Defined in: [server/FastMCP.ts:1517](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1517)
+Defined in: [server/FastMCP.ts:1523](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1523)
 
 Register a callback invoked when this server is closed — used by proxy connections.
 
@@ -100,7 +100,7 @@ _dispatchPrompt(
 }>;
 ```
 
-Defined in: [server/FastMCP.ts:1394](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1394)
+Defined in: [server/FastMCP.ts:1400](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1400)
 
 Dispatch a prompt render through this server's middleware chain using an inherited context.
 
@@ -138,7 +138,7 @@ _dispatchResource(
    ctx): Promise<unknown>;
 ```
 
-Defined in: [server/FastMCP.ts:1354](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1354)
+Defined in: [server/FastMCP.ts:1360](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1360)
 
 Run a resource read through this server's middleware chain using an inherited context.
 Returns the raw handler result so the parent can apply convertResourceResult with the
@@ -177,7 +177,7 @@ _dispatchTool(
   | InputRequiredResult>;
 ```
 
-Defined in: [server/FastMCP.ts:1302](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1302)
+Defined in: [server/FastMCP.ts:1308](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1308)
 
 Dispatch a tool call through this server's middleware chain using an inherited context.
 Used by parent servers to honour child-level middleware when routing mounted tool calls.
@@ -212,7 +212,7 @@ Used by parent servers to honour child-level middleware when routing mounted too
 _modernFetch(request, options?): Promise<Response>;
 ```
 
-Defined in: [server/FastMCP.ts:1705](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1705)
+Defined in: [server/FastMCP.ts:1711](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1711)
 
 Modern-era (2026-07-28) in-process fetch entrypoint — the `McpServerLike`
 duck-type hook `fastmcp-ts/client`'s `Client` looks for when a caller pins
@@ -246,7 +246,7 @@ same code. Modern-only (`legacy: 'reject'`): a client using `'auto'` or
 _removePrompt(name): boolean;
 ```
 
-Defined in: [server/FastMCP.ts:1285](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1285)
+Defined in: [server/FastMCP.ts:1291](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1291)
 
 #### Parameters
 
@@ -266,7 +266,7 @@ Defined in: [server/FastMCP.ts:1285](https://github.com/PrefectHQ/fastmcp-ts/blo
 _removeResource(uri): boolean;
 ```
 
-Defined in: [server/FastMCP.ts:1271](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1271)
+Defined in: [server/FastMCP.ts:1277](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1277)
 
 #### Parameters
 
@@ -286,7 +286,7 @@ Defined in: [server/FastMCP.ts:1271](https://github.com/PrefectHQ/fastmcp-ts/blo
 _removeTool(name): boolean;
 ```
 
-Defined in: [server/FastMCP.ts:1264](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1264)
+Defined in: [server/FastMCP.ts:1270](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1270)
 
 #### Parameters
 
@@ -306,7 +306,7 @@ Defined in: [server/FastMCP.ts:1264](https://github.com/PrefectHQ/fastmcp-ts/blo
 addProvider(provider): this;
 ```
 
-Defined in: [server/FastMCP.ts:1526](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1526)
+Defined in: [server/FastMCP.ts:1532](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1532)
 
 Register a provider (FastMCPApp or FastMCP) on this server.
 All tools, resources, and prompts from the provider are mounted without a prefix.
@@ -333,7 +333,7 @@ For FastMCPApp, pass provider.server; for FastMCP, pass directly.
 close(): Promise<void>;
 ```
 
-Defined in: [server/FastMCP.ts:1999](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1999)
+Defined in: [server/FastMCP.ts:2018](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L2018)
 
 #### Returns
 
@@ -347,7 +347,7 @@ Defined in: [server/FastMCP.ts:1999](https://github.com/PrefectHQ/fastmcp-ts/blo
 connect(transport): Promise<void>;
 ```
 
-Defined in: [server/FastMCP.ts:1688](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1688)
+Defined in: [server/FastMCP.ts:1694](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1694)
 
 #### Parameters
 
@@ -367,7 +367,7 @@ Defined in: [server/FastMCP.ts:1688](https://github.com/PrefectHQ/fastmcp-ts/blo
 getContext(): McpContext;
 ```
 
-Defined in: [server/FastMCP.ts:1677](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1677)
+Defined in: [server/FastMCP.ts:1683](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1683)
 
 #### Returns
 
@@ -381,7 +381,7 @@ Defined in: [server/FastMCP.ts:1677](https://github.com/PrefectHQ/fastmcp-ts/blo
 mount(child, prefix?): this;
 ```
 
-Defined in: [server/FastMCP.ts:1493](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1493)
+Defined in: [server/FastMCP.ts:1499](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1499)
 
 Mount a child server onto this server. All tools, resources, and prompts from the child become accessible via this server. Pass a prefix to namespace names and prevent collisions.
 
@@ -407,7 +407,7 @@ Mount a child server onto this server. All tools, resources, and prompts from th
 notifyResourceUpdated(uri): void;
 ```
 
-Defined in: [server/FastMCP.ts:1158](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1158)
+Defined in: [server/FastMCP.ts:1164](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1164)
 
 Signal that a resource changed and any subscriber should re-read it. This is
 the SINGLE change signal for resource updates across both eras — the legacy
@@ -442,7 +442,7 @@ nothing, so calling this for a URI with no subscribers is safe and cheap.
 prompt(config, handler): void;
 ```
 
-Defined in: [server/FastMCP.ts:1242](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1242)
+Defined in: [server/FastMCP.ts:1248](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1248)
 
 #### Parameters
 
@@ -466,7 +466,7 @@ Defined in: [server/FastMCP.ts:1242](https://github.com/PrefectHQ/fastmcp-ts/blo
 resource(config, handler): void;
 ```
 
-Defined in: [server/FastMCP.ts:1253](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1253)
+Defined in: [server/FastMCP.ts:1259](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1259)
 
 #### Parameters
 
@@ -490,7 +490,7 @@ Defined in: [server/FastMCP.ts:1253](https://github.com/PrefectHQ/fastmcp-ts/blo
 run(options?): Promise<void>;
 ```
 
-Defined in: [server/FastMCP.ts:1709](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1709)
+Defined in: [server/FastMCP.ts:1715](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1715)
 
 #### Parameters
 
@@ -512,7 +512,7 @@ Defined in: [server/FastMCP.ts:1709](https://github.com/PrefectHQ/fastmcp-ts/blo
 tool<S>(config, handler): void;
 ```
 
-Defined in: [server/FastMCP.ts:1227](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1227)
+Defined in: [server/FastMCP.ts:1233](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1233)
 
 ##### Type Parameters
 
@@ -542,7 +542,7 @@ Defined in: [server/FastMCP.ts:1227](https://github.com/PrefectHQ/fastmcp-ts/blo
 tool(config, handler): void;
 ```
 
-Defined in: [server/FastMCP.ts:1232](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1232)
+Defined in: [server/FastMCP.ts:1238](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1238)
 
 ##### Parameters
 
@@ -566,7 +566,7 @@ Defined in: [server/FastMCP.ts:1232](https://github.com/PrefectHQ/fastmcp-ts/blo
 transform(t): this;
 ```
 
-Defined in: [server/FastMCP.ts:1293](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1293)
+Defined in: [server/FastMCP.ts:1299](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1299)
 
 Add a transform to the pipeline. Applied to list responses in registration order.
 
@@ -588,7 +588,7 @@ Add a transform to the pipeline. Applied to list responses in registration order
 use(mw): this;
 ```
 
-Defined in: [server/FastMCP.ts:1671](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/FastMCP.ts#L1671)
+Defined in: [server/FastMCP.ts:1677](https://github.com/PrefectHQ/fastmcp-ts/blob/e4b6038f642b529f601463a576229747afebe9a4/src/server/FastMCP.ts#L1677)
 
 Add a middleware to the pipeline.
 

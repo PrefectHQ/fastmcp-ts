@@ -913,6 +913,15 @@ describe.sequential('CLI — era negotiation (stdio / in-process)', () => {
     expect(stderr).toMatch(/echo/)
     expect(stderr).toMatch(/add/)
   })
+
+  it('--file --pin <version the server does not offer> exits non-zero with the mapped message', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', FASTMCP_HTTP_SERVER, '--pin', '2027-01-01',
+    ], { timeout: 20_000 })
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/does not support protocol version/i)
+    expect(stderr).toMatch(/--pin/)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1225,6 +1234,13 @@ describe('formatError — era protocol errors', () => {
     const message = formatError(err)
     expect(message).toMatch(/client capability/i)
     expect(message).toMatch(/sampling/)
+  })
+
+  it('maps -32021 MissingRequiredClientCapability with a plural capability list using agreeing grammar', () => {
+    const err = new MissingRequiredClientCapabilityError({ requiredCapabilities: { sampling: {}, roots: {} } })
+    const message = formatError(err)
+    expect(message).toMatch(/client capability/i)
+    expect(message).toMatch(/did not declare these capabilities: sampling, roots/i)
   })
 
   it('maps -32021 MissingRequiredClientCapability without a data payload', () => {

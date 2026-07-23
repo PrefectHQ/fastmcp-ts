@@ -53,7 +53,7 @@ const client = await Client.connect({
 })
 ```
 
-One flow does not carry over from the single client: `MultiServerClient` does not drive the interactive OAuth browser handshake. Non-interactive credentials work per server — a bearer token, a client-credentials grant, or an `OAuth` provider whose tokens are already stored and only need refreshing. A server that would send the user through the browser for the first time is not handled here; authorize it once with a single [`Client`](/clients/client), then reuse the stored tokens.
+One flow does not carry over from the single client: `MultiServerClient` does not drive the interactive OAuth browser handshake. Non-interactive credentials work per server — a bearer token, a client-credentials grant, a JWT-bearer grant (`JwtBearerAuth`), an enterprise-managed token exchange (`EnterpriseManagedAuth`), or an `OAuth` provider whose tokens are already stored and only need refreshing. A server that would send the user through the browser for the first time is not handled here; authorize it once with a single [`Client`](/clients/client), then reuse the stored tokens.
 
 Handlers, by contrast, are shared. A single `log`, `sampling`, or `elicitation` handler is registered on every connection, so a notification or request from any server reaches the same place. The sampling capability is advertised to all servers when you provide the handler.
 

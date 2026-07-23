@@ -21,6 +21,7 @@ import type { AddressInfo } from 'node:net'
 import { AuthorizationError } from './auth/types'
 import type { TokenVerifier, AccessToken } from './auth/types'
 import type { AuthCheck } from './auth/authorization'
+import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
 import { runMiddlewareChain } from './middleware'
@@ -411,19 +412,22 @@ export class FastMCP {
    * 2026-07-28 wire registry (a modern client uses `subscriptions/listen`
    * instead), so a modern-only factory (the createMcpHandler path) must NOT
    * advertise `subscribe` — the modern `server/discover` document is pinned to
-   * `resources: { listChanged: true }`. Every legacy-serving factory (primary,
-   * stdio, legacy HTTP sessions) advertises it, gating the RPC path.
+   * `resources: { listChanged: true }`. The primary in-process server and
+   * legacy HTTP sessions are always legacy, so they always advertise it.
+   * stdio forks it per-connection too: `run()`'s stdio branch reads the
+   * `ctx.era` the SDK's `McpServerFactory` hook hands it (serveStdio only
+   * calls the factory once the opening exchange has classified the era, so
+   * the modern-vs-legacy choice is already known at construction time) and
+   * passes it straight through as `opts.modern`.
    *
    * The `completions` capability is NOT era-forked: `completion/complete` is in
    * BOTH era wire registries (the legacy 2025-11-25 registry and the modern
    * 2026-07-28 `dispatchRequestSchemas`), and `completions` is a valid key in
    * both eras' ServerCapabilities schemas. So it is declared unconditionally —
-   * the stdio-factory era ambiguity that constrains `subscribe` (a factory built
-   * before the stdio handshake picks an era must not advertise a legacy-only
-   * capability to a modern client) does not arise here, because the capability is
-   * correct for whichever era the connection negotiates. The SDK also requires
-   * this capability to be present to register the `completion/complete` handler
-   * (`assertRequestHandlerCapability`).
+   * unlike `subscribe`, there is no legacy-only surface to hide from a modern
+   * client here, so nothing needs the era fork the way `subscribe` does. The
+   * SDK also requires this capability to be present to register the
+   * `completion/complete` handler (`assertRequestHandlerCapability`).
    */
   private _makeServer(sessionState?: Map<string, unknown>, opts?: { modern?: boolean }): Server {
     const state = sessionState ?? this._primaryState
@@ -819,9 +823,11 @@ export class FastMCP {
     // `notifications/resources/updated` is driven by notifyResourceUpdated(uri),
     // the single change signal shared with the modern subscriptions/listen bus.
     //
-    // Both handlers mirror resources/read's resolve → not-found → auth → context →
-    // middleware sequencing, so subscribe is indistinguishable from read as an
-    // oracle and audit/rate-limit middleware observes both.
+    // Only resources/subscribe mirrors resources/read's resolve → not-found →
+    // auth → context → middleware sequencing, so subscribe is indistinguishable
+    // from read as an oracle. resources/unsubscribe skips resolution and auth: it
+    // only removes uri from the caller's own subscription set, so an unknown or
+    // forbidden uri is a harmless no-op, not an oracle — there is nothing to guard.
     server.setRequestHandler('resources/subscribe', async (req, sdkCtx) => {
       const uri = req.params.uri
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
@@ -1714,7 +1720,7 @@ export class FastMCP {
     const transport = rawTransport as 'stdio' | 'http'
 
     const port = options?.port ?? parseInt(process.env.MCP_PORT ?? process.env.PORT ?? '3000', 10)
-    const host = options?.host ?? process.env.MCP_HOST ?? '0.0.0.0'
+    const host = options?.host ?? process.env.MCP_HOST ?? '127.0.0.1'
     const path = options?.path ?? process.env.MCP_PATH ?? '/mcp'
 
     if (transport === 'stdio') {
@@ -1725,13 +1731,19 @@ export class FastMCP {
       // connect(), which is always 2025-era (used by in-process/test transports).
       // The factory may be invoked twice (a discarded server/discover probe instance,
       // then the real pinned one); _stdioServer always ends up holding the latter.
+      // The factory receives `ctx.era` because serveStdio always classifies the
+      // opening exchange's era before constructing an instance for it (including
+      // the discarded probe instance, which is itself a modern-era construction) —
+      // so `ctx.era` is used to fork `_makeServer`'s `modern` option the same way
+      // `_getModernHandler` does, and a modern connection no longer advertises the
+      // legacy-only `resources.subscribe` capability.
       this._stdioHandle = serveStdio(
-        () => {
+        (ctx) => {
           // Capture the state Map so the resource-updated fan-out can reach this
           // connection's per-session subscription set (see _notifyResourceUpdated).
           const stdioState = new Map<string, unknown>()
           this._stdioState = stdioState
-          this._stdioServer = this._makeServer(stdioState)
+          this._stdioServer = this._makeServer(stdioState, { modern: ctx.era === 'modern' })
           return this._stdioServer
         },
         { transport: stdioTransport },
@@ -1823,6 +1835,13 @@ export class FastMCP {
       const sessionServer = this._makeServer(sessionState)
       mcpTransport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
+        // SEP-1699 SSE resumability: a bounded per-session event store makes the
+        // transport prime each 2025-11-25+ POST SSE stream with an `id`+empty-`data`
+        // event (a Last-Event-ID resume anchor) and a `retry` hint, and lets a client
+        // replay missed events after reconnecting. Retention is bounded (see
+        // BoundedEventStore); the store is discarded with the session on close.
+        eventStore: new BoundedEventStore(),
+        retryInterval: LEGACY_SSE_RETRY_MS,
         onsessioninitialized: (id) => {
           this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
         },

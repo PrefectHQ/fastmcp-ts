@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod/v4'
-import { PassThrough } from 'node:stream'
 import { createServer, type Server as NodeHttpServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 import { FastMCP, type ServerAddress } from 'fastmcp-ts/server'
 import { Client as FastClient } from 'fastmcp-ts/client'
+import { stdioPipePair } from '../helpers/stdio.js'
 
 import {
   Client as SdkClient,
@@ -195,8 +195,7 @@ const cellsC2: Cell[] = (
     // in-process pipe pair — the same crosswise-PassThrough technique
     // tests/helpers/eras.ts uses, real stdio serving with no child process.
     const mcp = makeFastMcpServer('interop-c2-stdio')
-    const clientToServer = new PassThrough()
-    const serverToClient = new PassThrough()
+    const { clientToServer, serverToClient } = stdioPipePair()
     await mcp.run({ transport: 'stdio', stdin: clientToServer, stdout: serverToClient })
     const client = new FastClient(new StdioServerTransport(serverToClient, clientToServer), {
       versionNegotiation,
@@ -301,8 +300,7 @@ const cellsB2: Cell[] = (
   connect: async () => {
     // Same one-connection-one-era constraint as C2-stdio: a fresh serveStdio
     // call (and fresh McpServer instance, per its factory contract) per cell.
-    const clientToServer = new PassThrough()
-    const serverToClient = new PassThrough()
+    const { clientToServer, serverToClient } = stdioPipePair()
     const handle: StdioServerHandle = serveStdio(makeOfficialServer, {
       transport: new StdioServerTransport(clientToServer, serverToClient),
     })
@@ -365,7 +363,7 @@ describe('Interop matrix (W9)', () => {
         // A future regression could make this cell connect instead of failing —
         // close the unexpectedly-live client before the assertions below run
         // (which will still fail the test correctly), so it doesn't leak.
-        if (unexpectedClient) await unexpectedClient.close()
+        if (unexpectedClient) await unexpectedClient.close().catch(() => {})
         // B1-http/legacy: the modern-only handler (`legacy: 'reject'`) has no
         // legacy fallback route. The opening legacy `initialize` gets HTTP 400
         // with a JSON-RPC -32022 "Unsupported protocol version" body, surfaced

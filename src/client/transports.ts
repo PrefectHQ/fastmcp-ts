@@ -1,6 +1,6 @@
 import { InMemoryTransport, StreamableHTTPClientTransport, SSEClientTransport } from "@modelcontextprotocol/client";
 import type { OAuthClientProvider, Transport, VersionNegotiationOptions } from "@modelcontextprotocol/client";
-import { OAuth, BearerAuth, type ClientCredentials } from './auth.js'
+import { OAuth, BearerAuth, type AsyncHeaderAuth } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // TransportResolutionOptions — cross-cutting knobs threaded through
@@ -75,8 +75,8 @@ function isMcpServerLike(value: unknown): value is McpServerLike {
 // ---------------------------------------------------------------------------
 
 export type McpServerEntry =
-  | { url: string; headers?: Record<string, string>; auth?: BearerAuth | OAuth | ClientCredentials | string }
-  | { command: string; args?: string[]; env?: Record<string, string>; auth?: BearerAuth | OAuth | ClientCredentials | string }
+  | { url: string; headers?: Record<string, string>; auth?: BearerAuth | OAuth | AsyncHeaderAuth | string }
+  | { command: string; args?: string[]; env?: Record<string, string>; auth?: BearerAuth | OAuth | AsyncHeaderAuth | string }
 
 /** Values accepted in mcpServers: either a config object or an in-process server. */
 export type McpServerValue = McpServerEntry | McpServerLike
@@ -155,9 +155,10 @@ function normalizeHeaders(headers: RequestInit['headers']): Record<string, strin
 }
 
 function isAsyncAuth(
-  auth: BearerAuth | OAuth | ClientCredentials,
-): auth is ClientCredentials {
-  // Only ClientCredentials uses async per-request injection.
+  auth: BearerAuth | OAuth | AsyncHeaderAuth,
+): auth is AsyncHeaderAuth {
+  // ClientCredentials / JwtBearerAuth / EnterpriseManagedAuth all carry a
+  // `kind` and acquire their token asynchronously — inject per request.
   // OAuth is now an OAuthClientProvider and is passed directly to the transport.
   return 'kind' in auth
 }
@@ -170,7 +171,7 @@ type HttpTransportOptions = {
 }
 
 function buildHttpOptions(
-  auth: BearerAuth | OAuth | ClientCredentials | undefined,
+  auth: BearerAuth | OAuth | AsyncHeaderAuth | undefined,
   extraHeaders: Record<string, string> = {},
 ): HttpTransportOptions {
   const hasExtra = Object.keys(extraHeaders).length > 0
@@ -188,7 +189,7 @@ function buildHttpOptions(
   }
 
   if (auth && isAsyncAuth(auth)) {
-    // ClientCredentials: inject token per-request via a custom fetch wrapper.
+    // Async token auth: inject the acquired token per-request via a custom fetch wrapper.
     const customFetch = async (
       url: string | URL,
       init?: RequestInit,
@@ -227,7 +228,7 @@ let sseDeprecationWarned = false
 
 function urlToTransport(
   url: URL,
-  auth: BearerAuth | OAuth | ClientCredentials | undefined,
+  auth: BearerAuth | OAuth | AsyncHeaderAuth | undefined,
   extraHeaders: Record<string, string> = {},
   legacySSE = false,
 ): Transport {
@@ -298,7 +299,7 @@ function modernFetchTransport(entry: McpServerLike): Transport {
 
 export async function resolveEntryTransport(
   entry: McpServerValue,
-  auth?: BearerAuth | OAuth | ClientCredentials,
+  auth?: BearerAuth | OAuth | AsyncHeaderAuth,
   options?: TransportResolutionOptions,
 ): Promise<ResolvedTransport> {
   // In-process server (McpServerLike: has connect(transport)).
@@ -332,8 +333,8 @@ export async function resolveEntryTransport(
 }
 
 function resolveEntryAuth(
-  auth: BearerAuth | OAuth | ClientCredentials | string | undefined,
-): BearerAuth | OAuth | ClientCredentials | undefined {
+  auth: BearerAuth | OAuth | AsyncHeaderAuth | string | undefined,
+): BearerAuth | OAuth | AsyncHeaderAuth | undefined {
   if (!auth) return undefined
   if (typeof auth === 'string') return new BearerAuth(auth)
   return auth
@@ -345,7 +346,7 @@ function resolveEntryAuth(
 
 export async function resolveTransport(
   input: ClientTransportInput,
-  auth?: BearerAuth | OAuth | ClientCredentials,
+  auth?: BearerAuth | OAuth | AsyncHeaderAuth,
   options?: TransportResolutionOptions,
 ): Promise<ResolvedTransport> {
   // 1. Our StdioTransport config class (check before the duck-type checks below).

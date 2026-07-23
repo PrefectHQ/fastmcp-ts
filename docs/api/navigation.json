@@ -39,6 +39,12 @@
             "isDeprecated": false
           },
           {
+            "title": "EnterpriseManagedAuth",
+            "kind": 128,
+            "path": "client/classes/EnterpriseManagedAuth.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "FileTokenStorage",
             "kind": 128,
             "path": "client/classes/FileTokenStorage.mdx",
@@ -66,6 +72,12 @@
             "title": "InMemoryStore",
             "kind": 128,
             "path": "client/classes/InMemoryStore.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "JwtBearerAuth",
+            "kind": 128,
+            "path": "client/classes/JwtBearerAuth.mdx",
             "isDeprecated": false
           },
           {
@@ -110,6 +122,12 @@
         "title": "Interfaces",
         "children": [
           {
+            "title": "AsyncHeaderAuth",
+            "kind": 256,
+            "path": "client/interfaces/AsyncHeaderAuth.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "BrowserOAuthOptions",
             "kind": 256,
             "path": "client/interfaces/BrowserOAuthOptions.mdx",
@@ -119,12 +137,6 @@
             "title": "CallToolOptions",
             "kind": 256,
             "path": "client/interfaces/CallToolOptions.mdx",
-            "isDeprecated": false
-          },
-          {
-            "title": "ClientCredentialsOptions",
-            "kind": 256,
-            "path": "client/interfaces/ClientCredentialsOptions.mdx",
             "isDeprecated": false
           },
           {
@@ -143,6 +155,18 @@
             "title": "ClientOptions",
             "kind": 256,
             "path": "client/interfaces/ClientOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientSecretCredentialsOptions",
+            "kind": 256,
+            "path": "client/interfaces/ClientSecretCredentialsOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "EnterpriseManagedOptions",
+            "kind": 256,
+            "path": "client/interfaces/EnterpriseManagedOptions.mdx",
             "isDeprecated": false
           },
           {
@@ -176,6 +200,12 @@
             "isDeprecated": false
           },
           {
+            "title": "JwtBearerOptions",
+            "kind": 256,
+            "path": "client/interfaces/JwtBearerOptions.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "McpServerLike",
             "kind": 256,
             "path": "client/interfaces/McpServerLike.mdx",
@@ -191,6 +221,12 @@
             "title": "OAuthOptions",
             "kind": 256,
             "path": "client/interfaces/OAuthOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "PrivateKeyJwtCredentialsOptions",
+            "kind": 256,
+            "path": "client/interfaces/PrivateKeyJwtCredentialsOptions.mdx",
             "isDeprecated": false
           },
           {
@@ -223,9 +259,27 @@
             "isDeprecated": false
           },
           {
+            "title": "AssertionSource",
+            "kind": 2097152,
+            "path": "client/type-aliases/AssertionSource.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "CallToolResult",
             "kind": 2097152,
             "path": "client/type-aliases/CallToolResult.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientCredentialsOptions",
+            "kind": 2097152,
+            "path": "client/type-aliases/ClientCredentialsOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ClientSecretAuthMethod",
+            "kind": 2097152,
+            "path": "client/type-aliases/ClientSecretAuthMethod.mdx",
             "isDeprecated": false
           },
           {

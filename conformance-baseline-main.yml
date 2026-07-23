@@ -15,9 +15,9 @@
 # maintenance signal that keeps this file honest as main moves); an unlisted
 # scenario that fails => regression (exit 1). Verified empirically 2026-07-22:
 # a baseline entry for a scenario whose only bad checks are WARNING-status
-# (e.g. `server-sse-polling`) is REQUIRED — omitting it still trips "Unexpected
-# failures (not in baseline)" even though the tool's own bare per-scenario
-# passed/failed tally shows "0 passed, 0 failed" for it.
+# (e.g. `input-required-result-missing-input-response`) is REQUIRED — omitting it
+# still trips "Unexpected failures (not in baseline)" even though the tool's own
+# bare per-scenario passed/failed tally shows "0 passed, 0 failed" for it.
 #
 # Regenerate the observed set — same two commands the nightly workflow runs
 # (.github/workflows/conformance-nightly.yml):
@@ -33,7 +33,14 @@
 # reported version 0.2.0-alpha.9). Pre-phase (Task 14 start), main showed 53
 # unbaselined failures; Tasks 10-13 fixed dns-rebinding, subscribe/unsubscribe,
 # completion, and SEP-2243 custom-headers, and stood up the OAuth client
-# driver. This file covers what's left: 24 server + 9 client scenarios.
+# driver; Task 19 (2026-07-23) burned down the two client-credentials auth
+# methods (client_secret_basic + private_key_jwt); Task 20 (2026-07-23) burned
+# down auth/scope-step-up (post-connect interactive-OAuth step-up
+# re-authorization); Task 21 (2026-07-23) burned down the JWT-bearer grant
+# scenarios (auth/wif-jwt-bearer, auth/enterprise-managed-authorization) and
+# SEP-2352 auth/authorization-server-migration. Task 22 (2026-07-23) burned down
+# server-sse-polling (SEP-1699 SSE resumability). This file covers what's left:
+# 23 server + 3 client scenarios.
 
 # --- server (--suite all against the everything-server fixture) -------------
 server:
@@ -79,37 +86,73 @@ server:
   # declares no tool with x-mcp-header annotations for the server to validate.
   - http-custom-header-server-validation        # "server exposes no tool with x-mcp-header annotations" — none of the 5 checks are exercisable
 
-  # server-sse-polling — ACTIVE [2025-11-25] scenario (not draft), genuine SHOULD-level gap.
-  - server-sse-polling                          # WARNING x2: no SSE priming event (id + empty data) and no retry field on POST SSE streams — both recommended for resumability, neither implemented
+  # BURNED DOWN (Task 22, 2026-07-23): server-sse-polling now PASSES (2/2, 0
+  # failed, 0 warnings, against conformance 0.2.0-alpha.9) and is no longer listed.
+  # SEP-1699 SSE resumability: fastmcp's legacy Streamable HTTP branch
+  # (_dispatchLegacyHttp) now constructs the sessionful SDK transport with a
+  # bounded per-session eventStore (src/server/legacyEventStore.ts) + a retryInterval,
+  # so each 2025-11-25+ POST SSE stream opens with a priming event (id + empty data
+  # = a Last-Event-ID resume anchor) carrying a retry field, and missed events can
+  # replay after reconnect. Both prior WARNINGs (no priming event, no retry field)
+  # now pass. Bounded memory: retention caps at DEFAULT_MAX_EVENTS (256) per session
+  # and is freed on session close — no unbounded event retention.
 
 # --- client (per-scenario, sequential — see run-client.mjs for why) ---------
 client:
   # Carried forward from conformance-baseline.yml (pinned) — same root causes,
   # observed to also fail on main.
   - auth/basic-cimd                    # WARNING (SHOULD): server advertises client_id_metadata_document_supported but the harness passes the client no CIMD URL, so a spec-correct client falls back to DCR (CIMD is a SHOULD, not a MUST) — harness-contract limit
-  - auth/scope-step-up                 # fastmcp Client completes the interactive OAuth dance (waitForCallback+finishAuth) only inside connect(); this scenario leaves initialize unauthenticated and first challenges (401) on tools/list, so auth never completes and the second (step-up escalation) authorization request is never sent
 
-  # New on main: OAuth grant types / extensions fastmcp's client has no
-  # implementation for at all (src/client/auth.ts exports OAuth, BearerAuth,
-  # ClientCredentials — no DPoP, no JWT-bearer grant, no token-exchange).
-  - auth/dpop                          # RFC 9449 DPoP: client sends no DPoP proof at the token endpoint or on MCP requests, and presents the token as Bearer — sender-constrained tokens not implemented
-  - auth/dpop-nonce                    # same DPoP gap, plus: client never retries with an AS- or RS-supplied nonce (RFC 9449 §8/§9) — not implemented
-  - auth/enterprise-managed-authorization # client performs neither token exchange nor a JWT-bearer grant exchange — not implemented
-  - auth/wif-jwt-bearer                # client sends grant_type=authorization_code, not urn:ietf:params:oauth:grant-type:jwt-bearer — JWT-bearer grant (workload identity federation) not implemented
+  # BURNED DOWN (Task 20, 2026-07-23): auth/scope-step-up now PASSES (20/20, 0
+  # failed, 0 warnings, against conformance 0.2.0-alpha.9). fastmcp's Client
+  # gained post-connect step-up re-authorization: a post-connect request that
+  # rejects with the SDK's UnauthorizedError under the interactive OAuth provider
+  # (the transport already issued the scope-honoring authorization request during
+  # its own 401/403 handling) drives ONE waitForCallback→finishAuth round
+  # (single-flight) and retries the request once. tools/list (401, mcp:basic) and
+  # tools/call (403 insufficient_scope, mcp:write escalation) now both complete.
 
-  # New on main: OAuth 2.0 client-credentials grant, but with token-endpoint
-  # auth methods fastmcp's ClientCredentials provider does not implement. These
-  # are REAL PRODUCT GAPS in src/client/auth.ts, NOT fixture-wiring gaps (an
-  # earlier note here claimed the latter — corrected 2026-07-23 against
-  # conformance 0.2.0-alpha.9). The everything-client's buildAuth() now DOES
-  # select ClientCredentials for these scenarios (it discovers the token
-  # endpoint via RFC 9728 PRM -> RFC 8414 AS metadata and drives the
-  # client_credentials grant once the context provides a client_secret), so the
-  # grant type is now correct — but fastmcp's ClientCredentials only ever
-  # authenticates with client_secret_post, and each scenario demands a
-  # DIFFERENT token-endpoint auth method that fastmcp cannot produce.
-  - auth/client-credentials-jwt        # SEP-1046 private_key_jwt: the AS advertises token_endpoint_auth_methods_supported=[private_key_jwt]/ES256 and its context hands the client {client_id, private_key_pem, signing_algorithm:ES256} with NO client_secret; the /token endpoint requires a signed client_assertion (ES256 JWT, client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer). fastmcp's ClientCredentials implements no JWT client assertions / private_key_jwt and cannot even be constructed without a client_secret, so buildAuth() falls back to the OAuth path (observed: "Expected grant_type=client_credentials, got authorization_code") — product gap in src/client/auth.ts
-  - auth/client-credentials-basic      # SEP-1046 client_secret_basic: the AS advertises token_endpoint_auth_methods_supported=[client_secret_basic] and its /token endpoint REQUIRES an "Authorization: Basic base64(client_id:client_secret)" header. The fixture now drives ClientCredentials so the grant type check PASSES, but fastmcp's ClientCredentials sends client_secret_post (creds in the body, no Basic header), so the sole remaining check ClientCredentialsBasicAuth FAILS "Missing or invalid Authorization header for Basic auth" (observed 2026-07-23). ClientCredentials has no client_secret_basic option — product gap in src/client/auth.ts
+  # DPoP (SEP-1932 / RFC 9449) — sender-constrained tokens. Investigated Task 21
+  # (2026-07-23) and KEPT-BASELINED as a transport-layer blast radius fastmcp
+  # cannot reach. The v2 client SDK ships ZERO DPoP support (grep of the client
+  # dist for dpop/DPoP/proof-of-possession finds only two AS-metadata FIELD names
+  # in @modelcontextprotocol/core — no proof signing, no DPoP auth scheme, no
+  # nonce handling). DPoP requires, per request the SDK builds and sends itself:
+  # (1) a DPoP-bound token — a fresh proof JWT on the token request so the AS
+  # stamps cnf.jkt; (2) `Authorization: DPoP <token>` instead of Bearer; (3) a
+  # fresh per-request proof (jti/htm/htu/iat/ath) in the DPoP header, computed
+  # from THAT request's method + URL + access-token hash; (4) use_dpop_nonce
+  # 401 retries at both AS and RS. All four live inside the SDK's
+  # StreamableHTTPClientTransport request construction / OAuth bridge, which sets
+  # Bearer and exposes no per-request proof hook. fastmcp's own auth providers
+  # inject only fixed header maps that carry no per-request method/URL/token-hash
+  # context, so they cannot build a proof bound to a given request; and the dpop
+  # scenario runs the request under SDK-driven interactive OAuth, where fastmcp
+  # has no request hook at all. Implementing it would ripple deep into SDK
+  # transports (the brief's STOP-and-record case), not src/client. Revisit when
+  # the SDK gains a DPoP provider / per-request proof hook.
+  - auth/dpop                          # RFC 9449 §5/§7.1: no DPoP proof at the token endpoint (token not sender-bound), token presented as Bearer, no per-request proof — SDK transport has no DPoP support fastmcp can wire
+  - auth/dpop-nonce                    # same DPoP gap, plus RFC 9449 §8/§9 nonce retries at the AS and RS — SDK transport has no DPoP support fastmcp can wire
 
-  # New on main: SEP-2352 authorization-server migration.
-  - auth/authorization-server-migration # client does not re-register (DCR) at the new AS when Protected Resource Metadata's authorization_servers changes — not implemented
+  # BURNED DOWN (Task 19, 2026-07-23): auth/client-credentials-basic and
+  # auth/client-credentials-jwt now PASS (each 8/8, 0 failed, against conformance
+  # 0.2.0-alpha.9) and are no longer listed. fastmcp's ClientCredentials gained
+  # client_secret_basic (RFC 6749 §2.3.1 Basic header) and private_key_jwt (a
+  # signed ES256 client_assertion via the SDK's createPrivateKeyJwtAuth), and
+  # everything-client's buildAuth() selects the method from the scenario context.
+
+  # BURNED DOWN (Task 21, 2026-07-23): auth/wif-jwt-bearer (8/8),
+  # auth/enterprise-managed-authorization (9/9), and
+  # auth/authorization-server-migration (34/34) now PASS (conformance
+  # 0.2.0-alpha.9) and are no longer listed.
+  #  - wif-jwt-bearer (SEP-1933 / RFC 7523 §2.1): fastmcp gained JwtBearerAuth —
+  #    presents a pre-issued workload JWT under grant_type=jwt-bearer (public
+  #    client) via the SDK's exchangeJwtAuthGrant wire helper.
+  #  - enterprise-managed-authorization (SEP-990): fastmcp gained
+  #    EnterpriseManagedAuth — RFC 8693 token exchange (ID token -> ID-JAG via the
+  #    SDK's requestJwtAuthorizationGrant) then a RFC 7523 JWT-bearer grant at the
+  #    AS (exchangeJwtAuthGrant, client_secret_basic).
+  #  - authorization-server-migration (SEP-2352): Client._reauthRetry now allows a
+  #    bounded second re-auth round and clears the cached discovery state after
+  #    each round, so a post-connect 401 whose PRM authorization_servers changed
+  #    re-discovers, re-registers (DCR), and re-authorizes at the new AS.

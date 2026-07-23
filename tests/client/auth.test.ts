@@ -1,15 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BearerAuth,
+  Client,
   ClientCredentials,
+  EnterpriseManagedAuth,
   FileTokenStorage,
   InMemoryStore,
+  JwtBearerAuth,
   OAuth,
 } from 'fastmcp-ts/client'
-import type { KeyValueStore, OAuthToken } from 'fastmcp-ts/client'
+import type { KeyValueStore, OAuthToken, ClientCredentialsOptions } from 'fastmcp-ts/client'
+import { UnauthorizedError } from '@modelcontextprotocol/client'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { mkdir, rm, writeFile } from 'fs/promises'
+import * as jose from 'jose'
 import { resolveTransport } from '../../src/client/transports.js'
 
 // ---------------------------------------------------------------------------
@@ -475,6 +480,207 @@ describe('OAuth', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Client — post-connect step-up re-authorization (OAuth)
+//
+// A request that 401s (missing/expired token) or 403s with an
+// `insufficient_scope` challenge *after connect* drives the SDK transport to
+// issue a fresh, scope-honoring authorization request and re-throw
+// UnauthorizedError. The Client wrapper completes a waitForCallback→finishAuth
+// round (single-flight) and retries the request, bounded to TWO rounds per
+// request — one for an ordinary scope step-up, a second for a SEP-2352
+// authorization-server migration; beyond that the error propagates. These
+// tests mock at the SDK-client / transport boundary: the mechanism is
+// transport-level and era-independent, so exercising the wrapper directly
+// (rather than standing up a full OAuth authorization server) is both
+// sufficient and precise about what fastmcp owns — the catch, the
+// single-flight round, and the bounded retry. The
+// SDK's own scope selection (extractWWWAuthenticateParams + computeScopeUnion)
+// and transport-level step-up (`_stepUpAuthorize`) are the SDK's contract.
+// ---------------------------------------------------------------------------
+
+type FakeSdk = {
+  getProtocolEra: () => 'legacy' | 'modern'
+  listTools: ReturnType<typeof vi.fn>
+  callTool: ReturnType<typeof vi.fn>
+  subscribeResource: ReturnType<typeof vi.fn>
+}
+
+/**
+ * Builds a Client with a mock SDK client + transport wired in behind the auth
+ * provider, and (for OAuth) a stubbed `waitForCallback` so no real loopback
+ * callback server is needed. Returns the mocks so a test can assert exactly how
+ * many times the re-auth round ran.
+ */
+function makeStepUpClient(opts: {
+  auth: OAuth | BearerAuth | ClientCredentials
+  era?: 'legacy' | 'modern'
+}) {
+  const client = new Client('https://mcp.example.com/mcp', { auth: opts.auth })
+  const finishAuth = vi.fn(async () => {})
+  const waitForCallback =
+    opts.auth instanceof OAuth
+      ? vi.spyOn(opts.auth, 'waitForCallback').mockResolvedValue(new URLSearchParams('code=abc'))
+      : undefined
+  const sdk: FakeSdk = {
+    getProtocolEra: () => opts.era ?? 'legacy',
+    listTools: vi.fn(),
+    callTool: vi.fn(),
+    subscribeResource: vi.fn(),
+  }
+  ;(client as unknown as { _sdkClient: FakeSdk })._sdkClient = sdk
+  ;(client as unknown as { _transport: { finishAuth: typeof finishAuth } })._transport = {
+    finishAuth,
+  }
+  return { client, sdk, finishAuth, waitForCallback }
+}
+
+describe('Client — post-connect step-up re-authorization (OAuth)', () => {
+  // The re-auth wrapper reacts only to UnauthorizedError and is identical across
+  // eras (era only selects the wire method the SDK sends); the happy-path retry
+  // is exercised under both to confirm no accidental era coupling (e.g. via
+  // _metaParams()).
+  for (const era of ['legacy', 'modern'] as const) {
+    it(`re-authorizes once on a post-connect UnauthorizedError and retries the request (${era} era)`, async () => {
+      const { client, sdk, finishAuth, waitForCallback } = makeStepUpClient({
+        auth: new OAuth(),
+        era,
+      })
+      sdk.listTools
+        .mockRejectedValueOnce(new UnauthorizedError())
+        .mockResolvedValueOnce({ tools: [{ name: 'greet' }] })
+
+      const tools = await client.listTools()
+
+      expect(tools).toEqual([{ name: 'greet' }])
+      expect(sdk.listTools).toHaveBeenCalledTimes(2) // original + one retry
+      expect(waitForCallback).toHaveBeenCalledTimes(1)
+      expect(finishAuth).toHaveBeenCalledTimes(1)
+      expect(finishAuth).toHaveBeenCalledWith(new URLSearchParams('code=abc'))
+    })
+  }
+
+  it('re-authorizes and retries a post-connect subscribeResource (the legacy subscribe RPC is auth-gated)', async () => {
+    const { client, sdk, finishAuth } = makeStepUpClient({ auth: new OAuth(), era: 'legacy' })
+    sdk.subscribeResource
+      .mockRejectedValueOnce(new UnauthorizedError())
+      .mockResolvedValueOnce({})
+
+    await expect(client.subscribeResource('res://x', () => {})).resolves.toBeUndefined()
+
+    expect(sdk.subscribeResource).toHaveBeenCalledTimes(2) // original + one retry
+    expect(finishAuth).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-authorizes and retries a post-connect callTool escalation (the 403 insufficient_scope surface)', async () => {
+    const { client, sdk, finishAuth } = makeStepUpClient({ auth: new OAuth() })
+    sdk.callTool
+      .mockRejectedValueOnce(new UnauthorizedError())
+      .mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }], isError: false })
+
+    const result = await client.callToolRaw('do_write', {})
+
+    expect(result.isError).toBe(false)
+    expect(sdk.callTool).toHaveBeenCalledTimes(2)
+    expect(finishAuth).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-authorizes twice on one request across an authorization-server migration (SEP-2352)', async () => {
+    // The first authenticated request flips the MCP server to a new AS, so the
+    // next 401 needs a SECOND re-auth round on the same wrapped request. Two
+    // rounds are within the bound; the request then succeeds.
+    const { client, sdk, finishAuth, waitForCallback } = makeStepUpClient({ auth: new OAuth() })
+    sdk.listTools
+      .mockRejectedValueOnce(new UnauthorizedError()) // 401 at the old AS
+      .mockRejectedValueOnce(new UnauthorizedError()) // 401 after the AS migrated
+      .mockResolvedValueOnce({ tools: [{ name: 'greet' }] })
+
+    const tools = await client.listTools()
+
+    expect(tools).toEqual([{ name: 'greet' }])
+    expect(sdk.listTools).toHaveBeenCalledTimes(3) // original + two retries
+    expect(waitForCallback).toHaveBeenCalledTimes(2) // two rounds
+    expect(finishAuth).toHaveBeenCalledTimes(2)
+  })
+
+  it('invalidates the cached discovery state after a re-auth round (SEP-2352 re-discovery)', async () => {
+    const auth = new OAuth()
+    const invalidate = vi.spyOn(auth, 'invalidateCredentials')
+    const { client, sdk } = makeStepUpClient({ auth })
+    sdk.listTools
+      .mockRejectedValueOnce(new UnauthorizedError())
+      .mockResolvedValueOnce({ tools: [] })
+
+    await client.listTools()
+
+    // The next authorization leg must re-discover the PRM from scratch, or a
+    // migrated authorization server is never noticed.
+    expect(invalidate).toHaveBeenCalledWith('discovery')
+  })
+
+  it('propagates the UnauthorizedError after the bounded number of re-auth rounds — no unbounded loop', async () => {
+    const { client, sdk, finishAuth, waitForCallback } = makeStepUpClient({ auth: new OAuth() })
+    sdk.listTools.mockRejectedValue(new UnauthorizedError())
+
+    await expect(client.listTools()).rejects.toBeInstanceOf(UnauthorizedError)
+    // original + exactly two retries (the bound), then the error propagates.
+    expect(sdk.listTools).toHaveBeenCalledTimes(3)
+    expect(waitForCallback).toHaveBeenCalledTimes(2)
+    expect(finishAuth).toHaveBeenCalledTimes(2)
+  })
+
+  it('coalesces concurrent post-connect 401s into a single re-auth round (single-flight)', async () => {
+    const { client, sdk, finishAuth, waitForCallback } = makeStepUpClient({ auth: new OAuth() })
+    let authed = false
+    // finishAuth stands in for redeeming the broader-scope token; every request
+    // 401s until it has run once.
+    finishAuth.mockImplementation(async () => {
+      authed = true
+    })
+    sdk.listTools.mockImplementation(async () => {
+      if (!authed) throw new UnauthorizedError()
+      return { tools: [] }
+    })
+
+    const [a, b] = await Promise.all([client.listTools(), client.listTools()])
+
+    expect(a).toEqual([])
+    expect(b).toEqual([])
+    expect(waitForCallback).toHaveBeenCalledTimes(1) // one shared round, not two
+    expect(finishAuth).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not re-authorize non-interactive BearerAuth — the 401 propagates unchanged', async () => {
+    const { client, sdk } = makeStepUpClient({ auth: new BearerAuth('t') })
+    sdk.listTools.mockRejectedValue(new UnauthorizedError())
+
+    await expect(client.listTools()).rejects.toBeInstanceOf(UnauthorizedError)
+    expect(sdk.listTools).toHaveBeenCalledTimes(1) // no retry, no re-auth
+  })
+
+  it('does not re-authorize ClientCredentials — a scope failure is not an interactive flow', async () => {
+    const cc = new ClientCredentials({
+      tokenEndpoint: 'https://as.example.com/token',
+      clientId: 'id',
+      clientSecret: 's',
+    })
+    const { client, sdk } = makeStepUpClient({ auth: cc })
+    sdk.listTools.mockRejectedValue(new UnauthorizedError())
+
+    await expect(client.listTools()).rejects.toBeInstanceOf(UnauthorizedError)
+    expect(sdk.listTools).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not re-authorize on a non-401 error under OAuth — the error propagates unchanged', async () => {
+    const { client, sdk, finishAuth } = makeStepUpClient({ auth: new OAuth() })
+    sdk.listTools.mockRejectedValue(new Error('boom'))
+
+    await expect(client.listTools()).rejects.toThrow('boom')
+    expect(sdk.listTools).toHaveBeenCalledTimes(1)
+    expect(finishAuth).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // FileTokenStorage
 // ---------------------------------------------------------------------------
 
@@ -842,5 +1048,646 @@ describe('ClientCredentials', () => {
       clientSecret: 'my-secret',
     })
     expect(auth.kind).toBe('client_credentials')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ClientCredentials — client_secret_post (default) is unchanged
+// ---------------------------------------------------------------------------
+
+describe('ClientCredentials — client_secret_post (default)', () => {
+  const TOKEN_ENDPOINT = 'https://auth.example.com/oauth/token'
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('defaults to client_secret_post and sends no Authorization header on the token request', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      clientSecret: 'my-secret',
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const headers = init?.headers as Record<string, string>
+    expect(headers.Authorization).toBeUndefined()
+
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('client_id')).toBe('my-client')
+    expect(body.get('client_secret')).toBe('my-secret')
+  })
+
+  it('produces a byte-identical POST body to the pre-existing behavior', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      clientSecret: 'my-secret',
+      scope: 'read write',
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    // Field order locked: grant_type, client_id, client_secret, scope.
+    expect(init?.body).toBe(
+      'grant_type=client_credentials&client_id=my-client&client_secret=my-secret&scope=read+write',
+    )
+  })
+
+  it('accepts an explicit authMethod: client_secret_post identically to the default', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      clientSecret: 'my-secret',
+      authMethod: 'client_secret_post',
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const headers = init?.headers as Record<string, string>
+    expect(headers.Authorization).toBeUndefined()
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('client_secret')).toBe('my-secret')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ClientCredentials — client_secret_basic
+// ---------------------------------------------------------------------------
+
+describe('ClientCredentials — client_secret_basic', () => {
+  const TOKEN_ENDPOINT = 'https://auth.example.com/oauth/token'
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('sends the credentials in an RFC 6749 Basic Authorization header, not the body', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      clientSecret: 'my-secret',
+      authMethod: 'client_secret_basic',
+    })
+
+    await auth.getHeaders()
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0]!
+    expect(url).toBe(TOKEN_ENDPOINT)
+    const headers = init?.headers as Record<string, string>
+    expect(headers.Authorization).toBe(`Basic ${btoa('my-client:my-secret')}`)
+
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('grant_type')).toBe('client_credentials')
+    expect(body.has('client_id')).toBe(false)
+    expect(body.has('client_secret')).toBe(false)
+  })
+
+  it('form-encodes special characters per RFC 6749 §2.3.1 before Base64', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'client id/with:special',
+      clientSecret: 's3cr3t:with spaces&+=',
+      authMethod: 'client_secret_basic',
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const headers = init?.headers as Record<string, string>
+    // Hardcoded oracle — independent of the encoder under test. Decodes to
+    // `client%20id%2Fwith%3Aspecial:s3cr3t%3Awith%20spaces%26%2B%3D`
+    // (RFC 3986 percent-encoding of id and secret, joined by a colon).
+    expect(headers.Authorization).toBe(
+      'Basic Y2xpZW50JTIwaWQlMkZ3aXRoJTNBc3BlY2lhbDpzM2NyM3QlM0F3aXRoJTIwc3BhY2VzJTI2JTJCJTNE',
+    )
+    expect(atob(headers.Authorization.slice('Basic '.length))).toBe(
+      'client%20id%2Fwith%3Aspecial:s3cr3t%3Awith%20spaces%26%2B%3D',
+    )
+  })
+
+  it('includes scope in the body but never the secret', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      clientSecret: 'my-secret',
+      authMethod: 'client_secret_basic',
+      scope: 'read write',
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('scope')).toBe('read write')
+    expect(body.has('client_secret')).toBe(false)
+  })
+
+  it('still returns a Bearer Authorization header from getHeaders()', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      clientSecret: 'my-secret',
+      authMethod: 'client_secret_basic',
+    })
+
+    expect(await auth.getHeaders()).toEqual({ Authorization: 'Bearer test-access-token' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ClientCredentials — private_key_jwt (RFC 7523 / SEP-1046)
+// ---------------------------------------------------------------------------
+
+describe('ClientCredentials — private_key_jwt', () => {
+  const TOKEN_ENDPOINT = 'https://auth.example.com/oauth/token'
+  const ISSUER = 'https://auth.example.com'
+
+  let privateKeyPem: string
+  let publicKey: jose.CryptoKey
+
+  beforeAll(async () => {
+    const { publicKey: pub, privateKey } = await jose.generateKeyPair('ES256', {
+      extractable: true,
+    })
+    publicKey = pub as jose.CryptoKey
+    privateKeyPem = await jose.exportPKCS8(privateKey)
+  })
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('sends a signed client_assertion with the jwt-bearer type and no secret in the body', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      privateKey: privateKeyPem,
+      algorithm: 'ES256',
+      audience: ISSUER,
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const headers = init?.headers as Record<string, string>
+    // No Basic header, no secret — the assertion carries the client identity.
+    expect(headers.Authorization).toBeUndefined()
+
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('grant_type')).toBe('client_credentials')
+    expect(body.get('client_assertion_type')).toBe(
+      'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+    )
+    expect(body.get('client_assertion')).toBeTruthy()
+    expect(body.has('client_secret')).toBe(false)
+    expect(body.has('client_id')).toBe(false)
+  })
+
+  it('signs the assertion with the configured claims and algorithm, verifiable against the public key', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      privateKey: privateKeyPem,
+      algorithm: 'ES256',
+      audience: ISSUER,
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const assertion = new URLSearchParams(init?.body as string).get('client_assertion')!
+
+    const { payload, protectedHeader } = await jose.jwtVerify(assertion, publicKey, {
+      audience: ISSUER,
+    })
+    expect(protectedHeader.alg).toBe('ES256')
+    expect(payload.iss).toBe('my-client')
+    expect(payload.sub).toBe('my-client')
+    expect(payload.aud).toBe(ISSUER)
+    expect(typeof payload.exp).toBe('number')
+    expect(typeof payload.jti).toBe('string')
+  })
+
+  it('signs the assertion with the token endpoint as audience when so configured', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      privateKey: privateKeyPem,
+      algorithm: 'ES256',
+      // audience is required; an AS that verifies against the token endpoint.
+      audience: TOKEN_ENDPOINT,
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const assertion = new URLSearchParams(init?.body as string).get('client_assertion')!
+
+    const { payload } = await jose.jwtVerify(assertion, publicKey, { audience: TOKEN_ENDPOINT })
+    expect(payload.aud).toBe(TOKEN_ENDPOINT)
+  })
+
+  it('includes scope in the body when configured', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      privateKey: privateKeyPem,
+      algorithm: 'ES256',
+      audience: ISSUER,
+      scope: 'read',
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    expect(new URLSearchParams(init?.body as string).get('scope')).toBe('read')
+  })
+
+  it('returns a Bearer Authorization header from getHeaders() after the jwt exchange', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new ClientCredentials({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'my-client',
+      privateKey: privateKeyPem,
+      algorithm: 'ES256',
+      audience: ISSUER,
+    })
+
+    expect(await auth.getHeaders()).toEqual({ Authorization: 'Bearer test-access-token' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ClientCredentials — options are a discriminated union (compile-time)
+// ---------------------------------------------------------------------------
+
+describe('ClientCredentials — options discriminated union', () => {
+  it('type-rejects combining clientSecret and privateKey configs', () => {
+    const mixed = {
+      tokenEndpoint: 'https://auth.example.com/oauth/token',
+      clientId: 'c',
+      clientSecret: 's',
+      privateKey: 'pem',
+      algorithm: 'ES256',
+    }
+    // @ts-expect-error clientSecret and privateKey are mutually exclusive
+    const opts: ClientCredentialsOptions = mixed
+    expect(opts).toBeDefined()
+  })
+
+  it('type-requires an audience on the key-based config', () => {
+    const noAudience = {
+      tokenEndpoint: 'https://auth.example.com/oauth/token',
+      clientId: 'c',
+      privateKey: 'pem',
+      algorithm: 'ES256',
+    }
+    // @ts-expect-error private_key_jwt requires an explicit audience
+    const opts: ClientCredentialsOptions = noAudience
+    expect(opts).toBeDefined()
+  })
+
+  it('accepts a key-based config with an audience and no clientSecret', () => {
+    const opts: ClientCredentialsOptions = {
+      tokenEndpoint: 'https://auth.example.com/oauth/token',
+      clientId: 'c',
+      privateKey: 'pem',
+      algorithm: 'ES256',
+      audience: 'https://auth.example.com',
+    }
+    expect(opts.clientId).toBe('c')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// JwtBearerAuth — RFC 7523 §2.1 JWT-bearer grant (SEP-1933 workload identity)
+// ---------------------------------------------------------------------------
+
+describe('JwtBearerAuth', () => {
+  const TOKEN_ENDPOINT = 'https://auth.example.com/oauth/token'
+  const JWT_BEARER_GRANT = 'urn:ietf:params:oauth:grant-type:jwt-bearer'
+  const ASSERTION = 'eyJhbGciOiJFUzI1NiJ9.workload.signature'
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('POSTs grant_type=jwt-bearer with the assertion, and returns a Bearer header', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'workload-client',
+      assertion: ASSERTION,
+    })
+
+    const headers = await auth.getHeaders()
+    expect(headers).toEqual({ Authorization: 'Bearer test-access-token' })
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0]!
+    expect(String(url)).toBe(TOKEN_ENDPOINT)
+    expect(init?.method).toBe('POST')
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('grant_type')).toBe(JWT_BEARER_GRANT)
+    expect(body.get('assertion')).toBe(ASSERTION)
+  })
+
+  it('defaults to a public client (authMethod none): client_id in the body, no Authorization header', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'workload-client',
+      assertion: ASSERTION,
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const reqHeaders = init?.headers as Headers | Record<string, string>
+    const authHeader =
+      reqHeaders instanceof Headers
+        ? reqHeaders.get('authorization')
+        : (reqHeaders as Record<string, string>).Authorization ??
+          (reqHeaders as Record<string, string>).authorization
+    expect(authHeader ?? null).toBeNull()
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('client_id')).toBe('workload-client')
+    expect(body.has('client_secret')).toBe(false)
+  })
+
+  it('omits client_id from the body entirely when no clientId is configured', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      assertion: ASSERTION,
+    })
+
+    await auth.getHeaders()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!
+    const body = new URLSearchParams(init?.body as string)
+    // No client_id at all — not an empty `client_id=`.
+    expect(body.has('client_id')).toBe(false)
+    expect(body.get('assertion')).toBe(ASSERTION)
+    expect(body.get('grant_type')).toBe(JWT_BEARER_GRANT)
+  })
+
+  it('keeps the configured scope even when no clientId is set (both body rewrites apply)', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      assertion: ASSERTION,
+      scope: 'mcp:read',
+    })
+
+    await auth.getHeaders()
+
+    const body = new URLSearchParams(vi.mocked(fetch).mock.calls[0]![1]?.body as string)
+    expect(body.has('client_id')).toBe(false)
+    expect(body.get('scope')).toBe('mcp:read')
+  })
+
+  it('calls an async assertion factory to mint a fresh assertion on each fetch', async () => {
+    mockFetchOnce(makeTokenResponse())
+    mockFetchOnce(makeTokenResponse({ access_token: 'second' }))
+
+    let n = 0
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'workload-client',
+      assertion: async () => `assertion-${++n}`,
+      refreshBufferSeconds: 4000, // force the second call to re-fetch
+    })
+
+    await auth.getHeaders()
+    await auth.getHeaders()
+
+    const body1 = new URLSearchParams(vi.mocked(fetch).mock.calls[0]![1]?.body as string)
+    const body2 = new URLSearchParams(vi.mocked(fetch).mock.calls[1]![1]?.body as string)
+    expect(body1.get('assertion')).toBe('assertion-1')
+    expect(body2.get('assertion')).toBe('assertion-2')
+  })
+
+  it('appends the requested scope to the token request body', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'workload-client',
+      assertion: ASSERTION,
+      scope: 'mcp:read mcp:write',
+    })
+
+    await auth.getHeaders()
+
+    const body = new URLSearchParams(vi.mocked(fetch).mock.calls[0]![1]?.body as string)
+    expect(body.get('scope')).toBe('mcp:read mcp:write')
+    expect(body.get('assertion')).toBe(ASSERTION)
+  })
+
+  it('authenticates the client with Basic when authMethod is client_secret_basic', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'workload-client',
+      clientSecret: 'sekret',
+      authMethod: 'client_secret_basic',
+      assertion: ASSERTION,
+    })
+
+    await auth.getHeaders()
+
+    const reqHeaders = vi.mocked(fetch).mock.calls[0]![1]?.headers as Headers | Record<string, string>
+    const authHeader =
+      reqHeaders instanceof Headers
+        ? reqHeaders.get('authorization')
+        : (reqHeaders as Record<string, string>).Authorization
+    expect(authHeader).toBe(`Basic ${btoa('workload-client:sekret')}`)
+  })
+
+  it('caches the token across calls (one fetch)', async () => {
+    mockFetchOnce(makeTokenResponse())
+
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'workload-client',
+      assertion: ASSERTION,
+    })
+
+    const h1 = await auth.getHeaders()
+    const h2 = await auth.getHeaders()
+    expect(h1).toEqual(h2)
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it('has kind === "jwt_bearer" for the transport discriminant', () => {
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'workload-client',
+      assertion: ASSERTION,
+    })
+    expect(auth.kind).toBe('jwt_bearer')
+  })
+
+  it('is accepted by the transport resolver as an async per-request auth', async () => {
+    const auth = new JwtBearerAuth({
+      tokenEndpoint: TOKEN_ENDPOINT,
+      clientId: 'workload-client',
+      assertion: ASSERTION,
+    })
+    // resolveTransport routes a `kind`-carrying provider through the async
+    // per-request fetch path (isAsyncAuth); we verify it constructs cleanly.
+    const { transport } = await resolveTransport('https://mcp.example.com/mcp', auth)
+    expect(transport).toBeDefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// EnterpriseManagedAuth — SEP-990 token exchange + JWT-bearer grant
+// ---------------------------------------------------------------------------
+
+describe('EnterpriseManagedAuth', () => {
+  const AS_TOKEN_ENDPOINT = 'https://auth.chat.example/token'
+  const IDP_TOKEN_ENDPOINT = 'https://idp.example.com/token'
+  const AS_ISSUER = 'https://auth.chat.example'
+  const MCP_RESOURCE = 'https://mcp.chat.example/mcp'
+  const TOKEN_EXCHANGE_GRANT = 'urn:ietf:params:oauth:grant-type:token-exchange'
+  const JWT_BEARER_GRANT = 'urn:ietf:params:oauth:grant-type:jwt-bearer'
+  const ID_TOKEN = 'eyJhbGciOiJSUzI1NiJ9.id-token.sig'
+  const ID_JAG = 'eyJhbGciOiJFUzI1NiIsInR5cCI6Im9hdXRoLWlkLWphZytqd3QifQ.id-jag.sig'
+
+  function mockIdpExchange(): void {
+    // requestJwtAuthorizationGrant parses IdJagTokenExchangeResponseSchema.
+    mockFetchOnce({
+      issued_token_type: 'urn:ietf:params:oauth:token-type:id-jag',
+      access_token: ID_JAG,
+      token_type: 'N_A',
+      expires_in: 300,
+    })
+  }
+  function mockAsGrant(access = 'ema-access-token'): void {
+    mockFetchOnce(makeTokenResponse({ access_token: access }))
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function makeAuth(): EnterpriseManagedAuth {
+    return new EnterpriseManagedAuth({
+      tokenEndpoint: AS_TOKEN_ENDPOINT,
+      clientId: 'mcp-client',
+      clientSecret: 'mcp-secret',
+      audience: AS_ISSUER,
+      resource: MCP_RESOURCE,
+      idpTokenEndpoint: IDP_TOKEN_ENDPOINT,
+      idpClientId: 'idp-client',
+      idToken: ID_TOKEN,
+    })
+  }
+
+  it('performs the RFC 8693 token exchange at the IdP with the required parameters', async () => {
+    mockIdpExchange()
+    mockAsGrant()
+
+    await makeAuth().getHeaders()
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0]!
+    expect(String(url)).toBe(IDP_TOKEN_ENDPOINT)
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('grant_type')).toBe(TOKEN_EXCHANGE_GRANT)
+    expect(body.get('requested_token_type')).toBe('urn:ietf:params:oauth:token-type:id-jag')
+    expect(body.get('subject_token')).toBe(ID_TOKEN)
+    expect(body.get('subject_token_type')).toBe('urn:ietf:params:oauth:token-type:id_token')
+    expect(body.get('audience')).toBe(AS_ISSUER)
+    expect(body.get('resource')).toBe(MCP_RESOURCE)
+    expect(body.get('client_id')).toBe('idp-client')
+  })
+
+  it('presents the ID-JAG under grant_type=jwt-bearer with client_secret_basic at the AS', async () => {
+    mockIdpExchange()
+    mockAsGrant()
+
+    const headers = await makeAuth().getHeaders()
+    expect(headers).toEqual({ Authorization: 'Bearer ema-access-token' })
+
+    const [url, init] = vi.mocked(fetch).mock.calls[1]!
+    expect(String(url)).toBe(AS_TOKEN_ENDPOINT)
+    const body = new URLSearchParams(init?.body as string)
+    expect(body.get('grant_type')).toBe(JWT_BEARER_GRANT)
+    expect(body.get('assertion')).toBe(ID_JAG)
+
+    const reqHeaders = init?.headers as Headers | Record<string, string>
+    const authHeader =
+      reqHeaders instanceof Headers
+        ? reqHeaders.get('authorization')
+        : (reqHeaders as Record<string, string>).Authorization
+    expect(authHeader).toBe(`Basic ${btoa('mcp-client:mcp-secret')}`)
+  })
+
+  it('runs both hops exactly once and caches the resulting token', async () => {
+    mockIdpExchange()
+    mockAsGrant()
+
+    const auth = makeAuth()
+    const h1 = await auth.getHeaders()
+    const h2 = await auth.getHeaders()
+
+    expect(h1).toEqual(h2)
+    expect(fetch).toHaveBeenCalledTimes(2) // exchange + grant, then cached
+  })
+
+  it('has kind === "enterprise_managed" for the transport discriminant', () => {
+    expect(makeAuth().kind).toBe('enterprise_managed')
   })
 })

@@ -170,8 +170,8 @@ export interface McpContext {
   /**
    * Seals `payload` into the opaque `requestState` string to return from
    * `inputRequired({ requestState })`. HMAC-signed via `FastMCPOptions.requestState`
-   * when configured; otherwise a plain `JSON.stringify(payload)` with a one-time
-   * console warning — the resulting state is unsigned and MUST NOT be trusted for
+   * when configured; otherwise a plain `JSON.stringify(payload)` with a console
+   * warning — the resulting state is unsigned and MUST NOT be trusted for
    * anything that influences authorization, resource access, or business logic (the
    * client can read and tamper with it) unless `FastMCPOptions.requestState` is set.
    */
