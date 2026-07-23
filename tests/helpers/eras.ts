@@ -116,6 +116,11 @@ export async function connectEra(
     )
   }
 
+  // The connection is protocol-connected, but on legacy HTTP the server→client push
+  // channel is not necessarily wired up yet. Wait for it before handing the client to
+  // a suite, so a push triggered on the first line of a test cannot be dropped.
+  await awaitLegacyServerPushReady(mcp, combo)
+
   return {
     client,
     combo,
@@ -123,6 +128,75 @@ export async function connectEra(
       await client.close()
       await mcp.close()
     },
+  }
+}
+
+/**
+ * Block until the legacy Streamable-HTTP server→client push channel is attached, so
+ * a suite can trigger a server-initiated message on the first line of a test without
+ * racing the channel coming up.
+ *
+ * WHY THIS EXISTS. Server→client messages that are NOT correlated to an in-flight
+ * client request — `notifications/resources/updated` (from `notifyResourceUpdated`),
+ * and the `sampling/createMessage` / `elicitation/create` server→client REQUESTS
+ * raised by `ctx.sample()` / `ctx.elicit()` — travel over a single "standalone" SSE
+ * stream (the SDK keys it `_GET_stream`). The SDK client opens that stream
+ * fire-and-forget when it sends `notifications/initialized` during `connect()`, and
+ * the SDK server DROPS any such message sent before the stream is registered — a
+ * freshly-opened GET carries no `Last-Event-ID`, so the event store never replays it.
+ * A push triggered in the window between `connect()` resolving and the stream
+ * attaching is therefore lost forever: a dropped notification reads as an empty array,
+ * and an undeliverable server→client request leaves the tool awaiting a reply that
+ * never comes (a 10s test timeout). The window is invisible on fast local runners but
+ * real on slower/contended CI runners (PR #38: Linux, Node 22 and Node "latest").
+ * (Request-correlated pushes — `ctx.log`, `ctx.reportProgress` — ride the in-flight
+ * request's own stream, which is always attached, so they are unaffected.)
+ *
+ * NO-OP for stdio (one pinned bidirectional pipe — the push channel is live the moment
+ * `connect()` resolves) and for modern HTTP (stateless; sampling/elicit never cross the
+ * wire). FAILS LOUD: if the SDK/FastMCP internals it inspects are ever restructured
+ * (no session, or no `_streamMapping` Map) it THROWS naming this function and the probe
+ * path, so the next SDK bump gets a signpost instead of a silently-returning flake — it
+ * never degrades to the prior raceable behavior. The bounded wait below still just polls.
+ */
+async function awaitLegacyServerPushReady(
+  mcp: FastMCP,
+  combo: EraCombo,
+  timeoutMs = 1500,
+): Promise<void> {
+  if (combo.transport !== 'http' || combo.era !== 'legacy') return
+
+  // Reach the one legacy session's underlying stream registry. connect() has already
+  // completed the initialize round-trip, so the session exists by now.
+  const sessions = (mcp as unknown as { _sessions?: Map<string, { transport?: unknown }> })._sessions
+  if (!sessions || sessions.size === 0) {
+    // Fail LOUD, not silent: after a legacy-HTTP connect() there must be exactly one
+    // session. Its absence means the FastMCP session model moved — no-op'ing here would
+    // silently re-expose the drop race with nothing pointing at the cause.
+    throw new Error(
+      'awaitLegacyServerPushReady: no legacy HTTP session after connect() — SDK internals moved — update the probe path (see tests/helpers/eras.ts)',
+    )
+  }
+  // connectEra opens exactly one session per connection, so the sole entry is this one.
+  const transport = [...sessions.values()][0].transport
+  const streamMapping = (
+    transport as { _webStandardTransport?: { _streamMapping?: unknown } } | undefined
+  )?._webStandardTransport?._streamMapping
+
+  if (!(streamMapping instanceof Map)) {
+    // Fail LOUD: the standalone-stream registry is the barrier's whole basis. A missing
+    // Map means the transport internals were restructured; throw so the next SDK bump
+    // gets a signpost instead of a silently-returning flake.
+    throw new Error(
+      'awaitLegacyServerPushReady: session transport has no _webStandardTransport._streamMapping Map — SDK internals moved — update the probe path (see tests/helpers/eras.ts)',
+    )
+  }
+
+  // `_streamMapping` is a stable instance mutated in place; the standalone stream is
+  // registered under the fixed `_GET_stream` key once the client's GET is accepted.
+  const start = Date.now()
+  while (streamMapping.get('_GET_stream') === undefined && Date.now() - start < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 5))
   }
 }
 
