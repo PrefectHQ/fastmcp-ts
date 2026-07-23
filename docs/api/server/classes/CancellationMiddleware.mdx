@@ -2,10 +2,20 @@
 title: "CancellationMiddleware"
 ---
 
-Defined in: [server/middleware.ts:233](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L233)
+Defined in: [server/middleware.ts:338](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L338)
 
 Intercepts `notifications/cancelled` from the client and aborts the matching
 in-flight handler via Promise.race + AbortController.
+
+KNOWN GAP (2026-07-28): this only covers legacy (2025-era) and stdio cancellation.
+On a modern Streamable HTTP connection, the SDK signals cancellation by closing the
+request's response stream rather than sending `notifications/cancelled` — the client
+is correctly told the call was cancelled either way, but a handler registered here
+keeps running server-side to completion on the modern path, since this middleware
+never observes that stream closure. The SDK exposes it per-request as
+`ctx.mcpReq.signal` (a `BaseContext` field, present on every era) — unifying this
+middleware with that signal (so long-running handlers actually stop executing on
+both eras) is tracked as follow-up work, not yet implemented here.
 
 ## Implements
 
@@ -28,34 +38,24 @@ new CancellationMiddleware(): CancellationMiddleware;
 ### onRequest()
 
 ```ts
-onRequest<T, R>(ctx, next): Promise<R>;
+onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:243](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L243)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:348](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L348)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 #### Implementation of
 
@@ -69,7 +69,7 @@ Defined in: [server/middleware.ts:243](https://github.com/PrefectHQ/fastmcp-ts/b
 setup(server): void;
 ```
 
-Defined in: [server/middleware.ts:236](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L236)
+Defined in: [server/middleware.ts:341](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L341)
 
 Called once per Server instance. Use to register notification handlers or other server-level setup.
 

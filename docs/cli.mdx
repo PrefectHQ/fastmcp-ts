@@ -56,6 +56,22 @@ For nested or complex inputs, pass `--input-json` with a JSON object instead of 
 fastmcp call analyze --file server.ts --input-json '{"filters": {"status": "open"}}'
 ```
 
+## Protocol era
+
+`inspect`, `list`, and `call` connect to a server as a client, so they choose a [protocol era](/concepts/protocol-eras) the way the library client does. Each picks a default per transport: an HTTP URL negotiates automatically — it uses the modern (2026-07-28) era when the server supports it and falls back to legacy — while a stdio or in-process server the CLI spawns stays legacy. Two flags override the default. `--modern` opts a stdio or in-process connection into the same automatic negotiation. `--pin <revision>` requires one exact revision on any transport; it is the stronger request, so it wins even alongside `--modern`.
+
+```bash
+fastmcp list --url http://localhost:3000                              # auto-negotiates
+fastmcp inspect --file server.ts --modern                             # negotiate a spawned server
+fastmcp call add --url http://localhost:3000 --pin 2026-07-28 a=1 b=2
+```
+
+A `--file` server is spawned as a subprocess and connected over real stdio, so `--modern` reaches the modern era through it. This differs from the library's [in-process transport](/clients/transports#in-process-connections), where an in-memory `FastMCP` connection stays legacy under `'auto'` and needs a pinned era to go modern.
+
+`run` takes no era flag. It starts a server, and a fastmcp server serves both eras at once with no configuration.
+
+When a `--pin` revision the server cannot speak reaches the wire, the CLI maps the `-32022 UnsupportedProtocolVersion` protocol error to a plain-English message: it names the versions the server does support and tells you to change or drop `--pin`. Two neighboring modern-era protocol errors get the same treatment: `-32021` when the server needs a client capability this CLI did not declare, and `-32020` when a request's protocol-version header does not match its body.
+
 ## Dev inspector
 
 `fastmcp dev inspector` opens the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) — a browser UI for poking at a server interactively — against a server file, with file-watch reload. Use it when you want to explore a server by hand: call tools through a form, read resources, watch notifications. It is the interactive counterpart to `inspect`, which prints a static snapshot to the terminal.

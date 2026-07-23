@@ -3,25 +3,29 @@
  *
  * Runs the official MCP conformance suite in client mode against the
  * everything-client fixture (spawned from source via tsx — no build):
- *   1. the non-auth core client scenarios, each by name, and
- *   2. the `core` suite filtered to the draft (2026-07-28-era) revision via
- *      `--spec-version draft`.
+ *   1. the non-auth core client scenarios, each by name,
+ *   2. the 14 core `auth/*` OAuth scenarios, each by name, and
+ *   3. the `core` suite filtered to the draft revision via `--spec-version draft`.
  *
  * The committed baseline (conformance-baseline.yml) is applied so known failures
  * pass while new regressions fail. The conformance tool version is pinned for
  * reproducibility. Dependency-free Node.
  *
  * Scope (verified against @modelcontextprotocol/conformance 0.1.16):
- *   - Client mode has no `active` suite; its `core` analog also bundles the
- *     OAuth `auth/*` scenarios. This sampling+elicitation fixture configures no
- *     OAuth, so those scenarios cannot pass and would be permanent baseline
- *     entries. To keep the baseline burnable-to-empty, we enumerate the four
- *     non-auth core scenarios instead. Adding OAuth conformance is a named W9
- *     follow-up (an OAuth-configured client driver + the `auth`/`metadata`
- *     suites) — see conformance-baseline.yml.
+ *   - Client mode has no `active` suite. The `--suite core` set is the non-auth
+ *     scenarios only; the `auth/*` scenarios are a separate group. Both `--suite`
+ *     forms run their scenarios IN PARALLEL, which would race the everything-
+ *     client's single fixed OAuth loopback callback port across concurrent auth
+ *     scenarios. So every scenario is enumerated BY NAME and run sequentially.
+ *   - The everything-client now drives OAuth for `auth/*` scenarios (SEP-2243
+ *     header scenarios are main-only and excluded from this pinned run). The 14
+ *     enumerated auth scenarios are the `[2025-11-25]`-era core set; the
+ *     `[2025-03-26]`, `[draft]`, and `[extension]` auth scenarios are out of
+ *     scope for the pinned core run. Two of the 14 are genuine fastmcp debt and
+ *     are baselined with reasons — see conformance-baseline.yml.
  *   - `--spec-version 2026-07-28` is rejected; `draft` is the newest-revision
- *     tag. No core scenario is draft-tagged, so run #2 executes 0 scenarios
- *     today; it is wired now to pick up future draft client scenarios.
+ *     tag. No core (non-auth) scenario is draft-tagged, so run #3 executes 0
+ *     scenarios today; it is wired now to pick up future draft client scenarios.
  */
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -38,6 +42,27 @@ const command = `npx tsx ${clientFixture}`
 // The non-auth core client scenarios the everything-client actually drives.
 const CORE_SCENARIOS = ['initialize', 'tools_call', 'elicitation-sep1034-client-defaults', 'sse-retry']
 
+// The 14 core `auth/*` OAuth scenarios ([2025-11-25]-era). Enumerated by name so
+// they run sequentially (the OAuth callback port is fixed and cannot be shared
+// by parallel scenarios). The everything-client configures an OAuth provider
+// from the scenario context; see tests/conformance/everything-client.ts.
+const AUTH_SCENARIOS = [
+  'auth/metadata-default',
+  'auth/metadata-var1',
+  'auth/metadata-var2',
+  'auth/metadata-var3',
+  'auth/basic-cimd',
+  'auth/scope-from-www-authenticate',
+  'auth/scope-from-scopes-supported',
+  'auth/scope-omitted-when-undefined',
+  'auth/scope-step-up',
+  'auth/scope-retry-limit',
+  'auth/token-endpoint-auth-basic',
+  'auth/token-endpoint-auth-post',
+  'auth/token-endpoint-auth-none',
+  'auth/pre-registration',
+]
+
 const baselineArgs = existsSync(baseline) ? ['--expected-failures', baseline] : []
 
 /** Runs one conformance invocation; resolves true when it exits non-zero. */
@@ -50,7 +75,7 @@ function runConformance(args) {
 }
 
 let anyFailed = false
-for (const scenario of CORE_SCENARIOS) {
+for (const scenario of [...CORE_SCENARIOS, ...AUTH_SCENARIOS]) {
   anyFailed =
     (await runConformance(['client', '--command', command, '--scenario', scenario, ...baselineArgs])) || anyFailed
 }

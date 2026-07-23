@@ -101,8 +101,9 @@ jobs:
 
       # Runs the pinned @modelcontextprotocol/conformance suite in client mode
       # against the everything-client fixture (the four non-auth core scenarios,
-      # plus the draft filter) and applies conformance-baseline.yml. Fails the
-      # job (and the PR) on any regression or stale baseline entry — see
-      # tests/conformance/run-client.mjs.
+      # plus the 14 [2025-11-25]-era core auth/* OAuth scenarios driven through
+      # the OAuth-configured client driver, plus the draft filter) and applies
+      # conformance-baseline.yml. Fails the job (and the PR) on any regression or
+      # stale baseline entry — see tests/conformance/run-client.mjs.
       - name: Run client conformance suite
         run: npm run conformance:client

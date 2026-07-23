@@ -53,7 +53,28 @@ const client = await Client.connect({
 })
 ```
 
+One flow does not carry over from the single client: `MultiServerClient` does not drive the interactive OAuth browser handshake. Non-interactive credentials work per server — a bearer token, a client-credentials grant, or an `OAuth` provider whose tokens are already stored and only need refreshing. A server that would send the user through the browser for the first time is not handled here; authorize it once with a single [`Client`](/clients/client), then reuse the stored tokens.
+
 Handlers, by contrast, are shared. A single `log`, `sampling`, or `elicitation` handler is registered on every connection, so a notification or request from any server reaches the same place. The sampling capability is advertised to all servers when you provide the handler.
+
+## Protocol era
+
+Every sub-connection speaks a [protocol era](/concepts/protocol-eras), and a `MultiServerClient` negotiates one the same way a single client does. The `versionNegotiation` option applies one mode to every server in the config, and each sub-connection then negotiates its own era against its own server — so one client can end up modern on one server and legacy on another. `getProtocolEra(serverName)` reports the era a named server settled on.
+
+```typescript
+const client = await Client.connect({
+  mcpServers: {
+    github: { url: 'https://github-mcp.example.com' },
+    jira:   { command: 'npx', args: ['jira-mcp'] },
+  },
+}, {
+  versionNegotiation: { mode: 'auto' },
+})
+
+client.getProtocolEra('github')   // 'modern' or 'legacy'
+```
+
+The era-sensitive utilities route per sub-client, so you call them once and each server gets the right wire. `ping()` and `setLogLevel()` fan out across every connection and pick the legacy RPC or its modern replacement for each server independently.
 
 ## Connect semantics
 

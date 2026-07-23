@@ -2,7 +2,7 @@
 title: "OAuthProviderOptions"
 ---
 
-Defined in: [server/auth/oauth/provider.ts:9](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/auth/oauth/provider.ts#L9)
+Defined in: [server/auth/oauth/provider.ts:7](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/auth/oauth/provider.ts#L7)
 
 ## Properties
 
@@ -12,7 +12,7 @@ Defined in: [server/auth/oauth/provider.ts:9](https://github.com/PrefectHQ/fastm
 optional onAuthorize?: (client, params, res) => Promise<void>;
 ```
 
-Defined in: [server/auth/oauth/provider.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/auth/oauth/provider.ts#L17)
+Defined in: [server/auth/oauth/provider.ts:15](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/auth/oauth/provider.ts#L15)
 
 Called during the authorization step. Implementations must eventually redirect
 to `params.redirectUri` with a `code` query parameter (and `state` if present).
@@ -44,7 +44,7 @@ for testing and development only.
 optional scopes?: string[];
 ```
 
-Defined in: [server/auth/oauth/provider.ts:23](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/auth/oauth/provider.ts#L23)
+Defined in: [server/auth/oauth/provider.ts:21](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/auth/oauth/provider.ts#L21)
 
 Scopes supported by this server, advertised in OAuth metadata.
 
@@ -56,6 +56,6 @@ Scopes supported by this server, advertised in OAuth metadata.
 optional tokenTtl?: number;
 ```
 
-Defined in: [server/auth/oauth/provider.ts:25](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/auth/oauth/provider.ts#L25)
+Defined in: [server/auth/oauth/provider.ts:23](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/auth/oauth/provider.ts#L23)
 
 Access token lifetime in seconds. Default: 3600.

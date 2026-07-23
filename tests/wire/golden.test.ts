@@ -178,11 +178,16 @@ describe('wire golden — server/discover response shape', () => {
     expect(out.json.result).toEqual({
       supportedVersions: [MODERN],
       capabilities: {
-        // FastMCP advertises listChanged on all three registries + logging.
+        // FastMCP advertises listChanged on all three registries + logging +
+        // completions. `completion/complete` is in the modern 2026-07-28 wire
+        // registry, so `completions` surfaces in the modern discovery document
+        // (Task 12). `resources.subscribe` stays absent on modern — it is
+        // legacy-only.
         tools: { listChanged: true },
         resources: { listChanged: true },
         prompts: { listChanged: true },
         logging: {},
+        completions: {},
       },
       resultType: 'complete',
       ttlMs: 0,

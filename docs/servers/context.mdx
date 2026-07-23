@@ -1,10 +1,12 @@
 ---
 title: "Context"
-description: "The handler's back-channel to the client: logging, progress, sampling, elicitation, roots, and session state"
+description: "The handler's back-channel to the client: logging, progress, asking for input, request state, and session state across protocol eras"
 icon: "circle-nodes"
 ---
 
-A handler runs in the middle of a live request, and sometimes it needs to talk back to the client that made it — to report progress on slow work, to ask the client's LLM a question, to collect input, or to remember something for the next request in the session. The context is that back-channel. It is a request-scoped handle to the client, available to any tool, resource, or prompt handler, exposing everything a handler can send or ask during the request it's serving.
+A handler runs in the middle of a live request, and sometimes it needs to talk back to the client that made it — to report progress on slow work, to ask for input, or to remember something for a later request. The context is that back-channel. It is a request-scoped handle to the client, available to any tool, resource, or prompt handler, exposing everything a handler can send or ask during the request it is serving.
+
+The context's most powerful methods split along the [protocol eras](/concepts/protocol-eras). A legacy connection is stateful, so a handler can turn the request around and call the client back, and it can remember state across a session. The modern era is stateless, so those same actions take a different shape or move off the context entirely. Each section below marks where the era matters.
 
 ## Reaching the context
 
@@ -59,9 +61,13 @@ server.tool({ name: 'process', input: z.object({ items: z.array(z.string()) }) }
 
 Progress is meaningful only when the client asked for it. A client opts in by attaching a progress token to its request; without one, `reportProgress` is a no-op. You don't have to check — call it unconditionally and it simply does nothing when no one is listening, so the same handler works whether or not the caller wants updates.
 
-## Sampling and elicitation
+## Asking the client for input
 
-The context lets a handler turn the request around and ask the *client* to do something. Sampling asks the client to run LLM inference on the server's behalf: the handler calls `ctx.sample(params)` and the client answers with a completion from a real model. This is how a server uses the model without holding API keys of its own — the client owns the LLM, the server borrows it through the context.
+Sometimes a handler needs something only the client can provide — an LLM completion, a form answer, or the client's filesystem roots. How a handler asks depends on the [protocol era](/concepts/protocol-eras), and that difference shapes this whole section.
+
+The recommended, era-agnostic way is to **return** `inputRequired(...)` and read the answer when the client retries the call. A handler written that way serves both eras from one code path — the [input-required guide](/concepts/input-required) covers it end to end, and [reading input responses](#reading-input-responses) below covers the retry side on the context. The context also carries the older push-style calls described here. They still work on a legacy connection, but they are deprecated as of protocol revision 2026-07-28, and they throw on a modern request.
+
+`ctx.sample(params)` asks the client to run LLM inference on the server's behalf and returns a completion from a real model. This is how a server uses a model without holding API keys of its own — the client owns the LLM, and the server borrows it through the context.
 
 ```typescript server.ts
 server.tool({ name: 'draft', input: z.object({ topic: z.string() }) }, async ({ topic }) => {
@@ -70,37 +76,41 @@ server.tool({ name: 'draft', input: z.object({ topic: z.string() }) }, async ({ 
     messages: [{ role: 'user', content: { type: 'text', text: `Write a haiku about ${topic}` } }],
     maxTokens: 128,
   })
-  return result.content.text
+  return result.content.type === 'text' ? result.content.text : ''
 })
 ```
 
-Elicitation asks the client to collect input from the user. The handler calls `ctx.elicit(message, schema)` with a prompt and a Standard Schema describing the shape of the answer; the client renders a form, validates against the schema, and returns the result. Use it when a handler discovers mid-execution that it needs something only the user can provide.
+`ctx.elicit(message, schema)` asks the client to collect input from the user: it renders a form from the schema you pass, validates the answer, and returns the result. Reach for it when a handler discovers mid-execution that it needs something only the user can provide.
 
 ```typescript server.ts
 server.tool({ name: 'deploy' }, async () => {
   const ctx = server.getContext()
-  const { confirmed } = await ctx.elicit('Deploy to production?', z.object({ confirmed: z.boolean() }))
-  return confirmed ? deploy() : 'cancelled'
+  const { action, content } = await ctx.elicit('Deploy to production?', {
+    type: 'object',
+    properties: { confirm: { type: 'boolean' } },
+    required: ['confirm'],
+  })
+  return action === 'accept' && content?.confirm ? deploy() : 'cancelled'
 })
 ```
 
-Both calls depend on the client advertising the matching capability during connection. A handler that calls `ctx.sample()` against a client without the `sampling` capability throws, and likewise `ctx.elicit()` throws without `elicitation`. These are negotiated features, not guarantees — write handlers that degrade or report clearly when a client can't answer. The client side of both is covered in [client sampling](/clients/sampling) and [handlers](/clients/handlers).
+`ctx.listRoots()` returns the filesystem roots the client has declared it will expose, so a server can scope its work to paths the user has sanctioned.
 
-## Roots
+On a legacy connection each of the three depends on the client advertising the matching capability — `sampling`, `elicitation`, or `roots` — and throws when it is absent. On a modern request all three throw regardless, because the modern era has no server-to-client channel; the error names `inputRequired(...)` as the replacement. The client side of fulfilment is covered in [client sampling](/clients/sampling) and [handlers](/clients/handlers).
 
-Roots are the filesystem locations a client has declared it's willing to expose — the directories a server may operate within. A handler reads them with `ctx.listRoots()`, which returns the client's declared roots so the server can scope its work to paths the user has sanctioned. Like sampling and elicitation, it depends on the client advertising the `roots` capability and throws otherwise.
+## Reading input responses
 
-```typescript server.ts
-server.tool({ name: 'scan' }, async () => {
-  const ctx = server.getContext()
-  const roots = await ctx.listRoots()
-  return roots.map((r) => r.uri)
-})
-```
+When a handler returns `inputRequired(...)`, the client fulfils the requests and retries the call. On that retry the context carries the answers, and a small set of readers reach them.
+
+`ctx.inputResponses` holds the current round's embedded responses, keyed by the names you used in the request. It is `undefined` on a flow's first call, since there is no prior round to answer — that is the signal that tells a handler whether it is asking or finishing. Read it with `acceptedContent(ctx.inputResponses, key)` or `inputResponse(ctx.inputResponses, key)` — both re-exported from `@prefecthq/fastmcp-ts/server` — rather than indexing the object, because those readers validate the response shape first.
+
+`ctx.requestState<T>()` reads state the handler carried across the round-trip, and `ctx.mintRequestState(payload)` seals a payload into the opaque string you return from `inputRequired({ requestState })`. When you configure `FastMCPOptions.requestState` with an HMAC key, every minted state is signed and verified before your handler sees it. Without a key, `mintRequestState` returns an unsigned string and warns — never let unsigned state influence authorization, resource access, or business logic, because the client can read and tamper with it.
+
+The [input-required guide](/concepts/input-required) shows these readers in a full flow, and [state and handles](/concepts/state-and-handles) places `requestState` alongside the other ways a handler remembers data.
 
 ## Session state
 
-A single client connection may make many requests, and session state is how a handler remembers something across them. The context exposes `getState(key)`, `setState(key, value)`, and `deleteState(key)`, backed by a key-value store that lives as long as the connection. Write a value in one request and read it back in the next, without a database.
+Session state remembers a value across the requests of one connection. The context exposes `getState(key)`, `setState(key, value)`, and `deleteState(key)`, backed by a key-value store that lives as long as the connection. Write a value in one request and read it back in the next, without a database.
 
 ```typescript server.ts
 server.tool({ name: 'increment' }, () => {
@@ -111,4 +121,19 @@ server.tool({ name: 'increment' }, () => {
 })
 ```
 
-State is scoped to one connection, not shared across them. Each HTTP session gets its own isolated map, so two clients never see each other's state. The stdio transport serves one client for the life of the process, so it uses a single shared map for that lifetime. Either way, the boundary is the connection — state is per-caller, and it disappears when the caller disconnects.
+State is scoped to one connection, never shared across them, so two clients never see each other's values. But it depends on a persistent session, and the modern era's HTTP transport has none. On a modern HTTP request each accessor throws a pointed error rather than drop the write against a fresh per-request store; the message names `ctx.requestState()` and `ctx.mintRequestState()` as the replacements. Session state persists on stdio and on legacy HTTP, and throws on modern HTTP. [State and handles](/concepts/state-and-handles) covers this boundary and the portable alternatives — request state and server-minted handles — that work on every transport.
+
+## Session cleanup
+
+`ctx.onClose(callback)` registers a callback to run when the connection's session closes. Use it to release per-session resources — close a handle, flush a buffer — when a client disconnects.
+
+```typescript server.ts
+server.tool({ name: 'openStream' }, () => {
+  const ctx = server.getContext()
+  const stream = openStream()
+  ctx.onClose(() => stream.close())
+  return 'stream opened'
+})
+```
+
+The callback fires when a sessionful HTTP session closes. A stateless modern HTTP request has no session, so `onClose` is a no-op there, and stdio never fires it either — the callbacks run only at a legacy HTTP session's close. Do not rely on it for correctness. For cleanup that must run on every transport, expire data on a timer behind a server-minted handle instead, the pattern [state and handles](/concepts/state-and-handles) recommends.

@@ -2,7 +2,9 @@
 
 The TypeScript framework for building [Model Context Protocol](https://modelcontextprotocol.io) servers, clients, and apps. The official TypeScript counterpart to [FastMCP for Python](https://github.com/PrefectHQ/fastmcp) - built and maintained with 💙 by the same team at [Prefect](https://prefect.io).
 
-Built on the official [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk).
+Built on version 2 of the official [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) — the scoped `@modelcontextprotocol/server` and `@modelcontextprotocol/client` packages. FastMCP handles the protocol plumbing so you can focus on what your server actually does.
+
+FastMCP 1.0 speaks both MCP protocol generations: the 2025 legacy era and the 2026-07-28 modern era. A server serves both at once, and a client negotiates one. Upgrading from 0.x keeps your existing code running — the client defaults to the legacy era until you opt into the modern one. The [migration guide](docs/migration.mdx) covers the upgrade path.
 
 ## Installation
 
@@ -318,6 +320,7 @@ fastmcp discover
 
 | Package | Role |
 |---|---|
-| [`@modelcontextprotocol/sdk`](https://www.npmjs.com/package/@modelcontextprotocol/sdk) | Official low-level MCP protocol implementation — this library's foundation |
+| [`@modelcontextprotocol/server`](https://www.npmjs.com/package/@modelcontextprotocol/server) | Official MCP TypeScript SDK v2 — the server-side protocol implementation FastMCP builds on |
+| [`@modelcontextprotocol/client`](https://www.npmjs.com/package/@modelcontextprotocol/client) | Official MCP TypeScript SDK v2 — the client-side protocol implementation FastMCP builds on |
 | [`fastmcp` (PyPI)](https://github.com/PrefectHQ/fastmcp) | The Python original this project models its API after |
 | [`@modelcontextprotocol/ext-apps`](https://github.com/modelcontextprotocol/ext-apps) | Official MCP Apps extension — foundation for the Apps pillar |

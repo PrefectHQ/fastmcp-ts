@@ -2,6 +2,7 @@ import type { AuthCheck } from './auth/authorization'
 import type { ResourceUiMeta } from './apps/types'
 import { isInputRequiredResult } from './mrtr'
 import type { InputRequiredResult } from './mrtr'
+import type { CompleteCallback } from './completion'
 
 export interface ResourceAnnotations {
   /** Intended audience(s) — 'user', 'assistant', or both. */
@@ -38,6 +39,14 @@ export interface ResourceConfig {
   auth?: AuthCheck
   /** Apps extension metadata. Included in _meta.ui in resources/list for UI-capable clients. */
   ui?: ResourceUiMeta
+  /**
+   * Autocompletion callbacks for this resource template's RFC 6570 variables,
+   * keyed by variable name. Only meaningful for URI templates. When set, a
+   * `completion/complete` request for
+   * `{ ref: { type: 'ref/resource', uri: <this template> }, argument: { name, value } }`
+   * routes to `complete[name]`.
+   */
+  complete?: Record<string, CompleteCallback>
 }
 
 /**

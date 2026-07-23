@@ -10,6 +10,12 @@ When writing, revising, reorganizing, or reviewing anything in `docs/` (concept 
 
 **Runtime:** Node.js only. No browser support.
 
+**Protocol eras:** FastMCP is dual-era. One server instance serves both the 2025 legacy revision and the modern 2026-07-28 revision — a hybrid HTTP router forks the legacy sessionful transport from the modern stateless `createMcpHandler` path — and a client negotiates which era to use per connection. This split is the backdrop for the era-gated behavior described throughout this document: server→client requests (sampling/elicitation/roots), session state, `ping`/`setLogLevel`, and resource subscriptions each behave differently per era. The library `Client` default is `'legacy'` (see Client → version negotiation).
+
+**SDK foundation:** Built on the v2 scoped MCP SDK packages (`@modelcontextprotocol/{client,core,node,server,server-legacy}` at `2.0.0-beta.5`), replacing the 1.x `@modelcontextprotocol/sdk`. `ProtocolError` / `ProtocolErrorCode` replace `McpError` / `ErrorCode`. The frozen `@modelcontextprotocol/server-legacy` carries the 2025-era transports and backs the built-in OAuth authorization server.
+
+**Multi-round-trip (MRTR / input-required):** A handler returns `inputRequired(...)` (re-exported from `fastmcp-ts/server`, alongside `acceptedContent` / `inputResponse`) to ask the caller for more input mid-call. The caller re-invokes with `ctx.inputResponses` populated; flow state is carried across rounds via `ctx.requestState<T>()` / `ctx.mintRequestState<T>(payload)` (HMAC-signed when `FastMCPOptions.requestState` is set). Tuned through `FastMCPOptions.inputRequired`. This is the era-transparent replacement for push-style `ctx.sample()` / `ctx.elicit()`, which are deprecated and era-gated (see Context).
+
 **Schema validation:** [Standard Schema](https://standardschema.dev/) (`@standard-schema/spec`) is the validation backbone. This is the shared interface implemented by Zod, Valibot, ArkType, and others — accepting it means callers are not locked to a specific library.
 
 **Server API style:** Options object pattern. No decorators, no classes required. Config and handler are separate arguments — callbacks do not live inside config objects:
@@ -85,13 +91,15 @@ Static resources are served via `resources/list` + `resources/read`. Templates a
 | `null` / `undefined` | Empty text content |
 | `ResourceResult(contents)` | Passed through as-is (escape hatch for full control) |
 
-**Resource config fields:** `uri` (required), `name`, `title`, `description`, `mimeType`, `size` (bytes hint, static resources only), `annotations` (`audience`, `priority`, `lastModified`), `timeout` (ms), `disabled`, `tags`, `auth`. `title`, `size`, and `annotations` are forwarded verbatim in list responses. `size` is omitted from template list responses (unknown for parameterized URIs).
+**Resource config fields:** `uri` (required), `name`, `title`, `description`, `mimeType`, `size` (bytes hint, static resources only), `annotations` (`audience`, `priority`, `lastModified`), `timeout` (ms), `disabled`, `tags`, `auth`, `complete`. `title`, `size`, and `annotations` are forwarded verbatim in list responses. `size` is omitted from template list responses (unknown for parameterized URIs). `complete?: Record<string, CompleteCallback>` maps a template parameter name to a completion callback (see Argument completion).
 
 **Resource timeout:** Same `Promise.race` + `clearTimeout` pattern as tools. A timed-out handler throws an error that propagates as a JSON-RPC error to the client.
 
-**Resource subscriptions:** `client.subscribeResource(uri, handler)` sends `resources/subscribe` and registers a `ResourceUpdateHandler = (uri: string) => void | Promise<void>` that fires when the server sends `notifications/resources/updated` for that URI. `client.unsubscribeResource(uri)` sends `resources/unsubscribe` and removes the handler. Subscriptions are tracked in a `Map<uri, ResourceUpdateHandler>` on the client instance.
+**Resource subscriptions:** `client.subscribeResource(uri, handler)` registers a `ResourceUpdateHandler = (uri: string) => void | Promise<void>` that fires when the server signals an update for that URI; `client.unsubscribeResource(uri)` removes it. Subscriptions are tracked in a `Map<uri, ResourceUpdateHandler>` on the client instance. The client is era-transparent: on a legacy connection it sends the `resources/subscribe` / `resources/unsubscribe` RPCs; on a modern connection it drives the `subscriptions/listen` bus via `_refreshResourceListenSubscription()` instead.
 
-**Prompts:** Registered with `mcp.prompt(config, handler)`. Config fields: `name` (inferred from `handler.name` when omitted), `title`, `description` (inferred via camelCase→words when omitted), `arguments` (array of `{ name, description?, required? }`), `disabled`, `timeout`, `auth`. Required arguments are validated before the handler runs — missing a required arg returns `InvalidParams` without invoking the handler. Handler receives a `Record<string, string>` of the supplied arguments and can return:
+Server side: the legacy-era `resources/subscribe` / `resources/unsubscribe` handlers maintain a per-session subscription set (`__fastmcp_resource_subscriptions` in session state). Those RPCs are absent from the modern wire registry, so `_makeServer({ modern: true })` does not advertise `resources.subscribe`; modern connections use the `subscriptions/listen` bus. `mcp.notifyResourceUpdated(uri)` is the single public change signal across both eras — it pushes `notifications/resources/updated` to subscribed legacy sessions and publishes to the modern bus (which does its own per-stream filtering), so calling it for a URI with no subscribers is safe and cheap.
+
+**Prompts:** Registered with `mcp.prompt(config, handler)`. Config fields: `name` (inferred from `handler.name` when omitted), `title`, `description` (inferred via camelCase→words when omitted), `arguments` (array of `{ name, description?, required?, complete? }`), `disabled`, `timeout`, `auth`. Each argument may carry a `complete?: CompleteCallback` for argument completion (see Argument completion). Required arguments are validated before the handler runs — missing a required arg returns `InvalidParams` without invoking the handler. Handler receives a `Record<string, string>` of the supplied arguments and can return:
 
 | Returned value | Conversion |
 |---|---|
@@ -101,6 +109,8 @@ Static resources are served via `resources/list` + `resources/read`. Templates a
 | `PromptResult(messages, description?)` | Passed through as-is (escape hatch) |
 
 Content types for `PromptMessage.content`: `text`, `image`, `audio`, `resource` (embedded), `resource_link`.
+
+**Argument completion (server):** `completion/complete` is served from the `complete` callbacks on resource templates (`ResourceConfig.complete[param]`) and prompt arguments (`PromptArgument.complete`). A `CompleteCallback = (value, context?) => string[] | CompletionResult | Promise<...>` receives the partial value plus any resolved sibling arguments and returns suggestions; `normalizeCompletion` caps `values` at the 100-item wire limit and fills `total` / `hasMore`. The `completions` capability is advertised unconditionally in both eras (not era-forked), because `completion/complete` is in both era wire registries.
 
 **Tool `title`:** `ToolConfig` accepts an optional `title?: string` field (MCP 2025-03-26, from `BaseMetadataSchema`). Intended for UI display; takes precedence over `name` for human-readable labels. Passed through in `tools/list` responses. Transforms can read and rewrite `title` via `ToolView.title`.
 
@@ -120,7 +130,7 @@ Content types for `PromptMessage.content`: `text`, `image`, `audio`, `resource` 
 | `setState(key, value)` | Write a value to per-session state (survives across requests in the same session) |
 | `deleteState(key)` | Remove a value from per-session state |
 
-Session state is scoped to a single transport connection: HTTP sessions each get an isolated `Map<string, unknown>`; the stdio transport uses a single shared map for its lifetime.
+Session state is available on stdio (a single shared map for the transport's lifetime) and legacy HTTP sessions (each an isolated `Map<string, unknown>`). On a modern (2026-07-28) HTTP request there is no session store — every request runs statelessly — so `getState` / `setState` / `deleteState` each throw a pointed error (`SESSION_STATE_MODERN_HTTP_ERROR`) rather than silently reading or writing a fresh per-request map. Use `ctx.requestState()` for per-request state and `ctx.mintRequestState()` to carry state across a multi-round-trip flow (see MRTR).
 
 **Transport / `run()` API:** Single `mcp.run()` method with optional config object. Transport and HTTP options are resolved via the priority chain: **code > env vars > defaults**. This means a deployed server needs no code changes to switch transports — only env vars.
 
@@ -133,6 +143,8 @@ mcp.run({ transport: 'http', port: 3000 })        // fully explicit
 Env vars: `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`, `MCP_PATH`. `PORT` (no prefix) is read as a fallback for `MCP_PORT` to support platforms (Railway, Render, Heroku) that set it automatically. Defaults: stdio transport, port 3000, host `0.0.0.0`, path `/mcp`.
 
 Supported transports: `stdio`, `http` (Streamable HTTP). SSE is not supported — `SSEServerTransport` is deprecated in the MCP SDK; Streamable HTTP supersedes it.
+
+**DNS-rebinding protection:** `FastMCPOptions.dnsRebinding` guards the HTTP transport by validating `Host` / `Origin` headers (hostname-only, port-agnostic; mismatch → `403`). Default posture (option omitted): protection auto-enables only when `run()` binds to a loopback host (`127.0.0.1`, `::1`, `localhost`) — the deployment the attack targets. A bind to a routable interface (including the default `0.0.0.0`) is left open, and the first such serve with no `dnsRebinding` config logs a one-time warning (`_dnsRebindingWarned`, deduped per process; any explicit `dnsRebinding` — even `enabled: false` — suppresses it). Routable deployments opt in with `allowedHosts` / `allowedOrigins`. stdio is unaffected.
 
 For HTTP, the bound address (including the OS-assigned port when `port: 0` is used) is available via `mcp.address` after `run()` resolves. Returns `null` for stdio or before `run()` is called.
 
@@ -153,10 +165,10 @@ The `stdio` transport accepts optional `stdin`/`stdout` stream overrides in `Run
 | Class | Purpose |
 |---|---|
 | `LoggingMiddleware` | Logs method, outcome, and elapsed time via a configurable emit function |
-| `CachingMiddleware(ttl, keyFn?)` | TTL response cache; default key is `method:JSON(params)`; pass `CacheKeyFn` to partition by caller identity when using per-component auth |
-| `RateLimitingMiddleware(limit, windowMs)` | Fixed-window token bucket; throws `McpError(InvalidRequest)` when exceeded |
-| `SizeLimitingMiddleware(maxBytes)` | Throws `McpError(InternalError)` when serialised response exceeds limit |
-| `ErrorNormalizationMiddleware` | `onCallTool` errors → `{isError:true}`; re-throws `McpError`; `onRequest` errors → `McpError(InternalError)` |
+| `CachingMiddleware(ttl, keyFn?)` | TTL response cache; default key `method:authPartition:JSON(params)` partitions by identity (`anon` when unauthenticated, else SHA-256 of the bearer token — hash never raw); a custom `CacheKeyFn` **replaces** that partitioning (its owner then owns identity). Never caches `resources/subscribe`/`unsubscribe` (mutate session state) or `input_required` rounds (single-use flow token) |
+| `RateLimitingMiddleware(limit, windowMs)` | Fixed-window token bucket; throws `ProtocolError(ProtocolErrorCode.InvalidRequest)` when exceeded |
+| `SizeLimitingMiddleware(maxBytes)` | Throws `ProtocolError(ProtocolErrorCode.InternalError)` when serialised response exceeds limit |
+| `ErrorNormalizationMiddleware` | `onCallTool` errors → `{isError:true}`; re-throws `ProtocolError`; `onRequest` errors → `ProtocolError(ProtocolErrorCode.InternalError)` |
 | `CancellationMiddleware` | Registers `CancelledNotification` handler in `setup()`; cancels in-flight requests via `AbortController` + `Promise.race` |
 
 ---
@@ -222,9 +234,11 @@ type ProxyTransport =
 
 ## Apps
 
-**Extension key:** `io.modelcontextprotocol/ui`. Advertised in `initialize` under `serverCapabilities.extensions`. Only added when `_hasUiComponents()` returns true. `_primaryServer` is rebuilt at the start of `connect()` so registrations made after the constructor (the common case) are captured.
+**Extension key:** `io.modelcontextprotocol/ui`, advertised under `serverCapabilities.extensions` with value `{ mimeTypes: ['text/html;profile=mcp-app'] }` (`UI_RESOURCE_MIME_TYPE`). A legacy client reads it from the `initialize` handshake; a modern (2026-07-28) client reads it from the `server/discover` document — the same advertisement, a different discovery surface. Only added when `_hasUiComponents()` returns true. `_primaryServer` is rebuilt at the start of `connect()` so registrations made after the constructor (the common case) are captured.
 
 **`_hasUiComponents()`:** Returns true if any registered tool has a `ui` field, or if any registered resource URI starts with `ui://`. Called inside `connect()` to decide whether to include the extension in `ServerInfo`.
+
+**`isUiCapable(clientCapabilities)`:** The per-request check for whether a client can render UI. Per SEP-1865 the client must declare `mimeTypes` (REQUIRED) as the *value* of its own `io.modelcontextprotocol/ui` capability entry; `isUiCapable` returns true only when that array includes `text/html;profile=mcp-app` — a bare presence of the extension key is insufficient. Gates both `tools/list` `_meta.ui` inclusion and the `tools/call` graceful-degradation path.
 
 **`ToolConfig.ui`:** Optional `UiToolMeta` field on tool config:
 
@@ -237,7 +251,7 @@ interface UiToolMeta {
 
 `listTools` filters out tools where `visibility` does not include `'model'`. For UI-capable clients, each tool response includes `_meta.ui` with `resourceUri` and `visibility`. Tools without a `ui` field are always included in `listTools` normally.
 
-**Graceful degradation:** When `callTool` is called on a tool with a `ui` config by a client that has NOT negotiated `io.modelcontextprotocol/ui`, and the handler returns a `structuredContent` response, the MCP layer strips `structuredContent` and returns `'[UI not available in this client]'` as a plain text content block.
+**Graceful degradation:** When `callTool` is called on a tool with a `ui` config by a client that is not `isUiCapable` (has not declared the `text/html;profile=mcp-app` mimeType), and the handler returns a `structuredContent` response, the MCP layer strips `structuredContent` and returns `'[UI not available in this client]'` as a plain text content block.
 
 **`ResourceConfig.ui`:** Optional `ResourceUiMeta` field:
 
@@ -282,7 +296,7 @@ These are forwarded as `_meta.ui` in `resources/list` and `resources/read` respo
 |---|---|---|
 | `Approval` | `${name}`, `${name}_confirm`, `${name}_deny` | Confirm/deny are `visibility: ['app']`; uses `actionRef` for button actions |
 | `Choice` | `${name}`, `${name}_select` | Each option button carries `args: { option }` on the Button node; `_select` is `visibility: ['app']` |
-| `FileUpload` | `${name}`, `${name}_submit`, `${name}_delete` | `submit` stores file via `FileStorageAdapter`, tracks `FileHandle[]` in session state under `file_upload_handles_${name}`; `delete` removes a handle by id |
+| `FileUpload` | `file_upload_open`, `file_upload_submit`, `file_upload_delete` (+ `ui://files/{handle}` resource) | `submit` stores bytes via `FileStorageAdapter` and returns a server-minted `FileHandle` id; cleanup is TTL-based (default in-memory adapter, `FileUploadOptions.ttlMs`, 30 min) with best-effort `ctx.onClose` release on sessionful transports only — no session-state handle list |
 | `FormInput` | `${name}`, `${name}_submit` | Uses shared `toJsonSchema` from `tool.ts` (supports Zod v4, Valibot, ArkType); renders fields from JSON Schema `properties`; `_submit` validates via `schema['~standard'].validate` |
 
 **`GenerativeUI`:** Creates an internal `FastMCP` with `name: 'generative-ui'` and registers two tools:
@@ -328,12 +342,16 @@ await client.close()     // refCount → 1, still open
 await client.close()     // refCount → 0, SDK closed
 ```
 
+**Version negotiation:** `ClientOptions.versionNegotiation` selects the protocol era at connect(). Default is `'legacy'` (field omitted) — the plain 2025 sequence, byte-identical to prior behavior, no `server/discover` probe. `{ mode: 'auto' }` probes with `server/discover` and uses modern when the server supports it (else falls back to legacy); `{ mode: { pin: '2026-07-28' } }` requires modern outright. `getProtocolEra()` reads the negotiated era after connect (`undefined` before). The library default stays `'legacy'` — the auto-for-HTTP / legacy-for-stdio split lives in the CLI layer (`src/cli/utils/connect.ts`), not in `Client`. A cached era verdict from a prior connection to the same server can skip the probe entirely.
+
+**Era-aware operations:** Several members fork on the negotiated era. `subscribeResource` / `unsubscribeResource` use the legacy RPCs on legacy and the `subscriptions/listen` bus on modern (see Resource subscriptions). `ping()` sends the `ping` RPC on legacy; on modern — where `ping` is not a wire method — it uses the SDK-native `discover()`. `setLogLevel()` sends `logging/setLevel` on legacy; on modern (deprecated, absent from the registry) it records the level and threads it into `_meta['io.modelcontextprotocol/logLevel']` on every subsequent request via `_metaParams()`.
+
 **Transport resolution** (`resolveTransport`, internal — not re-exported): Accepts a `ClientTransportInput` union and returns `{ transport, beforeConnect? }`. The `beforeConnect` hook is required for in-process transports: the server must call `connect(serverSide)` before the SDK client connects to the client side.
 
 | Input type | Resolved transport |
 |---|---|
 | `StdioTransport` instance | `StdioClientTransport` wrapping the subprocess |
-| String URL | `StreamableHTTPClientTransport`; falls back to `SSEClientTransport` on 4xx |
+| String URL | `StreamableHTTPClientTransport`. SSE is explicit opt-in via `ClientOptions.legacySSE` (default `false`); an `/sse` URL throws pointing at Streamable HTTP and the flag, and only connects `SSEClientTransport` when `legacySSE: true` |
 | SDK `Transport` duck-type (has `.start`) | Passed through as-is |
 | `McpConfig` (has `.mcpServers`) | First entry resolved via `resolveEntryTransport()`; single-entry configs go through the same helper as multi-server |
 | `McpServerLike` (has `.connect`) | `InMemoryTransport` pair; `beforeConnect` connects the server side |
@@ -343,6 +361,8 @@ await client.close()     // refCount → 0, SDK closed
 `McpServerValue = McpServerEntry | McpServerLike` — the values in `mcpServers` accept either a config object (`{ url }` or `{ command }`) or a live in-process server instance. `resolveEntryTransport(entry, auth?)` is the shared helper used by both `resolveTransport` (single-server McpConfig path) and `MultiServerClient` (per-server connections).
 
 **Auth injection:** `BearerAuth` injects a static `Authorization: Bearer <token>` header into `requestInit.headers` (and `eventSourceInit.headers` for SSE). `OAuth` wraps the transport's `fetch` with an async function that resolves the current token and refreshes it when it is within `refreshBufferSeconds` of expiry. Concurrent refresh calls are coalesced to a single HTTP request.
+
+`OAuth` also supports Client ID Metadata Documents (CIMD, SEP-991) via `OAuthOptions.clientMetadataUrl` — an HTTPS URL the client presents as its identity in place of Dynamic Client Registration, validated eagerly so a malformed URL fails fast. The authorization-code callback validates the RFC 9207 `iss` parameter and keys credentials per issuer (SEP-2352, a "last issuer seen for this server" pointer); pass the callback `URLSearchParams` (including `code` and any `iss`) to `finishAuth()`. `ClientCredentials` fetches a token with `grant_type=client_credentials`, sending `client_id` + `client_secret` in the POST body — `client_secret_post` only; `client_secret_basic` and `private_key_jwt` are not implemented.
 
 **`ToolCallError`:** Thrown by `callTool()` when the server returns `isError: true`. Has a `content: ContentBlock[]` field containing the error blocks. `callToolRaw()` never throws — it returns the full result including `isError`.
 
@@ -376,7 +396,7 @@ The SDK client capabilities are included only when the corresponding handler or 
 
 **Argument completion:** `client.complete(ref, argument, context?, options?)` sends `completion/complete` and returns a `CompletionResult`. `ref` is either `{ type: 'ref/prompt'; name: string }` or `{ type: 'ref/resource'; uri: string }`. `argument` is `{ name: string; value: string }`. Optional `context.arguments` passes previously resolved argument values for multi-argument completion.
 
-**Log level control:** `client.setLogLevel(level, options?)` sends `logging/setLevel` to the server. `level` is one of the RFC 5424 severity strings (`'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'`). The server filters which log notifications it forwards based on this level.
+**Log level control:** `client.setLogLevel(level, options?)` sets the log level; `level` is one of the RFC 5424 severity strings (`'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical' | 'alert' | 'emergency'`). On a legacy connection it sends `logging/setLevel` and the server filters forwarded notifications by it; on a modern connection the RPC is deprecated, so the level rides in per-request `_meta` instead (see Era-aware operations).
 
 ---
 
@@ -449,7 +469,9 @@ await multi.callTool('github_list_repos', { org: 'PrefectHQ' })
 
 **Tool/prompt routing:** `callTool(namespacedName, ...)` and `getPrompt(namespacedName, ...)` split on the first `_` to extract `serverName` and `localName`, then dispatch to the matching `SdkClient`. Throws with the list of known servers if the prefix is unrecognised.
 
-**Per-server auth:** `McpServerEntry` accepts an `auth?` field (`BearerAuth | OAuth | ClientCredentials | string`). `resolveEntryTransport` resolves per-entry auth first, falling back to any auth passed at the `MultiServerClient` level.
+**Per-server auth:** `McpServerEntry` accepts an `auth?` field (`BearerAuth | OAuth | ClientCredentials | string`). `resolveEntryTransport` resolves per-entry auth first, falling back to any auth passed at the `MultiServerClient` level. `BearerAuth` and `ClientCredentials` work per server; there is no interactive-OAuth (authorization-code) flow at the multi-server level.
+
+**Version negotiation:** `MultiServerOptions.versionNegotiation` requests the same mode of every sub-client (same shape as `ClientOptions.versionNegotiation` on the single-server `Client`), applied per connection. `getProtocolEra(serverName)` reads the negotiated era for one named sub-client. Era-aware operations (`ping`, `setLogLevel`, resource subscriptions) resolve per sub-client from its own negotiated era.
 
 **Shared handlers:** `handlers.log`, `handlers.sampling`, and `handlers.elicitation` are registered on every sub-client so messages from any server reach the same handler. The sampling capability is advertised to all servers when the handler is provided.
 
@@ -461,7 +483,7 @@ await multi.callTool('github_list_repos', { org: 'PrefectHQ' })
 
 ## CLI
 
-**Bundle:** The CLI is built as a self-contained CJS bundle (`dist/cli/index.cjs`) via tsup with `noExternal: /.*/`. This means all dependencies — including the MCP SDK — are inlined, so users don't need to install anything beyond the package itself. The shebang (`#!/usr/bin/env node`) and compile-time constants `__FASTMCP_VERSION__` / `__MCP_SDK_VERSION__` are injected by tsup at build time. A custom esbuild plugin appends `.js` to bare `@modelcontextprotocol/sdk` sub-path imports to satisfy Node's ESM resolution inside the CJS bundle.
+**Bundle:** The CLI is built as a self-contained CJS bundle (`dist/cli/index.cjs`) via tsup with `noExternal: /.*/`. This means all dependencies — including the v2 MCP SDK packages — are inlined, so users don't need to install anything beyond the package itself. The shebang (`#!/usr/bin/env node`) and compile-time constants `__FASTMCP_VERSION__` / `__MCP_SDK_VERSION__` are injected by tsup at build time; `__MCP_SDK_VERSION__` is read from `@modelcontextprotocol/server` (the v2 packages share one version). The v2 packages ship well-formed `exports` maps, so esbuild resolves their subpaths natively — the old custom `.js`-appending esbuild plugin (needed for the 1.x `@modelcontextprotocol/sdk` subpath imports) is gone.
 
 **Framework:** `citty` for command parsing. Commands are lazy-loaded via dynamic `import()` in `subCommands`, keeping startup time minimal. Global `--quiet` and `--json` flags are set once in the root `setup()` hook and stored in module-level state (`output.ts` / `format.ts`).
 
@@ -486,6 +508,8 @@ await multi.callTool('github_list_repos', { org: 'PrefectHQ' })
 
 **Command notes:**
 
+**Era flags:** the connecting commands (`list`, `call`, `inspect`) accept `--modern` and `--pin <revision>` era selectors, resolved per transport by `resolveVersionNegotiation` (`src/cli/utils/connect.ts`): a URL transport defaults to `mode: 'auto'` (auto-for-HTTP), stdio / in-process default to legacy and `--modern` opts them into `auto`, and `--pin` forces a pinned modern era (winning over `--modern`). This CLI-layer default is what applies auto-for-HTTP; the library `Client` default stays `'legacy'`.
+
 `run` — Spawns file via `npx tsx` (TypeScript) or `node` (JS) with `MCP_TRANSPORT` / `MCP_PORT` env vars. Detects server start from "listening/started/running" keywords in stderr; for HTTP servers this fires reliably. `--reload` uses `chokidar` to kill and respawn on file change. The `exportName` from `server.ts:app` file spec syntax is parsed but not passed to the subprocess — only the file path is used.
 
 `inspect` — Spawns the server file via `inprocess` mode (`StdioTransport` to `npx tsx`), lists tools/resources/prompts in parallel, renders tables. Does not paginate beyond the first page.
@@ -502,7 +526,7 @@ await multi.callTool('github_list_repos', { org: 'PrefectHQ' })
 
 ---
 
-**Foundation:** Built on `@modelcontextprotocol/sdk` (official MCP TypeScript SDK).
+**Foundation:** Built on the v2 scoped MCP SDK packages — `@modelcontextprotocol/{client,core,node,server,server-legacy}` at `2.0.0-beta.5` — replacing the 1.x `@modelcontextprotocol/sdk`.
 
 **Module format:** ESM throughout (`"type": "module"`).
 

@@ -564,6 +564,18 @@
             "isDeprecated": false
           },
           {
+            "title": "CompletionContext",
+            "kind": 256,
+            "path": "server/interfaces/CompletionContext.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CompletionResult",
+            "kind": 256,
+            "path": "server/interfaces/CompletionResult.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "Component",
             "kind": 256,
             "path": "server/interfaces/Component.mdx",
@@ -806,6 +818,12 @@
             "title": "CacheKeyFn",
             "kind": 2097152,
             "path": "server/type-aliases/CacheKeyFn.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CompleteCallback",
+            "kind": 2097152,
+            "path": "server/type-aliases/CompleteCallback.mdx",
             "isDeprecated": false
           },
           {

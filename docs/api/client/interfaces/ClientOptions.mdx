@@ -2,7 +2,7 @@
 title: "ClientOptions"
 ---
 
-Defined in: [client/client.ts:73](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/client.ts#L73)
+Defined in: [client/client.ts:71](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L71)
 
 ## Properties
 
@@ -16,7 +16,7 @@ optional auth?:
   | ClientCredentials;
 ```
 
-Defined in: [client/client.ts:78](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/client.ts#L78)
+Defined in: [client/client.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L76)
 
 Authentication to attach to HTTP requests.
 A plain string is treated as a Bearer token.
@@ -29,10 +29,39 @@ A plain string is treated as a Bearer token.
 optional autoInitialize?: boolean;
 ```
 
-Defined in: [client/client.ts:90](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/client.ts#L90)
+Defined in: [client/client.ts:88](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L88)
 
 When true (default), the MCP initialize handshake is performed
 automatically inside connect().
+
+***
+
+### cachePartition?
+
+```ts
+optional cachePartition?: string;
+```
+
+Defined in: [client/client.ts:135](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L135)
+
+Opaque per-principal identifier for response-cache writes whose
+server-reported `cacheScope` is `'private'`. Set this to a stable identity
+of the authorization context (e.g. the auth subject) when one
+`responseCacheStore` backs several principals. Passed through verbatim.
+
+***
+
+### defaultCacheTtlMs?
+
+```ts
+optional defaultCacheTtlMs?: number;
+```
+
+Defined in: [client/client.ts:141](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L141)
+
+TTL (ms) applied when a cacheable result arrives without a `ttlMs` field.
+Default `0` (never served from cache, but still stored). Passed through
+verbatim.
 
 ***
 
@@ -42,7 +71,7 @@ automatically inside connect().
 optional defaultOptions?: ClientDefaultOptions;
 ```
 
-Defined in: [client/client.ts:91](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/client.ts#L91)
+Defined in: [client/client.ts:89](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L89)
 
 ***
 
@@ -52,7 +81,76 @@ Defined in: [client/client.ts:91](https://github.com/PrefectHQ/fastmcp-ts/blob/c
 optional handlers?: ClientHandlers;
 ```
 
-Defined in: [client/client.ts:79](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/client.ts#L79)
+Defined in: [client/client.ts:77](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L77)
+
+***
+
+### inputRequired?
+
+```ts
+optional inputRequired?: InputRequiredOptions;
+```
+
+Defined in: [client/client.ts:121](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L121)
+
+Multi-round-trip auto-fulfilment (protocol revision 2026-07-28). On the
+modern era, servers obtain client input (elicitation, sampling, roots) by
+answering a request with an `input_required` result instead of a
+server→client request. By default the client fulfils these automatically
+through the same `handlers.sampling`/`handlers.elicitation` callbacks,
+retrying up to `maxRounds` times. Set `autoFulfill: false` for manual mode.
+Has no effect on legacy-era connections. Passed through verbatim to the SDK
+client.
+
+***
+
+### legacySSE?
+
+```ts
+optional legacySSE?: boolean;
+```
+
+Defined in: [client/client.ts:149](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L149)
+
+Allow the deprecated SSE transport when a target URL's path indicates SSE
+(e.g. ends in `/sse`). Default `false` — such URLs throw a clear error
+pointing at Streamable HTTP and this flag, rather than silently connecting
+over a transport the MCP SDK itself marks `@deprecated`. When enabled, a
+one-time deprecation warning is logged via `console.warn`.
+
+***
+
+### prior?
+
+```ts
+optional prior?: PriorDiscovery;
+```
+
+Defined in: [client/client.ts:110](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L110)
+
+A cached era verdict from a previous connection to the same server, so
+connect() can skip the `server/discover` probe entirely. Takes precedence
+over `versionNegotiation`. `{ kind: 'modern', discover }` adopts a prior
+`DiscoverResult` with zero round trips; `{ kind: 'legacy' }` skips the probe
+and runs the plain legacy `initialize` handshake. Freshness is the caller's
+responsibility — a stale modern verdict fails loudly at the first request; a
+stale legacy verdict succeeds silently forever. Reuse only within one
+authorization context.
+
+***
+
+### responseCacheStore?
+
+```ts
+optional responseCacheStore?: ResponseCacheStore;
+```
+
+Defined in: [client/client.ts:128](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L128)
+
+The response-cache store backing cacheable results (SEP-2549 `ttlMs`/
+`cacheScope` hints on `listTools`/`listResources`/`listResourceTemplates`/
+`listPrompts`/`readResource`). Defaults to a fresh in-memory store per
+client (the SDK's own default) when omitted. Passed through verbatim.
 
 ***
 
@@ -62,8 +160,26 @@ Defined in: [client/client.ts:79](https://github.com/PrefectHQ/fastmcp-ts/blob/c
 optional roots?: RootsValue;
 ```
 
-Defined in: [client/client.ts:85](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/client.ts#L85)
+Defined in: [client/client.ts:83](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L83)
 
 Filesystem roots to advertise to the server.
 Accepts a static array of strings / Root objects, or an async callback
 invoked on each roots/list request (useful for dynamic root sets).
+
+***
+
+### versionNegotiation?
+
+```ts
+optional versionNegotiation?: VersionNegotiationOptions;
+```
+
+Defined in: [client/client.ts:99](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/client.ts#L99)
+
+Opt-in protocol version negotiation (protocol revision 2026-07-28 and later).
+The default is `'legacy'`: connect() runs the plain 2025 sequence, byte-identical
+to today's behavior (no probe, no new headers). Pass `{ mode: 'auto' }` to probe
+with `server/discover` and use the modern era when the server supports it
+(falling back to legacy otherwise), or `{ mode: { pin: '2026-07-28' } }` to
+require the modern era outright. See `getProtocolEra()` to read the negotiated
+result after connecting.

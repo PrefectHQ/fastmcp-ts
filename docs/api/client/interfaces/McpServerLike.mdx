@@ -2,9 +2,48 @@
 title: "McpServerLike"
 ---
 
-Defined in: [client/transports.ts:31](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/transports.ts#L31)
+Defined in: [client/transports.ts:43](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/transports.ts#L43)
 
 ## Methods
+
+### \_modernFetch()?
+
+```ts
+optional _modernFetch(request, options?): Promise<Response>;
+```
+
+Defined in: [client/transports.ts:61](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/transports.ts#L61)
+
+Optional modern-era (2026-07-28) in-process fetch entrypoint, for servers
+built on `createMcpHandler` (e.g. `FastMCP`'s own `_modernFetch`).
+`InMemoryTransport` — used by `connect()` above — is 2025-era only (the
+legacy `Server`/session model); there is no in-process equivalent of a
+real HTTP round trip for the modern era's stateless-per-request dispatch.
+When present, and the caller pins modern era via
+`versionNegotiation: { mode: { pin: '2026-07-28' } }`, the client builds a
+`StreamableHTTPClientTransport` whose `fetch` calls this function directly
+— no sockets, but otherwise the same code path a real HTTP connection
+takes. Not used for `'auto'` or `'legacy'` modes: this server-side hook is
+modern-only (mirrors `createMcpHandler(..., { legacy: 'reject' })`), so
+auto-negotiation (which must be able to fall back to legacy) still goes
+through `connect()` + `InMemoryTransport`, and stays legacy-only for
+in-process servers until a dual-era in-process bridge exists.
+
+#### Parameters
+
+##### request
+
+`Request`
+
+##### options?
+
+`unknown`
+
+#### Returns
+
+`Promise`&lt;`Response`&gt;
+
+***
 
 ### connect()
 
@@ -12,7 +51,7 @@ Defined in: [client/transports.ts:31](https://github.com/PrefectHQ/fastmcp-ts/bl
 connect(transport): Promise<void>;
 ```
 
-Defined in: [client/transports.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/transports.ts#L32)
+Defined in: [client/transports.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/transports.ts#L44)
 
 #### Parameters
 

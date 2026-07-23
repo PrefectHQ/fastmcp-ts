@@ -39,6 +39,20 @@ const client = await Client.connect('https://mcp.example.com', {
 })
 ```
 
+Two hardening measures run inside that flow with no extra configuration. The client validates the RFC 9207 `iss` parameter the authorization server returns on the callback, so a response minted by the wrong issuer is rejected rather than trusted. It also keys stored credentials by issuer (SEP-2352), so a client that reaches servers behind different authorization servers never crosses a token from one issuer into another.
+
+When your client publishes a metadata document, `clientMetadataUrl` (SEP-991) skips Dynamic Client Registration entirely. Point it at an HTTPS URL that serves the client's metadata; when the authorization server advertises support, that URL is used directly as the `client_id`. The value is checked when you construct `OAuth`, so a malformed URL fails at construction rather than deep in the flow.
+
+```typescript
+const client = await Client.connect('https://mcp.example.com', {
+  auth: new OAuth({
+    clientMetadataUrl: 'https://myapp.example.com/.well-known/mcp-client',
+  }),
+})
+```
+
+Prefer an external identity provider when you can. A FastMCP server's [built-in authorization server](/servers/auth/oauth) runs on a frozen, supported-interim code path, and Dynamic Client Registration is deprecated in revision 2026-07-28 — `clientMetadataUrl` is how a client sidesteps DCR against a server that still fronts one.
+
 ## Client credentials
 
 Machine-to-machine integrations have no user to send through a browser. The client credentials grant trades a client ID and secret directly for an access token, with no interactive step, which makes `ClientCredentials` the strategy for background jobs, services, and CI talking to a protected server. Like `OAuth`, it acquires and refreshes tokens for you; unlike `OAuth`, the whole exchange is unattended.

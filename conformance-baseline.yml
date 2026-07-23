@@ -10,28 +10,26 @@
 # `conformance:client` with this file temporarily removed.
 # Recorded from real runs against the fixtures on 2026-07-22 (tool 0.1.16).
 #
-# DEFERRED — client OAuth conformance. `npm run conformance:client` runs only the
-# four non-auth core client scenarios (initialize, tools_call,
-# elicitation-sep1034-client-defaults, sse-retry), which all PASS today. The
-# conformance client `core`/`auth`/`metadata` suites also include the OAuth
-# `auth/*` scenarios; the everything-client registers sampling + elicitation
-# handlers but configures NO OAuth, so those cannot pass. Rather than park ~14
-# permanent, non-fastmcp-bug entries here (which would stop this baseline ever
-# reaching empty), OAuth conformance is a NAMED W9 FOLLOW-UP: add an
-# OAuth-configured client driver, then run the `auth`/`metadata` suites. Until
-# then the client section is intentionally empty.
+# Client OAuth conformance is now REAL, not deferred. `npm run conformance:client`
+# enumerates the four non-auth core client scenarios (initialize, tools_call,
+# elicitation-sep1034-client-defaults, sse-retry) and the 14 `[2025-11-25]`-era
+# core `auth/*` OAuth scenarios. The everything-client configures an OAuth
+# provider (authorization-code + PKCE, DCR / pre-registration) from the scenario
+# context and drives the full flow. 16 of the 18 PASS; the two remaining client
+# entries below are genuine debt / a harness-contract limit, each with a reason.
 
 # --- server (`npm run conformance:server`, --suite active) ------------------
-# Genuine fastmcp SERVER gaps — the real W9 burn-down items. FastMCP uses the
-# low-level SDK Server and registers handlers only for tools/resources/prompts,
-# so these methods return -32601 Method not found (or, for DNS, are unguarded):
-server:
-  - completion-complete       # no completion/complete handler (-32601)
-  - resources-subscribe        # no resources/subscribe handler (-32601)
-  - resources-unsubscribe      # no resources/unsubscribe handler (-32601)
-  - dns-rebinding-protection   # HTTP transport does not validate Host/Origin (accepts non-localhost)
+# SERVER burn-down COMPLETE — no baselined server scenarios remain. Every server
+# conformance scenario now PASSES against the everything-server fixture.
+# History: `resources/subscribe`/`unsubscribe` were implemented in Task 11
+# (legacy era); `completion/complete` was implemented in Task 12 (both eras,
+# with a real completion callback on the fixture's test_prompt_with_arguments).
+# An empty list means any server scenario that fails is treated as a regression.
+server: []
 
 # --- client (`npm run conformance:client`) ----------------------------------
-# Empty: the four non-auth core client scenarios all pass. OAuth is deferred
-# (see the DEFERRED note above).
-client: []
+# Genuine fastmcp CLIENT gaps — real W9 burn-down items (observed failing on
+# 2026-07-22, tool 0.1.16). All other core + auth client scenarios pass.
+client:
+  - auth/basic-cimd    # WARNING (SHOULD): server advertises client_id_metadata_document_supported but the harness passes the client no CIMD URL, so a spec-correct client falls back to DCR (CIMD is a SHOULD, not a MUST) — harness-contract limit
+  - auth/scope-step-up # fastmcp Client completes the interactive OAuth dance (waitForCallback+finishAuth) only inside connect(); this scenario leaves initialize unauthenticated and first challenges (401) on tools/list, so auth never completes and the second (step-up escalation) authorization request is never sent

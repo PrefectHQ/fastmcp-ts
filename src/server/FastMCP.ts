@@ -1,7 +1,8 @@
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { hostHeaderValidation, originValidation } from "@modelcontextprotocol/node";
 import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
-import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec } from "@modelcontextprotocol/server";
-import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, McpHttpHandler, McpHandlerRequestOptions, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
+import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec, localhostAllowedHostnames, localhostAllowedOrigins, assertCompleteRequestPrompt, assertCompleteRequestResourceTemplate } from "@modelcontextprotocol/server";
+import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, CompleteRequestParams, CompleteResult, McpHttpHandler, McpHandlerRequestOptions, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
 
 // Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
 // mirrors its CACHEABLE_RESULT_METHODS literal union (SEP-2549 cacheable operations).
@@ -39,6 +40,7 @@ import { UI_EXTENSION_KEY, UI_RESOURCE_MIME_TYPE, isUiCapable } from './apps/typ
 import type { UiToolMeta } from './apps/types'
 import { convertPromptResult, PromptResult } from './prompt'
 import type { PromptConfig } from './prompt'
+import { normalizeCompletion, EMPTY_COMPLETION } from './completion'
 
 function prefixResourceUri(uri: string, prefix: string): string {
   const idx = uri.indexOf('://')
@@ -133,6 +135,36 @@ export interface FastMCPOptions {
    * cares about may land on different processes.
    */
   eventBus?: ServerEventBus
+  /**
+   * DNS-rebinding protection for the HTTP transport: validates the `Host` and
+   * `Origin` request headers (port-agnostic, by hostname) and rejects mismatches
+   * with `403`. Defends localhost servers against a malicious web page whose DNS
+   * rebinds to `127.0.0.1` (MCP transport security best practice). Only affects the
+   * HTTP transport — stdio is unaffected.
+   *
+   * Default posture (option omitted): protection auto-enables when, and only when,
+   * `run()` binds the HTTP server to a loopback host (`127.0.0.1`, `::1`,
+   * `localhost`) — the deployment the attack targets. A server bound to a routable
+   * interface (e.g. `0.0.0.0` or a public host) is left open by default, because a
+   * localhost-only allowlist would reject its legitimate traffic; such deployments
+   * must opt in with an explicit `allowedHosts`/`allowedOrigins` for their domain.
+   */
+  dnsRebinding?: {
+    /** Force protection on (`true`) or off (`false`). Omit for the loopback-auto default. */
+    enabled?: boolean
+    /**
+     * Allowed `Host` header hostnames (no port; IPv6 in brackets, e.g. `[::1]`).
+     * Supplying this list also implies protection on. Default: `localhost`,
+     * `127.0.0.1`, `[::1]`.
+     */
+    allowedHosts?: string[]
+    /**
+     * Allowed `Origin` header hostnames (a missing `Origin` always passes — non-browser
+     * clients send none). Supplying this list also implies protection on. Default:
+     * `localhost`, `127.0.0.1`, `[::1]`.
+     */
+    allowedOrigins?: string[]
+  }
 }
 
 export interface RunOptions {
@@ -213,6 +245,15 @@ interface Session {
   state: Map<string, unknown>
 }
 
+/**
+ * Per-session state key holding the set of resource URIs the connection has
+ * subscribed to via `resources/subscribe`. Stored in the same per-session state
+ * Map as `SESSION_CLOSE_CALLBACKS_KEY`, so it is torn down with the session (no
+ * separate registry to leak). Only ever populated on legacy connections — the
+ * modern era rejects the RPC at the wire seam before the handler runs.
+ */
+const RESOURCE_SUBSCRIPTIONS_KEY = '__fastmcp_resource_subscriptions'
+
 /** Converts a camelCase or PascalCase name to space-separated words. e.g. `getWeather` → `"get weather"` */
 function inferDescription(name: string): string {
   return name
@@ -220,6 +261,23 @@ function inferDescription(name: string): string {
     .replace(/[-_]+/g, ' ')
     .trim()
     .toLowerCase()
+}
+
+/** True when `host` is a loopback address `run()` can bind — the deployment DNS-rebinding targets. */
+function isLoopbackHost(host: string): boolean {
+  const h = host.toLowerCase()
+  return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]'
+}
+
+// Fired at most once per process: an HTTP serve on a routable host with no dnsRebinding
+// config at all. Any explicit dnsRebinding option (even `enabled: false`) suppresses the
+// warning — silence means the operator chose the open posture on purpose.
+let _dnsRebindingWarned = false
+
+/** @internal Test-only reset of the once-per-process DNS-rebinding warning guard. Not
+ * re-exported from `fastmcp-ts/server` (index.ts names its exports). */
+export function __resetDnsRebindingWarningForTests(): void {
+  _dnsRebindingWarned = false
 }
 
 function toAccessToken(authInfo: AuthInfo | undefined): AccessToken | undefined {
@@ -282,6 +340,12 @@ export class FastMCP {
   private _requestStateCodec: RequestStateCodec | undefined
   private _inputRequiredOptions: FastMCPOptions['inputRequired']
   private _eventBus: ServerEventBus | undefined
+  private _dnsRebindingOptions: FastMCPOptions['dnsRebinding']
+  // DNS-rebinding guards, resolved once per serve from _dnsRebindingOptions + the bind
+  // host. null = protection off. Each returns false (and has already written a 403) when
+  // it rejects; see the SDK's hostHeaderValidation/originValidation Node middleware.
+  private _hostGuard: ((req: IncomingMessage, res: ServerResponse) => boolean) | null = null
+  private _originGuard: ((req: IncomingMessage, res: ServerResponse) => boolean) | null = null
   private _primaryState = new Map<string, unknown>()
   private _httpServer: HttpServer | null = null
   private _address: ServerAddress | null = null
@@ -291,6 +355,10 @@ export class FastMCP {
   // The pinned Server instance for a run({transport:'stdio'}) connection (2025- or
   // 2026-era, decided by serveStdio's opening handshake). Null unless serving stdio.
   private _stdioServer: Server | null = null
+  // The state Map paired with `_stdioServer` for the current stdio connection.
+  // Holds this connection's resource-subscription set; read by the resource-updated
+  // fan-out. Null unless serving stdio.
+  private _stdioState: Map<string, unknown> | null = null
   private _stdioHandle: { close(): Promise<void> } | null = null
   // Modern (2026-07-28) HTTP handler — one per FastMCP instance, lazily created.
   // Builds a fresh Server (via _makeServer) per request; see createMcpHandler.
@@ -318,6 +386,7 @@ export class FastMCP {
       : undefined
     this._inputRequiredOptions = options.inputRequired
     this._eventBus = options.eventBus
+    this._dnsRebindingOptions = options.dnsRebinding
     this._primaryServer = this._makeServer()
   }
 
@@ -334,8 +403,29 @@ export class FastMCP {
     return false
   }
 
-  /** Create a new Server instance with all request handlers wired up. */
-  private _makeServer(sessionState?: Map<string, unknown>): Server {
+  /**
+   * Create a new Server instance with all request handlers wired up.
+   *
+   * `modern` forks the advertised `resources.subscribe` capability. The legacy
+   * `resources/subscribe`/`unsubscribe` RPCs are physically absent from the
+   * 2026-07-28 wire registry (a modern client uses `subscriptions/listen`
+   * instead), so a modern-only factory (the createMcpHandler path) must NOT
+   * advertise `subscribe` — the modern `server/discover` document is pinned to
+   * `resources: { listChanged: true }`. Every legacy-serving factory (primary,
+   * stdio, legacy HTTP sessions) advertises it, gating the RPC path.
+   *
+   * The `completions` capability is NOT era-forked: `completion/complete` is in
+   * BOTH era wire registries (the legacy 2025-11-25 registry and the modern
+   * 2026-07-28 `dispatchRequestSchemas`), and `completions` is a valid key in
+   * both eras' ServerCapabilities schemas. So it is declared unconditionally —
+   * the stdio-factory era ambiguity that constrains `subscribe` (a factory built
+   * before the stdio handshake picks an era must not advertise a legacy-only
+   * capability to a modern client) does not arise here, because the capability is
+   * correct for whichever era the connection negotiates. The SDK also requires
+   * this capability to be present to register the `completion/complete` handler
+   * (`assertRequestHandlerCapability`).
+   */
+  private _makeServer(sessionState?: Map<string, unknown>, opts?: { modern?: boolean }): Server {
     const state = sessionState ?? this._primaryState
     // mimeTypes announces what fastmcp can serve, symmetric with the mimeTypes the
     // client is required to declare on its own extension entry (SEP-1865).
@@ -345,7 +435,7 @@ export class FastMCP {
     const server = new Server(
       { name: this.name, version: this.version },
       {
-        capabilities: { tools: { listChanged: true }, resources: { listChanged: true }, prompts: { listChanged: true }, logging: {}, ...(extensions ? { extensions } : {}) },
+        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.modern ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
         ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
         ...(this._requestStateCodec
           ? { requestState: { verify: this._requestStateCodec.verify.bind(this._requestStateCodec) } }
@@ -677,53 +767,15 @@ export class FastMCP {
       const requestedUri = req.params.uri
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
 
-      let resource: RegisteredResource | undefined = this._staticResources.get(requestedUri)
-      let templateParams: Record<string, string> | undefined
-
-      // Direct template matching (original URIs — also handles hidden-but-callable resources)
-      if (!resource) {
-        for (const r of this._templateResources.values()) {
-          if (r.config.disabled) continue
-          const params = matchTemplate(r.config.uri, requestedUri)
-          if (params !== null) { resource = r; templateParams = params; break }
-        }
-      }
-
-      // Transformed static lookup
-      if (!resource && this._transforms.length > 0) {
-        for (const r of this._staticResources.values()) {
-          if (r.config.disabled) continue
-          const view = applyTransformChain<ResourceView>(
-            { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
-            this._transforms,
-            (t, v) => t.transformResource?.(v),
-          )
-          if (view && view.uri === requestedUri) { resource = r; break }
-        }
-      }
-
-      // Transformed template matching
-      if (!resource && this._transforms.length > 0) {
-        for (const r of this._templateResources.values()) {
-          if (r.config.disabled) continue
-          const view = applyTransformChain<ResourceView>(
-            { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
-            this._transforms,
-            (t, v) => t.transformResourceTemplate?.(v),
-          )
-          if (view) {
-            const params = matchTemplate(view.uri, requestedUri)
-            if (params !== null) { resource = r; templateParams = params; break }
-          }
-        }
-      }
-
-      if (!resource || resource.config.disabled) {
+      const resolved = this._resolveResource(requestedUri)
+      if (!resolved || resolved.resource.config.disabled) {
         // ResourceNotFoundError stamps `data: { uri }` (exactly one key) and keeps the
         // -32602 code the SDK recognition contract requires, so a client can tell a
         // resource miss from a generic Invalid Params (task-9 Req 3; task-7 F1).
         throw new ResourceNotFoundError(requestedUri, `Unknown resource: "${requestedUri}"`)
       }
+      const resource = resolved.resource
+      const templateParams = resolved.templateParams
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
@@ -749,6 +801,71 @@ export class FastMCP {
 
           const result = await executePromise
           return convertResourceResult(result, requestedUri, resource!.config.mimeType)
+        }),
+      )
+    })
+
+    // resources/subscribe / resources/unsubscribe (legacy era only).
+    //
+    // The 2026-07-28 wire registry omits both methods, so a modern connection
+    // never reaches these handlers — the SDK rejects the method at the era seam
+    // (-32601) before dispatch, and a modern client's own era guard rejects even
+    // earlier. On legacy the handshake advertises `resources.subscribe: true`
+    // (see _makeServer), so the client may call them here.
+    //
+    // The subscription set lives in the connection's per-session state Map (the
+    // same Map SESSION_CLOSE_CALLBACKS_KEY uses), so it is discarded when the
+    // session closes — no separate registry to leak. Delivery of
+    // `notifications/resources/updated` is driven by notifyResourceUpdated(uri),
+    // the single change signal shared with the modern subscriptions/listen bus.
+    //
+    // Both handlers mirror resources/read's resolve → not-found → auth → context →
+    // middleware sequencing, so subscribe is indistinguishable from read as an
+    // oracle and audit/rate-limit middleware observes both.
+    server.setRequestHandler('resources/subscribe', async (req, sdkCtx) => {
+      const uri = req.params.uri
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+
+      // Resolve against the same lookup resources/read uses; an unknown or
+      // disabled URI is a bad parameter (ResourceNotFoundError → -32602), matching
+      // resources/read's not-found contract exactly.
+      const resolved = this._resolveResource(uri)
+      if (!resolved || resolved.resource.config.disabled) {
+        throw new ResourceNotFoundError(uri, `Unknown resource: "${uri}"`)
+      }
+      const resource = resolved.resource
+
+      // Enforce the resource's auth guard identically to resources/read (same
+      // rejection). Without this, subscribe leaks an existence/activity oracle for a
+      // URI that read (and resources/list) deliberately hides from an under-scoped
+      // caller: `{}` for a real-but-forbidden URI vs -32602 for an unknown one.
+      if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
+
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'resources/subscribe', req.params, ctx, async () => {
+          let subs = sessionState.get(RESOURCE_SUBSCRIPTIONS_KEY) as Set<string> | undefined
+          if (!subs) {
+            subs = new Set<string>()
+            sessionState.set(RESOURCE_SUBSCRIPTIONS_KEY, subs)
+          }
+          subs.add(uri)
+          return {}
+        }),
+      )
+    })
+
+    server.setRequestHandler('resources/unsubscribe', async (req, sdkCtx) => {
+      const uri = req.params.uri
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'resources/unsubscribe', req.params, ctx, async () => {
+          const subs = sessionState.get(RESOURCE_SUBSCRIPTIONS_KEY) as Set<string> | undefined
+          subs?.delete(uri)
+          return {}
         }),
       )
     })
@@ -792,7 +909,17 @@ export class FastMCP {
               name: p.name,
               ...(p.config.title !== undefined ? { title: p.config.title } : {}),
               description: p.description,
-              ...(p.config.arguments?.length ? { arguments: p.config.arguments } : {}),
+              // Strip the per-argument `complete` callback — it is a server-side
+              // completion hook, not part of the advertised argument schema.
+              ...(p.config.arguments?.length
+                ? {
+                    arguments: p.config.arguments.map((a) => ({
+                      name: a.name,
+                      ...(a.description !== undefined ? { description: a.description } : {}),
+                      ...(a.required !== undefined ? { required: a.required } : {}),
+                    })),
+                  }
+                : {}),
             })),
             ...(nextCursor ? { nextCursor } : {}),
           }
@@ -858,6 +985,124 @@ export class FastMCP {
         }),
       )
     })
+
+    // completion/complete — argument autocompletion for prompt arguments and
+    // resource-template variables. Registered on every factory (both eras admit
+    // the method; see _makeServer's `completions` capability note). Routes by the
+    // request's ref type using the SDK's assert helpers (which narrow the request
+    // after the `ref.type` switch has already established the branch), then
+    // dispatches to _completePrompt / _completeResourceTemplate. Both mirror
+    // prompts/get and resources/read: resolve → not-found (-32602) → auth → run,
+    // so completion is no weaker an oracle than get/read and audit middleware
+    // observes it.
+    server.setRequestHandler('completion/complete', async (req, sdkCtx) => {
+      const token = await this._resolveToken(sdkCtx.http?.authInfo)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      return contextStore.run(ctx, () =>
+        runMiddlewareChain(this._middleware, 'completion/complete', req.params, ctx, async () => {
+          const ref = req.params.ref
+          if (ref.type === 'ref/prompt') {
+            assertCompleteRequestPrompt(req)
+            return this._completePrompt(req.params, token)
+          }
+          if (ref.type === 'ref/resource') {
+            assertCompleteRequestResourceTemplate(req)
+            return this._completeResourceTemplate(req.params, token)
+          }
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
+            `Invalid completion reference type: "${(ref as { type: string }).type}"`,
+          )
+        }),
+      )
+    })
+  }
+
+  /**
+   * Resolve a `completion/complete` request against a prompt argument's completer.
+   * Mirrors prompts/get's transform-aware lookup, not-found contract (-32602), and
+   * auth check; an argument with no completer yields an empty list (SDK parity).
+   */
+  private async _completePrompt(
+    params: CompleteRequestParams,
+    token: AccessToken | undefined,
+  ): Promise<CompleteResult> {
+    const ref = params.ref as { type: 'ref/prompt'; name: string }
+    let prompt: RegisteredPrompt | undefined
+    if (this._transforms.length > 0) {
+      for (const p of this._prompts.values()) {
+        const view = applyTransformChain<PromptView>(
+          { name: p.config.name, description: p.config.description, tags: p.config.tags ?? [] },
+          this._transforms,
+          (t, v) => t.transformPrompt?.(v),
+        )
+        if (view && view.name === ref.name) { prompt = p; break }
+      }
+    }
+    if (!prompt) prompt = this._prompts.get(ref.name)
+
+    if (!prompt || prompt.config.disabled) {
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown prompt: "${ref.name}"`)
+    }
+    if (prompt.config.auth) await runAuthCheck(prompt.config.auth, token)
+
+    const arg = prompt.config.arguments?.find((a) => a.name === params.argument.name)
+    if (!arg?.complete) return { completion: EMPTY_COMPLETION }
+
+    const raw = await arg.complete(params.argument.value, params.context)
+    return { completion: normalizeCompletion(raw) }
+  }
+
+  /**
+   * Resolve a `completion/complete` request against a resource template's
+   * per-variable completer. Mirrors resources/read's not-found contract (-32602)
+   * and auth check; a variable with no completer yields an empty list. Following
+   * the SDK's own high-level server, a `ref.uri` that names a registered STATIC
+   * resource (not a template) is answered with an empty list rather than an error.
+   */
+  private async _completeResourceTemplate(
+    params: CompleteRequestParams,
+    token: AccessToken | undefined,
+  ): Promise<CompleteResult> {
+    const ref = params.ref as { type: 'ref/resource'; uri: string }
+    let template = this._templateResources.get(ref.uri)
+    if (!template && this._transforms.length > 0) {
+      for (const r of this._templateResources.values()) {
+        const view = applyTransformChain<ResourceView>(
+          { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+          this._transforms,
+          (t, v) => t.transformResourceTemplate?.(v),
+        )
+        if (view && view.uri === ref.uri) { template = r; break }
+      }
+    }
+
+    if (!template || template.config.disabled) {
+      // A concrete (non-template) resource URI is a valid ref with nothing to
+      // complete — answer empty, matching the SDK's high-level server. But apply
+      // resources/read's resolve → not-found → auth gate first, so a disabled or
+      // auth-gated static resource is NOT an existence oracle: a hidden resource
+      // must be indistinguishable from an unknown URI (task-11's subscribe standard).
+      const staticResource = this._staticResources.get(ref.uri)
+      if (staticResource && !staticResource.config.disabled) {
+        // Enforce the resource's auth guard identically to resources/read (same
+        // rejection). Without this, an auth-gated static resource answers `{}` here
+        // while read rejects it — a caller could enumerate forbidden URIs.
+        if (staticResource.config.auth) await runAuthCheck(staticResource.config.auth, token)
+        return { completion: EMPTY_COMPLETION }
+      }
+      // Disabled or unknown: fall through to the identical not-found rejection, so a
+      // disabled static resource is byte-indistinguishable from a URI that was never
+      // registered (matches read's not-found code, -32602).
+      throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown resource template: "${ref.uri}"`)
+    }
+    if (template.config.auth) await runAuthCheck(template.config.auth, token)
+
+    const completer = template.config.complete?.[params.argument.name]
+    if (!completer) return { completion: EMPTY_COMPLETION }
+
+    const raw = await completer(params.argument.value, params.context)
+    return { completion: normalizeCompletion(raw) }
   }
 
   private _notifyToolListChanged(): void {
@@ -892,6 +1137,90 @@ export class FastMCP {
       server.sendPromptListChanged().catch(() => {})
     }
     this._modernHandler?.notify.promptsChanged()
+  }
+
+  /**
+   * Signal that a resource changed and any subscriber should re-read it. This is
+   * the SINGLE change signal for resource updates across both eras — the legacy
+   * per-session push and the modern subscriptions/listen bus are driven from here:
+   *
+   * - Legacy connections (primary / stdio / legacy HTTP sessions) that called
+   *   `resources/subscribe` for `uri` are pushed `notifications/resources/updated`
+   *   directly on their live session (subscription set kept in per-session state).
+   * - The modern handler's bus (W3) is published to as well; it does its own
+   *   per-stream filtering, delivering only to `subscriptions/listen` streams that
+   *   opted in to this URI. Optional chaining keeps it a no-op until the first
+   *   modern HTTP request has actually built the handler.
+   *
+   * Unsubscribed sessions (and the modern streams that never opted in) receive
+   * nothing, so calling this for a URI with no subscribers is safe and cheap.
+   */
+  notifyResourceUpdated(uri: string): void {
+    const pushIfSubscribed = (server: Server, state: Map<string, unknown> | null): void => {
+      const subs = state?.get(RESOURCE_SUBSCRIPTIONS_KEY) as Set<string> | undefined
+      if (subs?.has(uri)) server.sendResourceUpdated({ uri }).catch(() => {})
+    }
+    pushIfSubscribed(this._primaryServer, this._primaryState)
+    if (this._stdioServer) pushIfSubscribed(this._stdioServer, this._stdioState)
+    for (const { server, state } of this._sessions.values()) pushIfSubscribed(server, state)
+    this._modernHandler?.notify.resourceUpdated(uri)
+  }
+
+  /**
+   * Resolve a requested URI to a registered resource, mirroring the lookup order
+   * `resources/read` uses: exact static match, then original template match, then
+   * (only when transforms are registered) transformed-static and
+   * transformed-template matches. Returns the resource plus any template params, or
+   * undefined when nothing matches. Disabled static resources are still returned by
+   * exact match — callers apply the `disabled` check themselves (as read does), so
+   * a hidden-but-known URI is a not-found, not a silent miss.
+   */
+  private _resolveResource(
+    requestedUri: string,
+  ): { resource: RegisteredResource; templateParams?: Record<string, string> } | undefined {
+    let resource: RegisteredResource | undefined = this._staticResources.get(requestedUri)
+    let templateParams: Record<string, string> | undefined
+
+    // Direct template matching (original URIs — also handles hidden-but-callable resources)
+    if (!resource) {
+      for (const r of this._templateResources.values()) {
+        if (r.config.disabled) continue
+        const params = matchTemplate(r.config.uri, requestedUri)
+        if (params !== null) { resource = r; templateParams = params; break }
+      }
+    }
+
+    // Transformed static lookup
+    if (!resource && this._transforms.length > 0) {
+      for (const r of this._staticResources.values()) {
+        if (r.config.disabled) continue
+        const view = applyTransformChain<ResourceView>(
+          { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+          this._transforms,
+          (t, v) => t.transformResource?.(v),
+        )
+        if (view && view.uri === requestedUri) { resource = r; break }
+      }
+    }
+
+    // Transformed template matching
+    if (!resource && this._transforms.length > 0) {
+      for (const r of this._templateResources.values()) {
+        if (r.config.disabled) continue
+        const view = applyTransformChain<ResourceView>(
+          { uri: r.config.uri, name: r.config.name ?? r.config.uri, tags: r.config.tags ?? [], mimeType: r.config.mimeType, title: r.config.title },
+          this._transforms,
+          (t, v) => t.transformResourceTemplate?.(v),
+        )
+        if (view) {
+          const params = matchTemplate(view.uri, requestedUri)
+          if (params !== null) { resource = r; templateParams = params; break }
+        }
+      }
+    }
+
+    if (!resource) return undefined
+    return { resource, templateParams }
   }
 
   // Overload: typed handler inferred from input schema
@@ -1398,7 +1727,11 @@ export class FastMCP {
       // then the real pinned one); _stdioServer always ends up holding the latter.
       this._stdioHandle = serveStdio(
         () => {
-          this._stdioServer = this._makeServer(new Map())
+          // Capture the state Map so the resource-updated fan-out can reach this
+          // connection's per-session subscription set (see _notifyResourceUpdated).
+          const stdioState = new Map<string, unknown>()
+          this._stdioState = stdioState
+          this._stdioServer = this._makeServer(stdioState)
           return this._stdioServer
         },
         { transport: stdioTransport },
@@ -1418,7 +1751,7 @@ export class FastMCP {
    * legacy server-initiated-request shim keep working for 2025-era clients. */
   private _getModernHandler(): McpHttpHandler {
     if (!this._modernHandler) {
-      this._modernHandler = createMcpHandler(() => this._makeServer(new Map()), {
+      this._modernHandler = createMcpHandler(() => this._makeServer(new Map(), { modern: true }), {
         legacy: 'reject',
         ...(this._eventBus ? { bus: this._eventBus } : {}),
       })
@@ -1432,6 +1765,14 @@ export class FastMCP {
    * both the legacy transport and the modern handler read it as pass-through authInfo).
    */
   private async _dispatchHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // DNS-rebinding protection runs first and is header-only, so it never reads the
+    // request body — no contention with the body parsing the legacy/modern branches do
+    // below. Each guard writes the SDK's 403 JSON-RPC rejection and returns false when it
+    // rejects, covering BOTH the legacy sessionful transport and the modern
+    // createMcpHandler path from this one shared choke point.
+    if (this._hostGuard && !this._hostGuard(req, res)) return
+    if (this._originGuard && !this._originGuard(req, res)) return
+
     const { toNodeHandler, toWebRequest } = await import('@modelcontextprotocol/node')
 
     // Drains the raw Node req stream and builds a web-standard Request from the
@@ -1500,7 +1841,37 @@ export class FastMCP {
     await mcpTransport.handleRequest(req, res, parsedBody)
   }
 
+  /**
+   * Resolve the DNS-rebinding Host/Origin guards for this serve from
+   * `FastMCPOptions.dnsRebinding` and the bind `host`. Sets `_hostGuard` / `_originGuard`
+   * (null = protection off). See the `dnsRebinding` option doc for the default posture.
+   */
+  private _resolveDnsRebindingGuards(host: string): void {
+    const opt = this._dnsRebindingOptions
+    // No config at all + a routable bind = open by default. Warn once so the operator
+    // knows the posture; an explicit dnsRebinding (any shape) means they chose it.
+    if (opt === undefined && !isLoopbackHost(host) && !_dnsRebindingWarned) {
+      _dnsRebindingWarned = true
+      console.warn(
+        '[fastmcp] This HTTP server accepts requests from any Host or Origin. ' +
+          'Set dnsRebinding in FastMCPOptions to protect local deployments against DNS rebinding.',
+      )
+    }
+    const hasExplicitAllowlist = opt?.allowedHosts !== undefined || opt?.allowedOrigins !== undefined
+    // Explicit `enabled` wins; otherwise supplying an allowlist, or binding a loopback
+    // host, turns protection on. A routable bind with no config stays off (see option doc).
+    const enabled = opt?.enabled ?? (hasExplicitAllowlist || isLoopbackHost(host))
+    if (!enabled) {
+      this._hostGuard = null
+      this._originGuard = null
+      return
+    }
+    this._hostGuard = hostHeaderValidation(opt?.allowedHosts ?? localhostAllowedHostnames())
+    this._originGuard = originValidation(opt?.allowedOrigins ?? localhostAllowedOrigins())
+  }
+
   private async _runHttpOAuth(port: number, host: string, path: string): Promise<void> {
+    this._resolveDnsRebindingGuards(host)
     const express = (await import('express')).default
     const { mcpAuthRouter } = await import('@modelcontextprotocol/server-legacy/auth')
     const { requireBearerAuth } = await import(
@@ -1543,6 +1914,7 @@ export class FastMCP {
   }
 
   private async _runHttpSimple(port: number, host: string, path: string): Promise<void> {
+    this._resolveDnsRebindingGuards(host)
     const { createServer } = await import('node:http')
 
     const auth = this._auth
@@ -1642,6 +2014,7 @@ export class FastMCP {
       await this._stdioHandle.close()
       this._stdioHandle = null
       this._stdioServer = null
+      this._stdioState = null
     }
 
     if (this._httpServer) {

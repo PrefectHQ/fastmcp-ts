@@ -215,10 +215,11 @@ export const contextStore = new AsyncLocalStorage<McpContext>()
 export const SESSION_CLOSE_CALLBACKS_KEY = '__fastmcp_session_close_callbacks'
 
 /**
- * Pointed error thrown by `ctx.getState` / `ctx.setState` on a modern (2026-07-28)
- * HTTP request. Plan §3: session state stays for stdio and legacy HTTP sessions; on
- * modern HTTP it throws instead of silently dropping the write against a fresh
- * per-request state map. The message steers to the request-scoped replacement.
+ * Pointed error thrown by `ctx.getState` / `ctx.setState` / `ctx.deleteState` on a
+ * modern (2026-07-28) HTTP request. Plan §3: session state stays for stdio and legacy
+ * HTTP sessions; on modern HTTP every accessor throws instead of silently dropping the
+ * read/write/delete against a fresh per-request state map. The message steers to the
+ * request-scoped replacement.
  */
 const SESSION_STATE_MODERN_HTTP_ERROR =
   '[fastmcp] Session state is not available on modern HTTP requests (protocol revision 2026-07-28). ' +
@@ -393,6 +394,7 @@ export function createContext(
       sessionState.set(key, value)
     },
     deleteState: (key) => {
+      if (isModernHttpRequest) throw new Error(SESSION_STATE_MODERN_HTTP_ERROR)
       sessionState.delete(key)
     },
 

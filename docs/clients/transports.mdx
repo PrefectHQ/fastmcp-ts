@@ -29,7 +29,13 @@ Because the transport is resolved from the argument and nothing else, the same c
 
 Each accepted input maps to a concrete connection, and knowing the mapping tells you which one to reach for.
 
-A **string URL** speaks [Streamable HTTP](/servers/running#transports), the transport for servers exposed over the network. If the server only offers the older SSE endpoint, the client falls back to SSE on a 4xx response, so a URL works against both without special handling.
+A **string URL** speaks [Streamable HTTP](/servers/running#transports), the transport for servers exposed over the network. It is the only network transport the client reaches for on its own. The older SSE transport is deprecated in the MCP SDK, so the client never connects to it silently: a URL whose path looks like an SSE endpoint — one ending in `/sse` — throws a clear error that points you at Streamable HTTP and at the opt-in below. To connect to a legacy SSE server on purpose, set `legacySSE: true`, which permits the SSE path and logs a one-time deprecation warning.
+
+```typescript
+const client = await Client.connect('https://legacy-mcp.example.com/sse', {
+  legacySSE: true,   // required — an /sse URL throws without it
+})
+```
 
 A **`StdioTransport`** instance spawns a subprocess and communicates over its standard streams. This is how you drive a server that ships as a command — a published package run through `npx`, or a local file run through `tsx`. The first argument is the binary and the rest are its arguments, kept as separate array elements so commands with spaces resolve correctly.
 
@@ -66,6 +72,14 @@ const result = await client.callTool('add', { a: 1, b: 2 })
 
 This is the recommended way to test a server. You exercise the real registration, validation, conversion, and context machinery without spawning anything, so tests stay fast and assert against genuine protocol behavior rather than a mock. The connection requires the server to attach its side before the client's side completes, and the client coordinates that handshake automatically as part of `connect()` — you only pass the instance.
 
+The in-memory pairing is a 2025-era transport, so an in-process connection is [legacy](/concepts/protocol-eras) unless you pin the modern era. Pass `versionNegotiation: { mode: { pin: '2026-07-28' } }` and the client routes through the server's modern stateless handler instead of the in-memory pair, which lets a test exercise modern-era behavior with no network. The default and the `'auto'` and `'legacy'` modes all use the in-memory pairing and connect legacy.
+
+```typescript
+const client = await Client.connect(server, {
+  versionNegotiation: { mode: { pin: '2026-07-28' } },   // modern in process
+})
+```
+
 ## Browser builds
 
-The client bundles for the browser, where the only server it can reach is one exposed over the network. A **string URL** works unchanged: Streamable HTTP and the SSE fallback both ride the browser's own `fetch` and `EventSource`. The other inputs are inherently Node-only — a `StdioTransport` spawns a subprocess, and an in-process `FastMCP` instance needs a server living in the same runtime, neither of which a browser can offer. Those paths are loaded lazily, so they never enter a browser bundle, and a build pulls in only the HTTP transport it actually uses. Proving who you are from a browser is its own concern, covered in [authentication](/clients/auth#browser-apps).
+The client bundles for the browser, where the only server it can reach is one exposed over the network. A **string URL** works unchanged: Streamable HTTP rides the browser's own `fetch`. A legacy SSE endpoint still needs the explicit `legacySSE` opt-in described above, and rides `EventSource` when you enable it. The other inputs are inherently Node-only — a `StdioTransport` spawns a subprocess, and an in-process `FastMCP` instance needs a server living in the same runtime, neither of which a browser can offer. Those paths are loaded lazily, so they never enter a browser bundle, and a build pulls in only the HTTP transport it actually uses. Proving who you are from a browser is its own concern, covered in [authentication](/clients/auth#browser-apps).

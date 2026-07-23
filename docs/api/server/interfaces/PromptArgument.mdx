@@ -2,9 +2,24 @@
 title: "PromptArgument"
 ---
 
-Defined in: [server/prompt.ts:3](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L3)
+Defined in: [server/prompt.ts:6](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L6)
 
 ## Properties
+
+### complete?
+
+```ts
+optional complete?: CompleteCallback;
+```
+
+Defined in: [server/prompt.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L17)
+
+Autocompletion callback for this argument. When set, a `completion/complete`
+request for `{ ref: { type: 'ref/prompt', name }, argument: { name, value } }`
+routes here. Not advertised in `prompts/list` — the client discovers it by
+calling `completion/complete`.
+
+***
 
 ### description?
 
@@ -12,7 +27,7 @@ Defined in: [server/prompt.ts:3](https://github.com/PrefectHQ/fastmcp-ts/blob/c9
 optional description?: string;
 ```
 
-Defined in: [server/prompt.ts:5](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L5)
+Defined in: [server/prompt.ts:8](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L8)
 
 ***
 
@@ -22,7 +37,7 @@ Defined in: [server/prompt.ts:5](https://github.com/PrefectHQ/fastmcp-ts/blob/c9
 name: string;
 ```
 
-Defined in: [server/prompt.ts:4](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L4)
+Defined in: [server/prompt.ts:7](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L7)
 
 ***
 
@@ -32,6 +47,6 @@ Defined in: [server/prompt.ts:4](https://github.com/PrefectHQ/fastmcp-ts/blob/c9
 optional required?: boolean;
 ```
 
-Defined in: [server/prompt.ts:7](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L7)
+Defined in: [server/prompt.ts:10](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L10)
 
 When true, the client must supply this argument. Defaults to false.

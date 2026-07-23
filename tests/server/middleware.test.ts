@@ -8,9 +8,10 @@ import {
   ErrorNormalizationMiddleware,
   CancellationMiddleware,
 } from 'fastmcp-ts/server'
-import type { Middleware, MiddlewareContext, Next } from 'fastmcp-ts/server'
+import type { Middleware, MiddlewareContext, Next, McpContext, AccessToken } from 'fastmcp-ts/server'
 import { createTestClient } from '../helpers/createTestClient'
 import { connectHttpClient } from '../helpers/http'
+import { connectEra, ERA_COMBOS } from '../helpers/eras'
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
@@ -192,8 +193,10 @@ describe('Server — Middleware', () => {
     })
 
     it('caching middleware with a keyFn isolates cached results per caller identity', async () => {
-      // The default cache key contains no auth info, so two sessions with different permissions
-      // would share cached list results. A keyFn scoped to clientId fixes this.
+      // A caller-supplied keyFn fully owns partitioning. A keyFn scoped to clientId
+      // isolates each identity's cached list. (The DEFAULT key is auth-aware too — see
+      // the default-partitioning tests below — but a keyFn replaces that default, so its
+      // owner is responsible for including identity, as this keyFn does via clientId.)
       // This test requires the HTTP transport because extra.authInfo (and therefore
       // ctx.mcpContext.auth) is only populated on the bearer-auth path.
       const adminToken = 'admin-token'
@@ -325,6 +328,256 @@ describe('Server — Middleware', () => {
         // The handler ran on BOTH rounds — proof the cache never short-circuited the retry.
         expect(rounds).toBe(2)
       } finally {
+        await mcp.close()
+      }
+    })
+
+    it('caching middleware does not cache side-effectful resources/subscribe (re-subscribe re-establishes delivery)', async () => {
+      // Regression (task-15 seam 1): CachingMiddleware keys on method + params, and
+      // task-11 routed resources/subscribe / unsubscribe through the middleware chain.
+      // subscribe → unsubscribe → subscribe sends byte-identical subscribe params, so
+      // the second subscribe would hit the cached {} from the first WITHOUT re-running
+      // the handler — the client believes it re-subscribed, but the per-session
+      // subscription set no longer contains the URI (unsubscribe removed it), so
+      // notifyResourceUpdated delivers nothing. Rule (same class as the inputRequired
+      // exclusion above): never cache side-effectful control methods.
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource({ uri: 'watch://res', name: 'res' }, () => 'v1')
+      mcp.use(new CachingMiddleware(60_000))
+
+      // subscribe/unsubscribe are live RPCs only on the legacy era; connect a legacy
+      // combo where notifyResourceUpdated actually pushes to the live session.
+      const legacyStdio = ERA_COMBOS.find((c) => c.name === 'stdio-legacy')!
+      const { client, close } = await connectEra(mcp, legacyStdio)
+      try {
+        const updates: string[] = []
+        client.setNotificationHandler('notifications/resources/updated', (n: unknown) => {
+          updates.push((n as { params: { uri: string } }).params.uri)
+        })
+        const waitFor = async (pred: () => boolean, ms = 500): Promise<void> => {
+          const start = Date.now()
+          while (!pred() && Date.now() - start < ms) await new Promise((r) => setTimeout(r, 10))
+        }
+
+        await client.subscribeResource({ uri: 'watch://res' })
+        await client.unsubscribeResource({ uri: 'watch://res' })
+        // Second subscribe: params are byte-identical to the first. It MUST re-run the
+        // handler (re-add the URI), not replay the cached {} from the first subscribe.
+        await client.subscribeResource({ uri: 'watch://res' })
+
+        mcp.notifyResourceUpdated('watch://res')
+        await waitFor(() => updates.length >= 1)
+        // Delivery proves the re-subscribe genuinely re-established the subscription.
+        expect(updates).toEqual(['watch://res'])
+      } finally {
+        await close()
+      }
+    })
+
+    it('caching middleware default key partitions auth-scoped tools/list visibility across sessions (no keyFn)', async () => {
+      // Leak repro (task-17; finding names "tools/list (auth-scoped visibility!)").
+      // tools/list filters the tool set by the caller's token INSIDE the handler, so a
+      // cache hit taken before that filter runs serves one identity's visibility to
+      // another. With the DEFAULT (now auth-aware) key and NO keyFn, the admin's cached
+      // list must NOT reach the user.
+      // Transport: legacy-sessionful HTTP. Auth material (ctx.mcpContext.auth) is
+      // populated only on the bearer HTTP path (stdio carries no bearer; a no-auth
+      // server never populates it), so this leak can only be exercised over bearer HTTP
+      // — the same combo the existing keyFn test uses.
+      const adminToken = 'admin-token'
+      const userToken = 'user-token'
+      const mcp = new FastMCP({
+        name: 'test',
+        auth: staticTokenVerifier({
+          [adminToken]: { clientId: 'admin', scopes: ['admin', 'read'], claims: {} },
+          [userToken]: { clientId: 'user', scopes: ['read'], claims: {} },
+        }),
+      })
+      mcp.tool({ name: 'public', description: 'public tool' }, () => 'ok')
+      mcp.tool({ name: 'admin-only', description: 'admin tool', auth: requireScopes('admin') }, () => 'ok')
+
+      // DEFAULT key — no keyFn. Pre-fix this leaks; post-fix it partitions by identity.
+      mcp.use(new CachingMiddleware(60_000))
+
+      await mcp.run({ transport: 'http', port: 0 })
+      const url = new URL(`http://127.0.0.1:${mcp.address!.port}${mcp.address!.path}`)
+      const { client: adminClient, close: closeAdmin } = await connectHttpClient(url, adminToken)
+      const { client: userClient, close: closeUser } = await connectHttpClient(url, userToken)
+      try {
+        // Admin sees both tools; result is cached under the admin partition.
+        const adminList = await adminClient.listTools()
+        expect(adminList.tools.map((t) => t.name)).toContain('admin-only')
+
+        // User must get their OWN filtered list from their own partition, NOT the
+        // admin's cached result.
+        const userList = await userClient.listTools()
+        expect(userList.tools.map((t) => t.name)).not.toContain('admin-only')
+        expect(userList.tools.map((t) => t.name)).toContain('public')
+      } finally {
+        await closeAdmin()
+        await closeUser()
+        await mcp.close()
+      }
+    })
+
+    it('caching middleware default key does not serve one identity\'s cached resource read to another, and rejects the unauthorized (no keyFn)', async () => {
+      // Leak repro — the worst case (task-17; finding: "resources/read contents being
+      // the worst case"). An auth-gated resource whose contents depend on the caller
+      // identity: with the DEFAULT (auth-aware) key and NO keyFn, each identity must get
+      // its OWN cached contents, and a caller lacking the required scope must get read's
+      // auth rejection — never the cached contents. Legacy-sessionful HTTP (see above).
+      const adminToken = 'admin-token'
+      const userToken = 'user-token'
+      const noReadToken = 'noread-token'
+      const mcp = new FastMCP({
+        name: 'test',
+        auth: staticTokenVerifier({
+          [adminToken]: { clientId: 'admin', scopes: ['read'], claims: {} },
+          [userToken]: { clientId: 'user', scopes: ['read'], claims: {} },
+          [noReadToken]: { clientId: 'nobody', scopes: [], claims: {} },
+        }),
+      })
+      // Gated on 'read'; contents are identity-specific.
+      mcp.resource({ uri: 'secret://data', name: 'secret', auth: requireScopes('read') }, () =>
+        `secret-for-${mcp.getContext().auth?.clientId ?? 'anon'}`,
+      )
+      mcp.use(new CachingMiddleware(60_000))
+
+      await mcp.run({ transport: 'http', port: 0 })
+      const url = new URL(`http://127.0.0.1:${mcp.address!.port}${mcp.address!.path}`)
+      const { client: adminClient, close: closeAdmin } = await connectHttpClient(url, adminToken)
+      const { client: userClient, close: closeUser } = await connectHttpClient(url, userToken)
+      const { client: noReadClient, close: closeNoRead } = await connectHttpClient(url, noReadToken)
+      try {
+        const adminRead = await adminClient.readResource({ uri: 'secret://data' })
+        expect((adminRead.contents[0] as { text: string }).text).toBe('secret-for-admin')
+
+        // A different authorized identity must get its OWN contents, never the admin's
+        // cached secret. (Pre-fix the default key ignores identity → this is the leak.)
+        const userRead = await userClient.readResource({ uri: 'secret://data' })
+        expect((userRead.contents[0] as { text: string }).text).toBe('secret-for-user')
+
+        // Unauthorized (lacks 'read'): read's own auth rejection, never the cached secret.
+        await expect(noReadClient.readResource({ uri: 'secret://data' })).rejects.toThrow(/scope/i)
+      } finally {
+        await closeAdmin()
+        await closeUser()
+        await closeNoRead()
+        await mcp.close()
+      }
+    })
+
+    it('caching middleware default key still serves a cache hit for the same identity (no keyFn)', async () => {
+      // Same-identity caching must survive partitioning: two reads under the SAME token
+      // land in one partition, so the handler runs once. Asserted by a handler-invocation
+      // counter (timing-free). Legacy-sessionful HTTP.
+      const adminToken = 'admin-token'
+      let calls = 0
+      const mcp = new FastMCP({
+        name: 'test',
+        auth: staticTokenVerifier({ [adminToken]: { clientId: 'admin', scopes: ['read'], claims: {} } }),
+      })
+      mcp.resource({ uri: 'data://count', name: 'count', auth: requireScopes('read') }, () => {
+        calls++
+        return `call-${calls}`
+      })
+      mcp.use(new CachingMiddleware(60_000))
+      await mcp.run({ transport: 'http', port: 0 })
+      const url = new URL(`http://127.0.0.1:${mcp.address!.port}${mcp.address!.path}`)
+      const { client, close } = await connectHttpClient(url, adminToken)
+      try {
+        const r1 = await client.readResource({ uri: 'data://count' })
+        const r2 = await client.readResource({ uri: 'data://count' })
+        // Handler ran once — the second read was served from the same-identity partition.
+        expect(calls).toBe(1)
+        expect((r1.contents[0] as { text: string }).text).toBe('call-1')
+        expect((r2.contents[0] as { text: string }).text).toBe('call-1')
+      } finally {
+        await close()
+        await mcp.close()
+      }
+    })
+
+    it('caching middleware default key keeps anonymous and authenticated identities in separate partitions (both directions)', async () => {
+      // Anonymous (ctx.mcpContext.auth === undefined) must never share a partition with
+      // any authenticated identity, in EITHER direction. A real auth-configured HTTP
+      // server 401s every tokenless request, and a no-auth server never populates
+      // ctx.auth, so anon and authenticated requests never share one live cache through a
+      // transport — the separation is a property of the default key. This drives
+      // CachingMiddleware.onRequest directly with both ctx shapes; a counting handler is
+      // the timing-free signal. (Transport does not matter here — the invariant is the
+      // key, not the wire — so no era combo is exercised, unlike the tests above.)
+      const authed = { token: 'tok-A', clientId: 'A', scopes: [], claims: {} } as AccessToken
+
+      const mkCtx = (auth: AccessToken | undefined): MiddlewareContext => ({
+        method: 'resources/read',
+        request: { uri: 'x' },
+        mcpContext: { auth, inputResponses: undefined, requestState: () => undefined } as unknown as McpContext,
+      })
+
+      // Direction 1: anonymous writes first; the authenticated identity must miss it.
+      {
+        const mw = new CachingMiddleware(60_000)
+        let calls = 0
+        const handler = async () => { calls++; return `v${calls}` }
+        const anon = await mw.onRequest(mkCtx(undefined), handler) // miss -> v1, cached anon
+        const auth = await mw.onRequest(mkCtx(authed), handler)    // must MISS anon -> v2
+        expect(calls).toBe(2)
+        expect(anon).toBe('v1')
+        expect(auth).toBe('v2')
+        // Each identity re-reads its OWN partition (no extra handler run).
+        expect(await mw.onRequest(mkCtx(undefined), handler)).toBe('v1')
+        expect(await mw.onRequest(mkCtx(authed), handler)).toBe('v2')
+        expect(calls).toBe(2)
+      }
+
+      // Direction 2: authenticated writes first; anonymous must miss it.
+      {
+        const mw = new CachingMiddleware(60_000)
+        let calls = 0
+        const handler = async () => { calls++; return `v${calls}` }
+        const auth = await mw.onRequest(mkCtx(authed), handler)    // miss -> v1, cached auth
+        const anon = await mw.onRequest(mkCtx(undefined), handler) // must MISS auth -> v2
+        expect(calls).toBe(2)
+        expect(auth).toBe('v1')
+        expect(anon).toBe('v2')
+      }
+    })
+
+    it('a custom keyFn replaces the default auth partitioning (its owner owns partitioning)', async () => {
+      // Overriding the key removes the built-in auth partitioning entirely — the keyFn
+      // owns partitioning. A keyFn that ignores identity (constant per method+params)
+      // makes two DIFFERENT authenticated identities SHARE one cache entry, proving the
+      // default partitioning was replaced (not merely augmented). This is the documented
+      // trade-off: custom keyFn owners own their own partitioning. Legacy-sessionful HTTP.
+      const adminToken = 'admin-token'
+      const userToken = 'user-token'
+      const mcp = new FastMCP({
+        name: 'test',
+        auth: staticTokenVerifier({
+          [adminToken]: { clientId: 'admin', scopes: ['read'], claims: {} },
+          [userToken]: { clientId: 'user', scopes: ['read'], claims: {} },
+        }),
+      })
+      mcp.resource({ uri: 'shared://data', name: 'shared', auth: requireScopes('read') }, () =>
+        `contents-for-${mcp.getContext().auth?.clientId ?? 'anon'}`,
+      )
+      // keyFn deliberately ignores auth: identity is NOT in the key.
+      mcp.use(new CachingMiddleware(60_000, (ctx) => `${ctx.method}:${JSON.stringify(ctx.request)}`))
+      await mcp.run({ transport: 'http', port: 0 })
+      const url = new URL(`http://127.0.0.1:${mcp.address!.port}${mcp.address!.path}`)
+      const { client: adminClient, close: closeAdmin } = await connectHttpClient(url, adminToken)
+      const { client: userClient, close: closeUser } = await connectHttpClient(url, userToken)
+      try {
+        const adminRead = await adminClient.readResource({ uri: 'shared://data' })
+        expect((adminRead.contents[0] as { text: string }).text).toBe('contents-for-admin')
+        // keyFn ignored identity, so the user is served the admin's cached entry — proof
+        // the keyFn replaced the default partitioning (callers who override own this).
+        const userRead = await userClient.readResource({ uri: 'shared://data' })
+        expect((userRead.contents[0] as { text: string }).text).toBe('contents-for-admin')
+      } finally {
+        await closeAdmin()
+        await closeUser()
         await mcp.close()
       }
     })

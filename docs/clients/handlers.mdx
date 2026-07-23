@@ -35,6 +35,8 @@ Two server requests expect the client to do real work and return a result. Sampl
 
 Both are capability-gated, and the rule is the same for each: the client advertises the capability only when you provide the handler. A server checks for the capability before it calls, so a client with no `sampling` handler never receives a sampling request, and one with no `elicitation` handler never receives an elicitation. This keeps the contract honest — the server only asks for what the client has said it can do.
 
+These are server-to-client requests, and that shape belongs to the legacy [protocol era](/concepts/protocol-eras). Revision 2026-07-28 deprecates the push channel (SEP-2577) and has no way for a server to call the client mid-handler. On the modern era a server instead answers a call with an [input-required](/concepts/input-required) result, and the client fulfils it automatically through these same `sampling` and `elicitation` handlers. You register the handler once and it serves both eras — pushed on legacy, auto-fulfilled on modern.
+
 For sampling specifically, you rarely write the handler by hand. A [sampling adapter](/clients/sampling) wires the request straight to a provider's LLM, so the handler is one line:
 
 ```typescript
@@ -74,3 +76,5 @@ const client = await Client.connect('https://mcp.example.com', {
 ```
 
 URIs without a `file://` scheme are normalized for you, so a bare path works. Static roots never change, so the client advertises the roots capability as non-changing; when you pass a callback instead, it advertises that roots can change and you push updates with `client.notifyRootsChanged()`.
+
+`notifyRootsChanged()` sends the `notifications/roots/list_changed` notification on either [protocol era](/concepts/protocol-eras). Roots, like sampling and elicitation, is a server-to-client interaction deprecated in revision 2026-07-28 (SEP-2577), and the list-changed push belongs to the legacy era, so a modern server may not act on it. A static roots array is the portable choice; treat dynamic roots that depend on this push as best-effort on the modern era.

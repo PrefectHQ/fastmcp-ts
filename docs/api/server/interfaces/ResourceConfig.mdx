@@ -2,7 +2,7 @@
 title: "ResourceConfig"
 ---
 
-Defined in: [server/resource.ts:13](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L13)
+Defined in: [server/resource.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L16)
 
 ## Properties
 
@@ -12,7 +12,7 @@ Defined in: [server/resource.ts:13](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional annotations?: ResourceAnnotations;
 ```
 
-Defined in: [server/resource.ts:29](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L29)
+Defined in: [server/resource.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L32)
 
 Behavioral hints for clients.
 
@@ -24,7 +24,23 @@ Behavioral hints for clients.
 optional auth?: AuthCheck;
 ```
 
-Defined in: [server/resource.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L36)
+Defined in: [server/resource.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L39)
+
+***
+
+### complete?
+
+```ts
+optional complete?: Record<string, CompleteCallback>;
+```
+
+Defined in: [server/resource.ts:49](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L49)
+
+Autocompletion callbacks for this resource template's RFC 6570 variables,
+keyed by variable name. Only meaningful for URI templates. When set, a
+`completion/complete` request for
+`{ ref: { type: 'ref/resource', uri: <this template> }, argument: { name, value } }`
+routes to `complete[name]`.
 
 ***
 
@@ -34,7 +50,7 @@ Defined in: [server/resource.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional description?: string;
 ```
 
-Defined in: [server/resource.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L20)
+Defined in: [server/resource.ts:23](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L23)
 
 ***
 
@@ -44,7 +60,7 @@ Defined in: [server/resource.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional disabled?: boolean;
 ```
 
-Defined in: [server/resource.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L33)
+Defined in: [server/resource.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L36)
 
 When true the resource is hidden from list responses and cannot be read.
 
@@ -56,7 +72,7 @@ When true the resource is hidden from list responses and cannot be read.
 optional mimeType?: string;
 ```
 
-Defined in: [server/resource.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L22)
+Defined in: [server/resource.ts:25](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L25)
 
 MIME type of the resource content. Defaults to 'text/plain' for strings, 'application/octet-stream' for binary.
 
@@ -68,7 +84,7 @@ MIME type of the resource content. Defaults to 'text/plain' for strings, 'applic
 optional name?: string;
 ```
 
-Defined in: [server/resource.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L17)
+Defined in: [server/resource.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L20)
 
 Programmatic identifier. Defaults to the uri.
 
@@ -80,7 +96,7 @@ Programmatic identifier. Defaults to the uri.
 optional size?: number;
 ```
 
-Defined in: [server/resource.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L27)
+Defined in: [server/resource.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L30)
 
 Size of the resource content in bytes, if known.
 Only meaningful for static resources; ignored for URI templates.
@@ -93,7 +109,7 @@ Only meaningful for static resources; ignored for URI templates.
 optional tags?: string[];
 ```
 
-Defined in: [server/resource.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L35)
+Defined in: [server/resource.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L38)
 
 Arbitrary tags for server-side filtering.
 
@@ -105,7 +121,7 @@ Arbitrary tags for server-side filtering.
 optional timeout?: number;
 ```
 
-Defined in: [server/resource.ts:31](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L31)
+Defined in: [server/resource.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L34)
 
 Execution timeout in milliseconds. No timeout by default.
 
@@ -117,7 +133,7 @@ Execution timeout in milliseconds. No timeout by default.
 optional title?: string;
 ```
 
-Defined in: [server/resource.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L19)
+Defined in: [server/resource.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L22)
 
 Human-readable display name shown in UIs. Defaults to `name`.
 
@@ -129,7 +145,7 @@ Human-readable display name shown in UIs. Defaults to `name`.
 optional ui?: ResourceUiMeta;
 ```
 
-Defined in: [server/resource.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L38)
+Defined in: [server/resource.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L41)
 
 Apps extension metadata. Included in _meta.ui in resources/list for UI-capable clients.
 
@@ -141,6 +157,6 @@ Apps extension metadata. Included in _meta.ui in resources/list for UI-capable c
 uri: string;
 ```
 
-Defined in: [server/resource.ts:15](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/resource.ts#L15)
+Defined in: [server/resource.ts:18](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/resource.ts#L18)
 
 Static URI (e.g. `file://readme`) or RFC 6570 template (e.g. `user://{id}`).

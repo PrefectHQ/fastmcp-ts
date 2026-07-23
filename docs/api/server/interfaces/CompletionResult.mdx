@@ -1,0 +1,45 @@
+---
+title: "CompletionResult"
+---
+
+Defined in: server/completion.ts:33
+
+The paginated shape a completion callback MAY return for full control over the
+`total` / `hasMore` hints. Mirrors the wire `CompleteResult.completion` object.
+Returning a bare `string[]` instead is the common case.
+
+## Properties
+
+### hasMore?
+
+```ts
+optional hasMore?: boolean;
+```
+
+Defined in: server/completion.ts:39
+
+Whether more matches exist beyond `values`.
+
+***
+
+### total?
+
+```ts
+optional total?: number;
+```
+
+Defined in: server/completion.ts:37
+
+Total number of matches available, if larger than `values`.
+
+***
+
+### values
+
+```ts
+values: string[];
+```
+
+Defined in: server/completion.ts:35
+
+Suggested values. Capped to 100 on the wire (the spec's maximum).

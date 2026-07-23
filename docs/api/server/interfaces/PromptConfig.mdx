@@ -2,7 +2,7 @@
 title: "PromptConfig"
 ---
 
-Defined in: [server/prompt.ts:10](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L10)
+Defined in: [server/prompt.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L20)
 
 ## Properties
 
@@ -12,7 +12,7 @@ Defined in: [server/prompt.ts:10](https://github.com/PrefectHQ/fastmcp-ts/blob/c
 optional arguments?: PromptArgument[];
 ```
 
-Defined in: [server/prompt.ts:18](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L18)
+Defined in: [server/prompt.ts:28](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L28)
 
 Declared arguments. Advertised to clients in prompts/list.
 
@@ -24,7 +24,7 @@ Declared arguments. Advertised to clients in prompts/list.
 optional auth?: AuthCheck;
 ```
 
-Defined in: [server/prompt.ts:25](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L25)
+Defined in: [server/prompt.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L35)
 
 ***
 
@@ -34,7 +34,7 @@ Defined in: [server/prompt.ts:25](https://github.com/PrefectHQ/fastmcp-ts/blob/c
 optional description?: string;
 ```
 
-Defined in: [server/prompt.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L16)
+Defined in: [server/prompt.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L26)
 
 Description shown to clients and LLMs. Inferred from name when omitted.
 
@@ -46,7 +46,7 @@ Description shown to clients and LLMs. Inferred from name when omitted.
 optional disabled?: boolean;
 ```
 
-Defined in: [server/prompt.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L20)
+Defined in: [server/prompt.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L30)
 
 When true the prompt is hidden from list responses and cannot be invoked.
 
@@ -58,7 +58,7 @@ When true the prompt is hidden from list responses and cannot be invoked.
 optional name?: string;
 ```
 
-Defined in: [server/prompt.ts:12](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L12)
+Defined in: [server/prompt.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L22)
 
 Unique prompt identifier. Inferred from the handler function name when omitted.
 
@@ -70,7 +70,7 @@ Unique prompt identifier. Inferred from the handler function name when omitted.
 optional tags?: string[];
 ```
 
-Defined in: [server/prompt.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L24)
+Defined in: [server/prompt.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L34)
 
 Arbitrary tags for server-side filtering and transforms.
 
@@ -82,7 +82,7 @@ Arbitrary tags for server-side filtering and transforms.
 optional timeout?: number;
 ```
 
-Defined in: [server/prompt.ts:22](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L22)
+Defined in: [server/prompt.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L32)
 
 Execution timeout in milliseconds. No timeout by default.
 
@@ -94,6 +94,6 @@ Execution timeout in milliseconds. No timeout by default.
 optional title?: string;
 ```
 
-Defined in: [server/prompt.ts:14](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/prompt.ts#L14)
+Defined in: [server/prompt.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/prompt.ts#L24)
 
 Human-readable display name shown in UIs.

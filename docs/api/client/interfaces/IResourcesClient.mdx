@@ -2,7 +2,7 @@
 title: "IResourcesClient"
 ---
 
-Defined in: [client/interfaces.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/interfaces.ts#L35)
+Defined in: [client/interfaces.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/interfaces.ts#L36)
 
 ## Extended by
 
@@ -17,7 +17,7 @@ listResources(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/interfaces.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/interfaces.ts#L36)
+Defined in: [client/interfaces.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/interfaces.ts#L37)
 
 #### Parameters
 
@@ -39,7 +39,7 @@ listResourceTemplates(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/interfaces.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/interfaces.ts#L37)
+Defined in: [client/interfaces.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/interfaces.ts#L38)
 
 #### Parameters
 
@@ -57,11 +57,14 @@ Defined in: [client/interfaces.ts:37](https://github.com/PrefectHQ/fastmcp-ts/bl
 ### readResource()
 
 ```ts
-readResource(uri, options?): Promise<{
-}[]>;
+readResource(uri, options?): Promise<(
+  | {
+}
+  | {
+})[]>;
 ```
 
-Defined in: [client/interfaces.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/interfaces.ts#L38)
+Defined in: [client/interfaces.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/interfaces.ts#L39)
 
 #### Parameters
 
@@ -75,8 +78,11 @@ Defined in: [client/interfaces.ts:38](https://github.com/PrefectHQ/fastmcp-ts/bl
 
 #### Returns
 
-`Promise`&lt;\{
-\}[]&gt;
+`Promise`&lt;(
+  \| \{
+\}
+  \| \{
+\})[]&gt;
 
 ***
 
@@ -89,7 +95,7 @@ subscribeResource(
    options?): Promise<void>;
 ```
 
-Defined in: [client/interfaces.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/interfaces.ts#L39)
+Defined in: [client/interfaces.ts:40](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/interfaces.ts#L40)
 
 #### Parameters
 
@@ -117,7 +123,7 @@ Defined in: [client/interfaces.ts:39](https://github.com/PrefectHQ/fastmcp-ts/bl
 unsubscribeResource(uri, options?): Promise<void>;
 ```
 
-Defined in: [client/interfaces.ts:40](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/interfaces.ts#L40)
+Defined in: [client/interfaces.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/interfaces.ts#L41)
 
 #### Parameters
 

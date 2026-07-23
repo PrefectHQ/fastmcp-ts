@@ -497,6 +497,34 @@ describeEachEra('Server — Context', (combo) => {
       }
     })
 
+    it('deleteState throws the same pointed error on modern HTTP, and is a plain delete elsewhere', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'deleteState', description: 'test' }, () => {
+        mcp.getContext().deleteState('counter')
+        return 'deleted'
+      })
+      const { client, close } = await connectEra(mcp, combo)
+      try {
+        if (combo.sessionStatePersists) {
+          // stdio (both eras) + legacy HTTP: deleteState mutates the session map — no throw.
+          const result = await client.callTool({ name: 'deleteState', arguments: {} })
+          expect(result.isError).toBeFalsy()
+          const content = (result.content as unknown[])[0] as Record<string, unknown>
+          expect(content.text).toBe('deleted')
+        } else {
+          // http-modern: symmetric with setState/getState — deleteState throws the
+          // pointed error naming ctx.requestState()/mintRequestState() rather than
+          // silently no-op'ing against a fresh per-request state map. (task-10 Req 2)
+          const result = await client.callTool({ name: 'deleteState', arguments: {} })
+          expect(result.isError).toBe(true)
+          const text = ((result.content as unknown[])[0] as Record<string, unknown>).text as string
+          expect(text).toContain('ctx.requestState()')
+        }
+      } finally {
+        await close()
+      }
+    })
+
     it('session state is isolated between different client sessions', async (ctx) => {
       // Genuinely inapplicable on stdio: a stdio connection is a single pinned server
       // with ONE shared session-state map, so "two isolated client sessions" cannot be

@@ -2,7 +2,7 @@
 title: "BrowserOAuth"
 ---
 
-Defined in: [client/browser-oauth.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L37)
+Defined in: [client/browser-oauth.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/browser-oauth.ts#L37)
 
 ## Extends
 
@@ -16,7 +16,7 @@ Defined in: [client/browser-oauth.ts:37](https://github.com/PrefectHQ/fastmcp-ts
 new BrowserOAuth(options): BrowserOAuth;
 ```
 
-Defined in: [client/browser-oauth.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L44)
+Defined in: [client/browser-oauth.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/browser-oauth.ts#L44)
 
 #### Parameters
 
@@ -37,10 +37,10 @@ Defined in: [client/browser-oauth.ts:44](https://github.com/PrefectHQ/fastmcp-ts
 ### \_callbackPromise
 
 ```ts
-protected _callbackPromise: Promise<string> | null = null;
+protected _callbackPromise: Promise<URLSearchParams> | null = null;
 ```
 
-Defined in: [client/auth.ts:156](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L156)
+Defined in: [client/auth.ts:170](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L170)
 
 #### Inherited from
 
@@ -54,7 +54,7 @@ Defined in: [client/auth.ts:156](https://github.com/PrefectHQ/fastmcp-ts/blob/c9
 protected _callbackReject: ((err) => void) | null = null;
 ```
 
-Defined in: [client/auth.ts:158](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L158)
+Defined in: [client/auth.ts:172](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L172)
 
 #### Inherited from
 
@@ -65,14 +65,30 @@ Defined in: [client/auth.ts:158](https://github.com/PrefectHQ/fastmcp-ts/blob/c9
 ### \_callbackResolve
 
 ```ts
-protected _callbackResolve: ((code) => void) | null = null;
+protected _callbackResolve: ((params) => void) | null = null;
 ```
 
-Defined in: [client/auth.ts:157](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L157)
+Defined in: [client/auth.ts:171](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L171)
 
 #### Inherited from
 
 [`OAuth`](/api/client/classes/OAuth).[`_callbackResolve`](/api/client/classes/OAuth#_callbackresolve)
+
+***
+
+### clientMetadataUrl?
+
+```ts
+readonly optional clientMetadataUrl?: string;
+```
+
+Defined in: [client/auth.ts:167](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L167)
+
+External URL the server should use to fetch client metadata document
+
+#### Inherited from
+
+[`OAuth`](/api/client/classes/OAuth).[`clientMetadataUrl`](/api/client/classes/OAuth#clientmetadataurl)
 
 ## Accessors
 
@@ -84,7 +100,7 @@ Defined in: [client/auth.ts:157](https://github.com/PrefectHQ/fastmcp-ts/blob/c9
 get callbackServerPort(): number | null;
 ```
 
-Defined in: [client/auth.ts:328](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L328)
+Defined in: [client/auth.ts:368](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L368)
 
 Returns the actual port the callback server bound to.
 Only populated after redirectToAuthorization() has been called.
@@ -108,7 +124,7 @@ get clientMetadata(): {
 };
 ```
 
-Defined in: [client/browser-oauth.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L55)
+Defined in: [client/browser-oauth.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/browser-oauth.ts#L55)
 
 Metadata about this OAuth client.
 
@@ -133,11 +149,11 @@ Metadata about this OAuth client.
 get redirectUrl(): string;
 ```
 
-Defined in: [client/browser-oauth.ts:51](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L51)
+Defined in: [client/browser-oauth.ts:51](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/browser-oauth.ts#L51)
 
 The URL to redirect the user agent to after authorization.
-Return undefined for non-interactive flows that don't require user interaction
-(e.g., client_credentials, jwt-bearer).
+Return `undefined` for non-interactive flows that don't require user interaction
+(e.g., `client_credentials`, `jwt-bearer`).
 
 ##### Returns
 
@@ -155,7 +171,7 @@ Return undefined for non-interactive flows that don't require user interaction
 protected _armCallbackPromise(): void;
 ```
 
-Defined in: [client/auth.ts:242](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L242)
+Defined in: [client/auth.ts:279](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L279)
 
 Creates the pending-callback promise that [waitForCallback](/api/client/classes/OAuth#waitforcallback) awaits.
 Subclasses (e.g. BrowserOAuth) call this before opening their own redirect.
@@ -173,10 +189,10 @@ Subclasses (e.g. BrowserOAuth) call this before opening their own redirect.
 ### \_awaitCallback()
 
 ```ts
-protected _awaitCallback(timeoutMs): Promise<string>;
+protected _awaitCallback(timeoutMs): Promise<URLSearchParams>;
 ```
 
-Defined in: [client/auth.ts:265](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L265)
+Defined in: [client/auth.ts:302](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L302)
 
 Races the pending callback promise against a timeout and clears the
 promise state. Subclasses reuse this and add their own teardown.
@@ -189,7 +205,7 @@ promise state. Subclasses reuse this and add their own teardown.
 
 #### Returns
 
-`Promise`&lt;`string`&gt;
+`Promise`&lt;`URLSearchParams`&gt;
 
 #### Inherited from
 
@@ -203,7 +219,7 @@ promise state. Subclasses reuse this and add their own teardown.
 _bind(serverUrl): void;
 ```
 
-Defined in: [client/auth.ts:178](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L178)
+Defined in: [client/auth.ts:196](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L196)
 
 Binds the MCP server URL so that all storage keys are namespaced by it.
 Called by Client before connecting.
@@ -230,7 +246,7 @@ Called by Client before connecting.
 protected _rejectCallback(err): void;
 ```
 
-Defined in: [client/auth.ts:257](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L257)
+Defined in: [client/auth.ts:294](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L294)
 
 Rejects the pending callback with an error.
 
@@ -253,18 +269,18 @@ Rejects the pending callback with an error.
 ### \_resolveCallback()
 
 ```ts
-protected _resolveCallback(code): void;
+protected _resolveCallback(params): void;
 ```
 
-Defined in: [client/auth.ts:252](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L252)
+Defined in: [client/auth.ts:289](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L289)
 
-Resolves the pending callback with an authorization code.
+Resolves the pending callback with the full authorization callback params.
 
 #### Parameters
 
-##### code
+##### params
 
-`string`
+`URLSearchParams`
 
 #### Returns
 
@@ -279,18 +295,28 @@ Resolves the pending callback with an authorization code.
 ### clientInformation()
 
 ```ts
-clientInformation(): Promise<OAuthClientInformationMixed | undefined>;
+clientInformation(ctx?): Promise<StoredOAuthClientInformation | undefined>;
 ```
 
-Defined in: [client/auth.ts:201](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L201)
+Defined in: [client/auth.ts:226](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L226)
 
 Loads information about this OAuth client, as registered already with the
 server, or returns `undefined` if the client is not registered with the
 server.
 
+#### Parameters
+
+##### ctx?
+
+`OAuthClientInformationContext`
+
+Carries the resolved authorization-server `issuer`. Providers
+  that persist credentials per authorization server should return the entry
+  keyed by `ctx.issuer`. Providers with a single credential set may ignore it.
+
 #### Returns
 
-`Promise`&lt;`OAuthClientInformationMixed` \| `undefined`&gt;
+`Promise`&lt;`StoredOAuthClientInformation` \| `undefined`&gt;
 
 #### Inherited from
 
@@ -304,7 +330,7 @@ server.
 codeVerifier(): string;
 ```
 
-Defined in: [client/auth.ts:288](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L288)
+Defined in: [client/auth.ts:325](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L325)
 
 Loads the PKCE code verifier for the current session, necessary to validate
 the authorization result.
@@ -325,7 +351,7 @@ the authorization result.
 discoveryState(): Promise<OAuthDiscoveryState | undefined>;
 ```
 
-Defined in: [client/auth.ts:316](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L316)
+Defined in: [client/auth.ts:356](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L356)
 
 Returns previously saved discovery state, or `undefined` if none is cached.
 
@@ -333,9 +359,12 @@ When available, `auth` restores the discovery state (authorization server
 URL, resource metadata, etc.) instead of performing RFC 9728 discovery, reducing
 latency on subsequent calls.
 
-Providers should clear cached discovery state on repeated authentication failures
-(via [`invalidateCredentials`](#invalidatecredentials) with scope `'discovery'` or `'all'`) to allow
-re-discovery in case the authorization server has changed.
+Hosts should call [`invalidateCredentials`](#invalidatecredentials) with scope `'discovery'`
+on repeated 401s so a changed `authorization_servers` list is picked up; the
+SDK does not invoke that scope itself.
+
+MUST persist with the same durability as `codeVerifier` (survives the redirect
+round-trip).
 
 #### Returns
 
@@ -353,7 +382,7 @@ re-discovery in case the authorization server has changed.
 invalidateCredentials(scope): Promise<void>;
 ```
 
-Defined in: [client/auth.ts:295](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L295)
+Defined in: [client/auth.ts:332](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L332)
 
 If implemented, provides a way for the client to invalidate (e.g. delete) the specified
 credentials, in the case where the server has indicated that they are no longer valid.
@@ -381,7 +410,7 @@ This avoids requiring the user to intervene manually.
 redirectToAuthorization(authorizationUrl): Promise<void>;
 ```
 
-Defined in: [client/browser-oauth.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L59)
+Defined in: [client/browser-oauth.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/browser-oauth.ts#L59)
 
 Invoked to redirect the user agent to the given URL to begin the authorization flow.
 
@@ -404,14 +433,16 @@ Invoked to redirect the user agent to the given URL to begin the authorization f
 ### resumeFromRedirect()
 
 ```ts
-resumeFromRedirect(href?): string | null;
+resumeFromRedirect(href?): URLSearchParams | null;
 ```
 
-Defined in: [client/browser-oauth.ts:100](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L100)
+Defined in: [client/browser-oauth.ts:106](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/browser-oauth.ts#L106)
 
-Redirect-mode resume: parse the authorization code from a returned URL
-(defaults to the current location). Returns the code, or null if absent.
-Throws if the provider returned an error.
+Redirect-mode resume: parse the authorization callback params from a
+returned URL (defaults to the current location). Returns the full
+`URLSearchParams` (including `code` and, when present, `iss`) — pass
+directly to `finishAuth()` — or `null` if there is no `code`. Throws if
+the provider returned an error.
 
 #### Parameters
 
@@ -421,21 +452,21 @@ Throws if the provider returned an error.
 
 #### Returns
 
-`string` \| `null`
+`URLSearchParams` \| `null`
 
 ***
 
 ### saveClientInformation()
 
 ```ts
-saveClientInformation(info): Promise<void>;
+saveClientInformation(info, ctx?): Promise<void>;
 ```
 
-Defined in: [client/auth.ts:213](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L213)
+Defined in: [client/auth.ts:241](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L241)
 
 If implemented, this permits the OAuth client to dynamically register with
 the server. Client information saved this way should later be read via
-`clientInformation()`.
+OAuthClientProvider.clientInformation \| clientInformation().
 
 This method is not required to be implemented if client information is
 statically known (e.g., pre-registered).
@@ -444,7 +475,15 @@ statically known (e.g., pre-registered).
 
 ##### info
 
-`OAuthClientInformationMixed`
+`StoredOAuthClientInformation`
+
+##### ctx?
+
+`OAuthClientInformationContext`
+
+Carries the resolved authorization-server `issuer`. Providers
+  that persist credentials per authorization server should store the entry
+  keyed by `ctx.issuer`.
 
 #### Returns
 
@@ -462,7 +501,7 @@ statically known (e.g., pre-registered).
 saveCodeVerifier(codeVerifier): void;
 ```
 
-Defined in: [client/auth.ts:284](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L284)
+Defined in: [client/auth.ts:321](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L321)
 
 Saves a PKCE code verifier for the current session, before redirecting to
 the authorization flow.
@@ -489,7 +528,7 @@ the authorization flow.
 saveDiscoveryState(state): Promise<void>;
 ```
 
-Defined in: [client/auth.ts:312](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L312)
+Defined in: [client/auth.ts:352](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L352)
 
 Saves the OAuth discovery state after RFC 9728 and authorization server metadata
 discovery. Providers can persist this state to avoid redundant discovery requests
@@ -499,6 +538,9 @@ This state can also be provided out-of-band (e.g., from a previous session or
 external configuration) to bootstrap the OAuth flow without discovery.
 
 Called by `auth` after successful discovery.
+
+MUST persist with the same durability as `codeVerifier` (survives the redirect
+round-trip).
 
 #### Parameters
 
@@ -519,10 +561,10 @@ Called by `auth` after successful discovery.
 ### saveTokens()
 
 ```ts
-saveTokens(tokens): Promise<void>;
+saveTokens(tokens, ctx?): Promise<void>;
 ```
 
-Defined in: [client/auth.ts:224](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L224)
+Defined in: [client/auth.ts:260](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L260)
 
 Stores new OAuth tokens for the current session, after a successful
 authorization.
@@ -530,6 +572,16 @@ authorization.
 #### Parameters
 
 ##### tokens
+
+`StoredOAuthTokens`
+
+##### ctx?
+
+`OAuthClientInformationContext`
+
+Carries the resolved authorization-server `issuer`. Providers
+  that persist tokens per authorization server should store the entry
+  keyed by `ctx.issuer`.
 
 #### Returns
 
@@ -544,23 +596,30 @@ authorization.
 ### tokens()
 
 ```ts
-tokens(): Promise<
-  | {
-}
-  | undefined>;
+tokens(ctx?): Promise<StoredOAuthTokens | undefined>;
 ```
 
-Defined in: [client/auth.ts:218](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/auth.ts#L218)
+Defined in: [client/auth.ts:250](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/auth.ts#L250)
 
 Loads any existing OAuth tokens for the current session, or returns
 `undefined` if there are no saved tokens.
 
+#### Parameters
+
+##### ctx?
+
+`OAuthClientInformationContext`
+
+Carries the resolved authorization-server `issuer`. Providers
+  that persist tokens per authorization server should return the entry
+  keyed by `ctx.issuer`. Providers with a single token set may ignore it.
+  When called with no `ctx` — the transport's per-request bearer-token
+  read — return the most-recently-saved token set; do not return
+  `undefined` for `ctx === undefined`.
+
 #### Returns
 
-`Promise`&lt;
-  \| \{
-\}
-  \| `undefined`&gt;
+`Promise`&lt;`StoredOAuthTokens` \| `undefined`&gt;
 
 #### Inherited from
 
@@ -571,15 +630,17 @@ Loads any existing OAuth tokens for the current session, or returns
 ### waitForCallback()
 
 ```ts
-waitForCallback(timeoutMs?): Promise<string>;
+waitForCallback(timeoutMs?): Promise<URLSearchParams>;
 ```
 
-Defined in: [client/browser-oauth.ts:87](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/client/browser-oauth.ts#L87)
+Defined in: [client/browser-oauth.ts:91](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/client/browser-oauth.ts#L91)
 
 Waits for the OAuth authorization code to arrive via the callback server,
-then stops the server and resolves with the code.
+then stops the server and resolves with the full callback `URLSearchParams`
+(including `code` and, when present, the RFC 9207 `iss` parameter).
 
 Must be called after the UnauthorizedError thrown by connect() is caught.
+Pass the result directly to the transport's `finishAuth(callbackParams)`.
 
 #### Parameters
 
@@ -589,7 +650,7 @@ Must be called after the UnauthorizedError thrown by connect() is caught.
 
 #### Returns
 
-`Promise`&lt;`string`&gt;
+`Promise`&lt;`URLSearchParams`&gt;
 
 #### Overrides
 

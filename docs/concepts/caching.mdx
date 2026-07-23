@@ -1,0 +1,70 @@
+---
+title: "Caching"
+description: "Cache hints that tell clients how long a result stays fresh, and a server-side response cache that skips the handler"
+icon: "gauge-high"
+---
+
+FastMCP caches in two distinct places, and they answer different questions. **Cache hints** tell the *client* how long a result stays fresh, so the client's own response cache can reuse it. **The caching middleware** holds responses in the *server*, so a repeated call skips the handler entirely. One is advice you send; the other is a cache you keep. You can use either, both, or neither.
+
+## Cache hints
+
+A cache hint is metadata the server attaches to a cacheable result. On protocol revision 2026-07-28 the result carries two fields: `ttlMs`, how many milliseconds the value stays fresh, and `cacheScope`, either `'public'` (shareable across callers) or `'private'` (specific to one caller). The client reads these and decides whether to serve a later identical call from its own cache. Cache hints are a [modern-era](/concepts/protocol-eras) feature — legacy-era responses never carry them.
+
+Set hints per operation through `FastMCPOptions.cacheHints`, keyed by the method. The cacheable operations are `tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`, `resources/read`, and `server/discover`.
+
+```typescript server.ts
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'my-server',
+  cacheHints: {
+    'tools/list': { ttlMs: 60_000, cacheScope: 'public' },
+    'resources/read': { ttlMs: 5_000, cacheScope: 'private' },
+  },
+})
+```
+
+An operation you omit keeps the conservative defaults: `ttlMs: 0` and `cacheScope: 'private'`, which tells the client to store the result but never serve it from cache without revalidating. Raise `ttlMs` only for operations whose results you are comfortable serving stale for that window.
+
+Cache hints apply per operation, not per item. Every `resources/read` result gets the same hint; a hint per individual resource is not supported, because that override lives only on the SDK's high-level server registration, which FastMCP does not use. When one TTL cannot fit every resource, choose the shortest safe value for the operation.
+
+## The caching middleware
+
+`CachingMiddleware` is a server-side response cache. It holds each result in a TTL cache and serves a matching later call from the cache, skipping the handler. Register it with `server.use()`, passing the TTL in milliseconds.
+
+```typescript server.ts
+import { FastMCP, CachingMiddleware } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.use(new CachingMiddleware(30_000))   // serve identical calls from cache for 30s
+```
+
+The cache key decides which calls count as identical, and its default is built to be safe under [authentication](/servers/auth/authorization). The default key is the method, plus an auth partition, plus the serialized request params. The auth partition keeps identities apart: an anonymous request — one with no bearer token — uses the single `anon` partition, and an authenticated request is partitioned by the SHA-256 hash of its bearer token. A result computed for one identity is therefore never served to another, in either direction, so auth-filtered results such as a per-caller `tools/list` stay correct. The key holds the token's hash, never the raw token.
+
+## Custom cache keys
+
+Pass a `CacheKeyFn` as the second argument to control the key yourself. A custom key function **replaces** the default entirely — the auth partition is not merged back in. When your cached values depend on who is calling, you must fold identity into the key yourself. Use the same dimension the default uses: the bearer token, hashed. Never place the raw token in a cache key.
+
+```typescript server.ts
+import { createHash } from 'node:crypto'
+import { FastMCP, CachingMiddleware } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+
+server.use(
+  new CachingMiddleware(60_000, (ctx) => {
+    const token = ctx.mcpContext.auth?.token
+    const id = token ? createHash('sha256').update(token).digest('hex') : 'anon'
+    return `${ctx.method}:${id}:${JSON.stringify(ctx.request)}`
+  }),
+)
+```
+
+The auth token is the right identity dimension. `ctx.mcpContext.auth?.clientId` is coarser, and two tokens can share a `clientId` yet differ in scope, so a `clientId` key can merge identities that must stay apart. Prefer the hashed token.
+
+## What is never cached
+
+Two kinds of request are never served or stored, whatever your key. Resource subscription control — `resources/subscribe` and `resources/unsubscribe` — mutates the connection's subscription set rather than computing a value from its params. Serving a cached acknowledgement would skip the real subscription change, and the next update would never reach the client, so the middleware always runs these.
+
+Input-required rounds are also excluded. A retried call re-sends byte-identical params, so a cache key cannot tell one round from the next; caching would replay the first round's `input_required` result forever and the flow could never finish. The middleware skips any request that carries per-round input, and never stores an `input_required` result, because each embeds a single-use flow token. This keeps the [input-required](/concepts/input-required) pattern correct even behind a cache. The [middleware guide](/servers/middleware) covers the caching middleware alongside the rest of the built-ins.

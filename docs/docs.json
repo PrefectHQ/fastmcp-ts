@@ -28,6 +28,15 @@
             ]
           },
           {
+            "group": "Concepts",
+            "pages": [
+              "concepts/protocol-eras",
+              "concepts/input-required",
+              "concepts/state-and-handles",
+              "concepts/caching"
+            ]
+          },
+          {
             "group": "Servers",
             "pages": [
               "servers/tools",
@@ -77,7 +86,8 @@
           {
             "group": "More",
             "pages": [
-              "cli"
+              "cli",
+              "migration"
             ]
           }
         ]
@@ -126,6 +136,8 @@
                   "api/server/interfaces/BackendToolConfig",
                   "api/server/interfaces/BrowserPermissions",
                   "api/server/interfaces/CatalogEntry",
+                  "api/server/interfaces/CompletionContext",
+                  "api/server/interfaces/CompletionResult",
                   "api/server/interfaces/Component",
                   "api/server/interfaces/CspPolicy",
                   "api/server/interfaces/ElicitationResult",
@@ -171,6 +183,7 @@
                 "pages": [
                   "api/server/type-aliases/AuthCheck",
                   "api/server/type-aliases/CacheKeyFn",
+                  "api/server/type-aliases/CompleteCallback",
                   "api/server/type-aliases/LogLevel",
                   "api/server/type-aliases/Next",
                   "api/server/type-aliases/PromptContent",

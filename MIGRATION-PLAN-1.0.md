@@ -681,19 +681,23 @@ SDK issues.
   `MCP_CONFORMANCE_SCENARIO` + `MCP_CONFORMANCE_CONTEXT`; no `..._PROTOCOL_VERSION` env var.)*
 - [x] **Local scripts:** `npm run conformance:server` / `conformance:client`, pinned to
   `conformance@0.1.16`. *(0.1.16 has no draft suite/scenarios — 2026-07-28 scenarios live on
-  conformance `main` only; the nightly job covers them. Client run narrowed to the 4 non-auth
-  core scenarios; auth conformance deferred behind an OAuth-configured client driver.)*
+  conformance `main` only; the nightly job covers them. Client run covers the 4 non-auth core
+  scenarios plus the 14 `[2025-11-25]`-era core `auth/*` OAuth scenarios, all driven through the
+  OAuth-configured client driver (`tests/conformance/everything-client.ts`).)*
 - [x] **Baseline:** committed `conformance-baseline.yml` — per-SCENARIO entries (the tool's real
-  granularity). Client side: empty. Server side: 4 REAL product gaps to burn down before stable:
-  `completion-complete`, `resources-subscribe`, `resources-unsubscribe` (no such handlers on
-  either era), `dns-rebinding-protection` (no Host/Origin validation — security).
+  granularity). Server side: EMPTY (Tasks 11–12 burned down all 4 prior gaps — completion,
+  subscribe, unsubscribe, dns-rebinding all now pass). Client side: 2 honest entries, each named
+  (`auth/basic-cimd` — harness-contract limit; `auth/scope-step-up` — real client debt).
 - [x] **CI:** PR-blocking `conformance-server`/`conformance-client` jobs in ci.yml (wrap the
   pinned npm scripts — the composite action wraps a single bare invocation, no boot/teardown,
   so scripts won) + `.github/workflows/conformance-nightly.yml` (cron + dispatch) against
   conformance `main`: server `--suite all` (main redefined `active` to exclude draft), client
-  derives the non-auth scenario set per run from `list --client` so newly-landed scenarios are
-  picked up automatically. *(Nightly is red-by-design pre-GA; known delta today:
-  `http-custom-headers` — everything-client doesn't emit SEP-2243 headers yet.)*
+  derives the FULL scenario set per run from `list --client` — auth included, now that the OAuth
+  driver exists (Task 13) — so newly-landed scenarios are picked up automatically. Both jobs run
+  against `conformance-baseline-main.yml`, main's own tracked baseline (24 server + 9 client
+  entries, each named by cause). *(Nightly is green-vs-main-baseline as of Task 14 (2026-07-22);
+  remaining main deltas are the deferred tasks extension, SEP-2322 draft-scenario fixture gaps,
+  and named OAuth-extension debt — see conformance-baseline-main.yml.)*
 - [x] **Interop matrix (vitest):** `tests/interop/interop.test.ts` — 13 cells: fastmcp server ×
   official v2 SDK client (legacy/auto/pin), official `createMcpHandler` (modern-only; legacy
   mode fails typed) + `serveStdio` (dual-era, era follows mode) × fastmcp client in all three
@@ -720,19 +724,35 @@ SDK issues.
 
 Docs are a release gate, not an afterthought. A feature does not ship until its page is right.
 
-- [ ] Rewrite affected pages: `docs/servers/running.mdx` (dual-era, hybrid HTTP, `serveStdio`),
+*(Burn-down addendum, 2026-07-23 — new surface the pages below must also cover:
+`FastMCPOptions.dnsRebinding` + the security posture (auto-on loopback, warn-once on routable
+binds; reconcile with running.mdx's `MCP_HOST=0.0.0.0` default and the open default-host
+decision); server-side `resources/subscribe`/`unsubscribe` + the new public
+`mcp.notifyResourceUpdated(uri)` and the legacy-vs-modern subscriptions era fork; argument
+completion (`PromptArgument.complete`, `ResourceConfig.complete`, `CompleteCallback` — fix the
+stale config tables in prompts.mdx:87 and resources.mdx); modern-HTTP state pointed errors incl.
+`deleteState` and the stdio-vs-http asymmetry (tests/helpers/eras.ts `sessionStatePersists`
+table is the content); middleware now observes subscribe/unsubscribe/completion + CachingMiddleware
+caveats; regenerate typedoc (`docs/api` currently has zero hits for the new API); AGENTS.md;
+migration-guide notes on the two-baseline conformance model and the recorded client OAuth debt.)*
+
+- [x] Rewrite affected pages: `docs/servers/running.mdx` (dual-era, hybrid HTTP, `serveStdio`),
   `docs/servers/context.mdx` (era-gated methods, `requestState`), `docs/servers/middleware.mdx`
   (cancellation/caching under both eras), `docs/clients/*` (negotiation, subscriptions, auth
   hardening, caching), `docs/apps/*` (extension negotiation), `docs/servers/auth/*` and
   `docs/clients/auth.mdx` (AS deprecation posture, `iss`, CIMD).
-- [ ] New pages: protocol eras & compatibility; input-required (MRTR) guide; state & handles;
+- [x] New pages: protocol eras & compatibility; input-required (MRTR) guide; state & handles;
   caching; tasks (rewritten to the extension model — the current `docs/servers/tasks.mdx`
   documents an unimplemented 2025 design and must be replaced or pulled per W5).
-- [ ] **0.x → 1.0 migration guide** for our users (breaking changes, new APIs, env/behavior).
-- [ ] Update `AGENTS.md` (the de-facto internal spec — large diff across server, client, apps,
+- [x] **0.x → 1.0 migration guide** for our users (breaking changes, new APIs, env/behavior).
+- [x] Update `AGENTS.md` (the de-facto internal spec — large diff across server, client, apps,
   CLI, key decisions), `README.md`, and regenerate typedoc API (`npm run docs:api`).
-- [ ] `npm run docs:links` (broken-link check) passes; sidebar/TOC shape reviewed per the
+- [x] `npm run docs:links` (broken-link check) passes; sidebar/TOC shape reviewed per the
   writing-documentation skill.
+  *(W10 done 2026-07-23 via audited worklist: 28 pages surveyed — 11 accurate / 15 update /
+  2 rewrite; 4 new concept pages + docs/migration.mdx; typedoc regenerated (162 modified,
+  3 new API pages); links gate clean in doc-site scope; every page group review-approved
+  with claim-by-claim src verification.)*
 
 ### W11 — Release engineering
 

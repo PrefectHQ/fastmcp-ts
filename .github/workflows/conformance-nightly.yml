@@ -57,12 +57,20 @@ jobs:
       # `--suite all` runs every scenario (active + pending + draft) in one
       # pass — on main, "active" now excludes both pending AND draft, so `all`
       # is required to actually catch newly-landed scenarios.
+      #
+      # Baseline: conformance-baseline-main.yml (a SEPARATE file from the
+      # pinned conformance-baseline.yml ci.yml uses) — main is unpinned and
+      # moves, so its expected-failure set is tracked independently. Task 14
+      # regenerated it end to end (2026-07-22): 24 server scenarios remain,
+      # all named/grouped by cause (deferred tasks extension, SEP-2322
+      # draft-scenario fixture gaps, two genuine SHOULD-level gaps) — see the
+      # file's own header and per-entry comments for the full accounting.
       - name: Run conformance (server, suite=all)
         run: |
           npx --yes github:modelcontextprotocol/conformance server \
             --url http://127.0.0.1:39750/mcp \
             --suite all \
-            --expected-failures conformance-baseline.yml
+            --expected-failures conformance-baseline-main.yml
 
       - name: Stop server fixture
         if: always()
@@ -83,39 +91,50 @@ jobs:
         run: npm ci
 
       # Scenario set is DERIVED each run from `list --client`, not hardcoded —
-      # that's the whole point of tracking main. `--suite core` still resolves
-      # fine on main (verified: 18 scenarios, same 4 non-auth + 14 auth/* as
-      # 0.1.16), but main has ALSO landed six 2026-07-28 non-auth scenarios
-      # that sit outside every named suite except `all` (which drags in ~35
-      # unbaselined auth/* failures — this fixture registers sampling +
-      # elicitation only, no OAuth; OAuth conformance is a separate deferred
-      # W9 follow-up, see conformance-baseline.yml). So: list all client
-      # scenarios, drop the `auth/`-prefixed ones, run what's left. Verified
-      # locally (task-8 report, Fix round 1) this yields 10 scenarios today:
-      # initialize, tools_call, elicitation-sep1034-client-defaults, sse-retry
-      # (the same 4 tests/conformance/run-client.mjs runs pinned), plus
-      # request-metadata, sep-2322-client-request-state, http-standard-headers,
-      # http-custom-headers, http-invalid-tool-headers, json-schema-ref-no-deref
-      # (new on main). `list --client`'s own exit code and pipefail (the
-      # default shell here is `bash -eo pipefail`) fail this step loudly if
-      # the listing/parse breaks — verified locally by pointing the same
-      # pipeline at a nonexistent package: the script died immediately with no
-      # output, before reaching the scenario loop. Only after a scenario list
-      # is confirmed non-empty does the script relax to `set +e`, so all
-      # derived scenarios still run even if one fails — matching
-      # run-client.mjs's accumulate-then-exit behavior — with the baseline
-      # still applied.
-      - name: Run conformance (client, derived non-auth scenarios)
+      # that's the whole point of tracking main. Every scenario `list --client`
+      # names is run, `auth/*` included: the everything-client fixture now
+      # drives OAuth for real (Task 13 — it configures an authorization-code
+      # + PKCE provider, DCR/pre-registration, from the scenario context), so
+      # the auth filter that used to sit here (dropping every `auth/`-prefixed
+      # scenario, back when the fixture registered no OAuth provider at all)
+      # is gone. Verified locally (Task 14, 2026-07-22) this yields 43
+      # scenarios today: the same 10 non-auth ones the filter used to leave
+      # (initialize, tools_call, elicitation-sep1034-client-defaults,
+      # sse-retry, request-metadata, sep-2322-client-request-state,
+      # http-standard-headers, http-custom-headers, http-invalid-tool-headers,
+      # json-schema-ref-no-deref) plus 33 `auth/*` scenarios — the 14 core
+      # `[2025-11-25]`-era ones tests/conformance/run-client.mjs also runs
+      # pinned, plus main-only 2026-07-28/extension additions (SEP-2352 AS
+      # migration, `iss`/PRM checks, DPoP, client-credentials, JWT-bearer,
+      # enterprise-managed-auth). Whatever fails is named in
+      # conformance-baseline-main.yml with a one-line reason.
+      #
+      # `list --client`'s own exit code and pipefail (the default shell here
+      # is `bash -eo pipefail`) fail this step loudly if the listing/parse
+      # breaks — verified locally by pointing the same pipeline at a
+      # nonexistent package: the script died immediately with no output,
+      # before reaching the scenario loop. Only after a scenario list is
+      # confirmed non-empty does the script relax to `set +e`, so all derived
+      # scenarios still run even if one fails — matching run-client.mjs's
+      # accumulate-then-exit behavior — with the baseline still applied.
+      #
+      # The loop stays SEQUENTIAL (one `--scenario` invocation at a time, not
+      # `--suite`/parallel) for the same reason run-client.mjs enumerates
+      # auth scenarios by name: the everything-client's OAuth callback server
+      # binds one fixed loopback port (baked into the DCR-registered
+      # redirect_uri), which concurrent auth scenarios would race for. Before
+      # this task the loop was sequential incidentally (order never mattered
+      # for the non-auth-only set); now it's load-bearing.
+      - name: Run conformance (client, derived scenarios incl. auth)
         run: |
           scenarios=$(npx --yes github:modelcontextprotocol/conformance list --client \
             | grep -oE '^ *- [^ ]+' \
-            | sed -E 's/^ *- //' \
-            | grep -v '^auth/')
+            | sed -E 's/^ *- //')
           if [ -z "$scenarios" ]; then
-            echo "::error::failed to derive any non-auth client scenarios from 'list --client'"
+            echo "::error::failed to derive any client scenarios from 'list --client'"
             exit 1
           fi
-          echo "Derived non-auth client scenarios:"
+          echo "Derived client scenarios:"
           echo "$scenarios"
 
           set +e
@@ -125,7 +144,7 @@ jobs:
             npx --yes github:modelcontextprotocol/conformance client \
               --command "npx tsx tests/conformance/everything-client.ts" \
               --scenario "$scenario" \
-              --expected-failures conformance-baseline.yml
+              --expected-failures conformance-baseline-main.yml
             if [ $? -ne 0 ]; then any_failed=1; fi
           done
           exit $any_failed

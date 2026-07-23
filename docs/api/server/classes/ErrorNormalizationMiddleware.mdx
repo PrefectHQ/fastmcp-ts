@@ -2,7 +2,7 @@
 title: "ErrorNormalizationMiddleware"
 ---
 
-Defined in: [server/middleware.ts:203](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L203)
+Defined in: [server/middleware.ts:298](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L298)
 
 Normalises errors thrown by handlers to proper MCP shapes:
 - tools/call plain errors → \{ isError: true, content: [...] \}  (per MCP spec)
@@ -35,34 +35,24 @@ new ErrorNormalizationMiddleware(): ErrorNormalizationMiddleware;
 ### onCallTool()
 
 ```ts
-onCallTool<T, R>(ctx, next): Promise<R>;
+onCallTool(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:204](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L204)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:299](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L299)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 #### Implementation of
 
@@ -73,34 +63,24 @@ Defined in: [server/middleware.ts:204](https://github.com/PrefectHQ/fastmcp-ts/b
 ### onRequest()
 
 ```ts
-onRequest<T, R>(ctx, next): Promise<R>;
+onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:216](https://github.com/PrefectHQ/fastmcp-ts/blob/c9868d29d483dc78b21a1cfdf302208ac2dda0e5/src/server/middleware.ts#L216)
-
-#### Type Parameters
-
-##### T
-
-`T`
-
-##### R
-
-`R`
+Defined in: [server/middleware.ts:311](https://github.com/PrefectHQ/fastmcp-ts/blob/abd08396fec4f8ef7d791a906734132816229185/src/server/middleware.ts#L311)
 
 #### Parameters
 
 ##### ctx
 
-[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)&lt;`T`&gt;
+[`MiddlewareContext`](/api/server/interfaces/MiddlewareContext)
 
 ##### next
 
-[`Next`](/api/server/type-aliases/Next)&lt;`R`&gt;
+[`Next`](/api/server/type-aliases/Next)
 
 #### Returns
 
-`Promise`&lt;`R`&gt;
+`Promise`&lt;`unknown`&gt;
 
 #### Implementation of
 

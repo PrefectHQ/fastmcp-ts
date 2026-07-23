@@ -10,9 +10,17 @@ This is a different option from a verifier. A `TokenVerifier` goes in `auth` and
 
 FastMCP offers two arrangements, and the choice turns on a single question: do you want to own the user accounts, or does someone else already? Run your own provider when this server is the source of identity. Run a proxy when an existing identity provider — Auth0, Okta, your company SSO — already holds the accounts and you only need to put an MCP-shaped front on it.
 
+## Interim status
+
+FastMCP's built-in authorization server is a supported interim, and you should choose it as one. Both `oauthProvider` and `oauthProxy` are built on the frozen `@modelcontextprotocol/server-legacy/auth` package — the 2025-era auth implementation, kept working but no longer evolving. Their APIs are stable and they still verify the tokens they issue, so existing deployments keep running unchanged.
+
+What is changing is the spec beneath them. The 2026-07-28 revision deprecates Dynamic Client Registration, the mechanism both arrangements rely on to let an unknown MCP client register itself. Because the built-in server is pinned to the frozen package, it does not track that change — which is why it is positioned as an interim rather than the long-term answer.
+
+For a new server, the durable path is to let an external identity provider own identity and simply [verify](/servers/auth/token-verification) the tokens it issues, which sidesteps client registration entirely. Reach for the built-in server only when your clients must discover and register on their own, and pair it with the client-side hardening on the [client auth](/clients/auth) page — client ID metadata documents and issuer (`iss`) validation — so the flow rests on verifiable metadata rather than the interim server alone.
+
 ## oauthProvider
 
-`oauthProvider` makes FastMCP the authorization server itself. It implements OAuth 2.1 with Dynamic Client Registration, so an MCP client can register, run the authorization-code flow, and receive tokens that the same server then verifies — a complete loop with no external dependency. You pass the resulting provider to the `oauth.provider` option.
+`oauthProvider` makes FastMCP the authorization server itself. It implements OAuth 2.1 with Dynamic Client Registration — deprecated in the 2026-07-28 revision, and served here from the frozen legacy auth package (see [interim status](#interim-status)) — so an MCP client can register, run the authorization-code flow, and receive tokens that the same server then verifies, a complete loop with no external dependency. You pass the resulting provider to the `oauth.provider` option.
 
 ```typescript server.ts
 import { FastMCP, oauthProvider } from '@prefecthq/fastmcp-ts/server'
@@ -35,7 +43,7 @@ Because state lives in memory, restarting the process invalidates every issued t
 
 ## oauthProxy
 
-When an upstream identity provider already owns your users, standing up a second source of identity is the wrong move. `oauthProxy` puts an MCP-compliant face on the provider you already run. MCP clients register and authenticate against your server using Dynamic Client Registration, while the proxy quietly forwards the real authorization and token exchanges to the upstream using one set of pre-registered credentials. Your clients never need to be registered with the upstream individually, and the upstream never needs to learn about MCP.
+When an upstream identity provider already owns your users, standing up a second source of identity is the wrong move. `oauthProxy` puts an MCP-compliant face on the provider you already run. MCP clients register and authenticate against your server using Dynamic Client Registration — the same deprecated, frozen-package mechanism `oauthProvider` uses ([interim status](#interim-status)) — while the proxy quietly forwards the real authorization and token exchanges to the upstream using one set of pre-registered credentials. Your clients never need to be registered with the upstream individually, and the upstream never needs to learn about MCP.
 
 ```typescript server.ts
 import { FastMCP, oauthProxy } from '@prefecthq/fastmcp-ts/server'

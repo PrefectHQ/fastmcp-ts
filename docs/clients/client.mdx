@@ -46,6 +46,26 @@ const result = await client.callTool('add', { a: 1, b: 2 })
 // closed automatically here
 ```
 
+## Protocol era
+
+Every connection speaks one of two [protocol eras](/concepts/protocol-eras): the **legacy** era, which is the 2025 protocol, or the **modern** era, protocol revision 2026-07-28. A server serves both at once. A client picks one per connection through the `versionNegotiation` option, and the choice is made when you connect.
+
+The default is `'legacy'` on every transport, HTTP and stdio alike. `Client.connect('http://localhost:3000')` runs the plain 2025 sequence — byte-identical to today's behavior, with no probe and no new headers — so existing code keeps working unchanged until you ask for more. The default never probes, which also avoids a stall: a `server/discover` probe against an unresponsive legacy server can hang.
+
+You opt into the modern era explicitly. Pass `{ mode: 'auto' }` to probe the server with `server/discover` and use the modern era when the server supports it, falling back to legacy otherwise. Pass `{ mode: { pin: '2026-07-28' } }` to require the modern era outright — `connect()` throws `-32022 UnsupportedProtocolVersion` if the server cannot speak it. After connecting, `getProtocolEra()` reports the negotiated result: `'modern'`, `'legacy'`, or `undefined` before you connect.
+
+```typescript
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('http://localhost:3000', {
+  versionNegotiation: { mode: 'auto' },   // modern when supported, else legacy
+})
+
+client.getProtocolEra()   // 'modern' or 'legacy'
+```
+
+The `fastmcp` [CLI](/cli) applies its own per-transport defaults on top of the library — an HTTP URL defaults to `{ mode: 'auto' }` there. That is a CLI choice, not a library default. The `Client` class always defaults to `'legacy'` unless you set `versionNegotiation` yourself.
+
 ## Error handling
 
 `callTool()` throws a `ToolCallError` when the server returns `isError: true`. The error carries the server's content blocks on its `content` field:

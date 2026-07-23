@@ -1,0 +1,115 @@
+# MCP conformance baseline — MAIN (nightly, unpinned).
+#
+# Tracks @modelcontextprotocol/conformance's `main` branch (resolved via
+# `npx --yes github:modelcontextprotocol/conformance`), NOT the pinned 0.1.16
+# used by ci.yml / conformance-baseline.yml. Main is a moving target: it gains
+# new scenarios (2026-07-28-era drafts, extension-tagged auth grants) ahead of
+# any tagged release, so this file's entry set is expected to change as main
+# moves and as fastmcp burns down real gaps.
+#
+# Format (parsed by `@modelcontextprotocol/conformance --expected-failures`):
+#   an object with `server` / `client` keys, each a list of SCENARIO names.
+# A scenario "fails" when any of its checks is FAILURE *or* WARNING. A listed
+# scenario that fails => expected (exit 0); one that passes => STALE ENTRY
+# (exit 1, remove it — this loud failure on a passing+listed scenario IS the
+# maintenance signal that keeps this file honest as main moves); an unlisted
+# scenario that fails => regression (exit 1). Verified empirically 2026-07-22:
+# a baseline entry for a scenario whose only bad checks are WARNING-status
+# (e.g. `server-sse-polling`) is REQUIRED — omitting it still trips "Unexpected
+# failures (not in baseline)" even though the tool's own bare per-scenario
+# passed/failed tally shows "0 passed, 0 failed" for it.
+#
+# Regenerate the observed set — same two commands the nightly workflow runs
+# (.github/workflows/conformance-nightly.yml):
+#   server: PORT=39750 npx tsx tests/conformance/everything-server.ts &
+#           npx --yes github:modelcontextprotocol/conformance server \
+#             --url http://127.0.0.1:39750/mcp --suite all
+#   client: npx --yes github:modelcontextprotocol/conformance list --client
+#           # then, per scenario name (sequential — see client note below):
+#           npx --yes github:modelcontextprotocol/conformance client \
+#             --command "npx tsx tests/conformance/everything-client.ts" \
+#             --scenario <name>
+# Recorded from real runs on 2026-07-22 against conformance main (tool
+# reported version 0.2.0-alpha.9). Pre-phase (Task 14 start), main showed 53
+# unbaselined failures; Tasks 10-13 fixed dns-rebinding, subscribe/unsubscribe,
+# completion, and SEP-2243 custom-headers, and stood up the OAuth client
+# driver. This file covers what's left: 24 server + 9 client scenarios.
+
+# --- server (--suite all against the everything-server fixture) -------------
+server:
+  # Tasks extension — deferred post-1.0 (MIGRATION-PLAN-1.0.md §4 W5): the
+  # everything-server fixture registers no task-supporting tool, so every
+  # `[extension]`-tagged tasks-* scenario is unexercisable as-is.
+  - tasks-lifecycle                            # unknown tool "greet"/"slow_compute"/"failing_job"/"protocol_error_job" — no task-supporting tools on the fixture
+  - tasks-capability-negotiation                # capabilities.extensions["io.modelcontextprotocol/tasks"] absent; tasks/get|update|cancel return -32601 not -32021 — extension not advertised
+  - tasks-wire-fields                           # unknown tool "slow_compute" — no task-supporting tool to assert ttlMs/pollIntervalMs wire shape against
+  - tasks-request-state-removal                 # unknown tool "slow_compute" — cannot create a long-running task to exercise the absence-asserts
+  - tasks-mrtr-input                            # unknown tool "confirm_delete"/"multi_input" — no MRTR-over-task tool on the fixture
+  - tasks-request-headers                       # unknown tool "greet"/"slow_compute" — Mcp-Method/Mcp-Name routing-header checks need a task-supporting tool
+  - tasks-dispatch-and-envelope                 # unknown tool "failing_job"/"greet"/"slow_compute" — CreateTaskResult/resultType envelope checks need a task-supporting tool
+  - tasks-required-task-error                   # tools/call for a TaskSupport=required tool returns -32602 not -32021 — no such tool exists to dispatch to
+  - tasks-mrtr-composition                      # unknown tool "test_tool_with_task" — MRTR-then-escalate-to-task tool not on the fixture
+
+  # SEP-2322 input-required-result — 2026-07-28 draft scenarios. The MRTR
+  # mechanism itself shipped in W2 (src/server/mrtr.ts, isInputRequiredResult
+  # passthrough on tools/call, resources/read, prompts/get), but the
+  # everything-server fixture was never extended with the specific diagnostic
+  # tools/prompts these draft conformance checks dispatch to by name.
+  - input-required-result-basic-elicitation     # unknown tool "test_input_required_result_elicitation" — no diagnostic tool registered
+  - input-required-result-basic-sampling        # unknown tool "test_input_required_result_sampling" — no diagnostic tool registered
+  - input-required-result-basic-list-roots      # unknown tool "test_input_required_result_list_roots" — no diagnostic tool registered
+  - input-required-result-request-state         # unknown tool "test_input_required_result_request_state" — no diagnostic tool registered
+  - input-required-result-multiple-input-requests # unknown tool "test_input_required_result_multiple_inputs" — no diagnostic tool registered
+  - input-required-result-multi-round           # round-1 InputRequiredResult+requestState not observed — no multi-round diagnostic tool registered
+  - input-required-result-missing-input-response # WARNING: server errors instead of re-requesting via InputRequiredResult — no diagnostic tool to exercise the SHOULD
+  - input-required-result-non-tool-request      # unknown prompt "test_input_required_result_prompt" — no diagnostic prompt registered
+  - input-required-result-result-type           # unknown tool "test_input_required_result_elicitation" — no diagnostic tool registered
+  - input-required-result-tampered-state        # prerequisite InputRequiredResult+requestState unavailable — no diagnostic tool registered
+  - input-required-result-capability-check      # unknown tool "test_input_required_result_capabilities" — no diagnostic tool registered
+  - input-required-result-ignore-extra-params   # WARNING: server errors on extra inputResponses keys instead of ignoring — no diagnostic tool to exercise the SHOULD
+
+  # server-stateless — 2026-07-28 draft scenario, partially exercisable: the
+  # SEP-2575 envelope/version-negotiation checks pass (24/28); the remainder
+  # need three more diagnostic tools plus a real SHOULD gap.
+  - server-stateless                            # 4 sub-checks "not testable" (fixture has no test_missing_capability/test_streaming_elicitation/test_logging_tool diagnostic tools) + 2 WARNING (server doesn't send prompts/tools list_changed notifications on an open subscription listen-stream — a SHOULD)
+
+  # http-custom-header-server-validation — 2026-07-28 draft scenario, SERVER
+  # side of SEP-2243 (distinct from the CLIENT-side http-custom-headers
+  # scenario, which passes — see conformance-baseline.yml). The fixture
+  # declares no tool with x-mcp-header annotations for the server to validate.
+  - http-custom-header-server-validation        # "server exposes no tool with x-mcp-header annotations" — none of the 5 checks are exercisable
+
+  # server-sse-polling — ACTIVE [2025-11-25] scenario (not draft), genuine SHOULD-level gap.
+  - server-sse-polling                          # WARNING x2: no SSE priming event (id + empty data) and no retry field on POST SSE streams — both recommended for resumability, neither implemented
+
+# --- client (per-scenario, sequential — see run-client.mjs for why) ---------
+client:
+  # Carried forward from conformance-baseline.yml (pinned) — same root causes,
+  # observed to also fail on main.
+  - auth/basic-cimd                    # WARNING (SHOULD): server advertises client_id_metadata_document_supported but the harness passes the client no CIMD URL, so a spec-correct client falls back to DCR (CIMD is a SHOULD, not a MUST) — harness-contract limit
+  - auth/scope-step-up                 # fastmcp Client completes the interactive OAuth dance (waitForCallback+finishAuth) only inside connect(); this scenario leaves initialize unauthenticated and first challenges (401) on tools/list, so auth never completes and the second (step-up escalation) authorization request is never sent
+
+  # New on main: OAuth grant types / extensions fastmcp's client has no
+  # implementation for at all (src/client/auth.ts exports OAuth, BearerAuth,
+  # ClientCredentials — no DPoP, no JWT-bearer grant, no token-exchange).
+  - auth/dpop                          # RFC 9449 DPoP: client sends no DPoP proof at the token endpoint or on MCP requests, and presents the token as Bearer — sender-constrained tokens not implemented
+  - auth/dpop-nonce                    # same DPoP gap, plus: client never retries with an AS- or RS-supplied nonce (RFC 9449 §8/§9) — not implemented
+  - auth/enterprise-managed-authorization # client performs neither token exchange nor a JWT-bearer grant exchange — not implemented
+  - auth/wif-jwt-bearer                # client sends grant_type=authorization_code, not urn:ietf:params:oauth:grant-type:jwt-bearer — JWT-bearer grant (workload identity federation) not implemented
+
+  # New on main: OAuth 2.0 client-credentials grant, but with token-endpoint
+  # auth methods fastmcp's ClientCredentials provider does not implement. These
+  # are REAL PRODUCT GAPS in src/client/auth.ts, NOT fixture-wiring gaps (an
+  # earlier note here claimed the latter — corrected 2026-07-23 against
+  # conformance 0.2.0-alpha.9). The everything-client's buildAuth() now DOES
+  # select ClientCredentials for these scenarios (it discovers the token
+  # endpoint via RFC 9728 PRM -> RFC 8414 AS metadata and drives the
+  # client_credentials grant once the context provides a client_secret), so the
+  # grant type is now correct — but fastmcp's ClientCredentials only ever
+  # authenticates with client_secret_post, and each scenario demands a
+  # DIFFERENT token-endpoint auth method that fastmcp cannot produce.
+  - auth/client-credentials-jwt        # SEP-1046 private_key_jwt: the AS advertises token_endpoint_auth_methods_supported=[private_key_jwt]/ES256 and its context hands the client {client_id, private_key_pem, signing_algorithm:ES256} with NO client_secret; the /token endpoint requires a signed client_assertion (ES256 JWT, client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer). fastmcp's ClientCredentials implements no JWT client assertions / private_key_jwt and cannot even be constructed without a client_secret, so buildAuth() falls back to the OAuth path (observed: "Expected grant_type=client_credentials, got authorization_code") — product gap in src/client/auth.ts
+  - auth/client-credentials-basic      # SEP-1046 client_secret_basic: the AS advertises token_endpoint_auth_methods_supported=[client_secret_basic] and its /token endpoint REQUIRES an "Authorization: Basic base64(client_id:client_secret)" header. The fixture now drives ClientCredentials so the grant type check PASSES, but fastmcp's ClientCredentials sends client_secret_post (creds in the body, no Basic header), so the sole remaining check ClientCredentialsBasicAuth FAILS "Missing or invalid Authorization header for Basic auth" (observed 2026-07-23). ClientCredentials has no client_secret_basic option — product gap in src/client/auth.ts
+
+  # New on main: SEP-2352 authorization-server migration.
+  - auth/authorization-server-migration # client does not re-register (DCR) at the new AS when Protected Resource Metadata's authorization_servers changes — not implemented

@@ -1,0 +1,33 @@
+---
+title: "CompleteCallback"
+---
+
+```ts
+type CompleteCallback = (value, context?) => 
+  | string[]
+  | CompletionResult
+  | Promise<string[] | CompletionResult>;
+```
+
+Defined in: server/completion.ts:48
+
+A completion callback. Receives the partial `value` the user has typed and the
+optional resolved-argument `context`, and returns suggestions — either a bare
+`string[]` or a [CompletionResult](/api/server/interfaces/CompletionResult) with explicit pagination hints. May be
+async.
+
+## Parameters
+
+### value
+
+`string`
+
+### context?
+
+[`CompletionContext`](/api/server/interfaces/CompletionContext)
+
+## Returns
+
+  \| `string`[]
+  \| [`CompletionResult`](/api/server/interfaces/CompletionResult)
+  \| `Promise`&lt;`string`[] \| [`CompletionResult`](/api/server/interfaces/CompletionResult)&gt;

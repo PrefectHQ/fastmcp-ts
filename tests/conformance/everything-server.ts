@@ -372,13 +372,23 @@ server.prompt(
   () => 'This is a simple prompt for testing.',
 )
 
-// prompts-get-with-args
+// prompts-get-with-args — arg1 also carries a completion callback. The
+// completion-complete scenario calls
+// `complete({ ref: { type: 'ref/prompt', name: 'test_prompt_with_arguments' },
+// argument: { name: 'arg1', value: 'test' } })` and asserts `completion.values`
+// is an array, so a real completer here exercises the completion/complete path.
 server.prompt(
   {
     name: 'test_prompt_with_arguments',
     description: 'A prompt with two required arguments',
     arguments: [
-      { name: 'arg1', description: 'First test argument', required: true },
+      {
+        name: 'arg1',
+        description: 'First test argument',
+        required: true,
+        complete: (value) =>
+          ['alpha', 'beta', 'gamma'].filter((v) => v.startsWith(value)),
+      },
       { name: 'arg2', description: 'Second test argument', required: true },
     ],
   },

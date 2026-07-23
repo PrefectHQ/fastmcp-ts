@@ -13,6 +13,7 @@ export { ResourceResult } from './resource'
 export type { ResourceConfig, ResourceAnnotations } from './resource'
 export { PromptResult } from './prompt'
 export type { PromptConfig, PromptArgument, PromptMessage, PromptContent } from './prompt'
+export type { CompleteCallback, CompletionContext, CompletionResult } from './completion'
 export type {
   McpContext,
   LogLevel,

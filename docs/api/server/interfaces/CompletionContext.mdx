@@ -1,0 +1,20 @@
+---
+title: "CompletionContext"
+---
+
+Defined in: server/completion.ts:24
+
+Optional context the client forwards with a completion request: the values it
+has already resolved for the prompt's OTHER arguments (or the template's other
+variables). Use it to narrow suggestions — e.g. offer cities once a country is
+chosen.
+
+## Properties
+
+### arguments?
+
+```ts
+optional arguments?: Record<string, string>;
+```
+
+Defined in: server/completion.ts:25
