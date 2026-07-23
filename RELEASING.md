@@ -53,3 +53,34 @@ npx changeset pre exit         # return to normal releases
 ```
 
 See the [Changesets prereleases docs](https://github.com/changesets/changesets/blob/main/docs/prereleases.md).
+
+## Current pre-release line: `rc` (1.0.0)
+
+The repository is in Changesets **pre mode** on the `rc` tag. It ships the
+`1.0.0-rc.*` release candidates for FastMCP 1.0. `.changeset/pre.json` records
+this state; it must stay committed on the release branch for CI to build
+prerelease versions.
+
+How it works:
+
+- Each merged "Version Packages" PR cuts the next candidate — `1.0.0-rc.0`,
+  then `1.0.0-rc.1`, and so on. The counter starts at `0`.
+- `changeset publish` sends each candidate to the **`rc`** npm dist-tag, not
+  `latest`. Pre mode selects the tag from `pre.json` on its own, because the
+  package already has regular (non-prerelease) releases on npm. The release
+  workflow passes no `--tag`, so no change to CI is needed.
+- **`latest` stays on the 0.x line** while the `rc` line runs. A plain
+  `npm install @prefecthq/fastmcp-ts` still gets the current 0.x release. To
+  try a candidate, install `@prefecthq/fastmcp-ts@rc`.
+- The 0.x line is in maintenance during the `rc` line and receives critical
+  fixes only.
+
+How it ends — cut stable 1.0.0:
+
+```bash
+npx changeset pre exit    # leave pre mode; commit the pre.json change
+```
+
+After `pre exit`, the next "Version Packages" PR versions the pending
+changesets as a normal release: `1.0.0` stable, published to **`latest`**.
+That is the point where `latest` moves off the 0.x line.
