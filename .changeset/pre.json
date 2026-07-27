@@ -4,5 +4,13 @@
   "initialVersions": {
     "@prefecthq/fastmcp-ts": "0.1.0"
   },
-  "changesets": []
+  "changesets": [
+    "basic-auth-encoding",
+    "client-credentials-options-union",
+    "fastmcp-1-0",
+    "legacy-http-push-request-routing",
+    "legacy-sse-wire-changes",
+    "post-connect-step-up-auth",
+    "stdio-modern-capability"
+  ]
 }
