@@ -99,6 +99,8 @@ server.notifyResourceUpdated('config://settings')
 
 `notifyResourceUpdated` is the single change signal for both [protocol eras](/concepts/protocol-eras). The wire transport differs underneath — a legacy client subscribes with the `resources/subscribe` and `resources/unsubscribe` RPCs, while a modern client opens one long-lived `subscriptions/listen` stream — but your server calls the one method and FastMCP routes the notification to each subscriber on its own era. The legacy subscribe and unsubscribe requests both run through your [middleware](/servers/middleware) chain, and subscribe honors a resource's `auth` guard exactly as a read does.
 
+A legacy HTTP server running in [stateless mode](/servers/running#stateless-mode) supports neither RPC. Subscriptions need a session to track who is listening, so a stateless server does not advertise `resources.subscribe`, and it rejects both `resources/subscribe` and `resources/unsubscribe` if a client calls them anyway.
+
 Subscribing is a client-side action, so the subscribe API lives on the [client](/clients/client). The client passes a handler that fires on each update.
 
 ```typescript client.ts

@@ -113,7 +113,7 @@ If you register `CachingMiddleware` with its default cache key, 1.0 changes what
 
 ## Modern era
 
-Everything below changes behavior only when a client negotiates the modern era. A client that keeps the default legacy era sees none of it, so you can adopt the modern era one connection at a time.
+Everything below changes behavior only when a client negotiates the modern era, or when the server itself runs legacy HTTP in [stateless mode](/servers/running#stateless-mode) — that server-side switch trades away the same session-dependent behavior on legacy traffic too. A client that keeps the default legacy era, against an ordinary sessionful server, sees none of this, so you can adopt the modern era one connection at a time.
 
 ### Negotiation defaults
 
@@ -140,7 +140,7 @@ The `fastmcp` CLI layers its own defaults on top: an HTTP `--url` negotiates aut
 
 ### Session state
 
-`ctx.getState`, `ctx.setState`, and `ctx.deleteState` keep working on stdio and on legacy HTTP, where a session persists them across requests. A modern HTTP request has no session, so each call runs statelessly against a fresh store. Rather than drop a write silently, the accessors throw a pointed error on a modern HTTP request, and the message names the request-scoped replacements.
+`ctx.getState`, `ctx.setState`, and `ctx.deleteState` keep working on stdio and on legacy HTTP, where a session persists them across requests, as long as the server is sessionful, which is the default. A modern HTTP request has no session, and neither does a legacy HTTP server running in [stateless mode](/servers/running#stateless-mode), so each such call runs statelessly against a fresh store. Rather than drop a write silently, the accessors throw a pointed error, and the message names the request-scoped replacements.
 
 A handler that relied on session state and must serve modern HTTP clients moves the value off the session. For anything durable or portable, mint a server-side handle and thread it back as a tool argument — the pattern works identically on every transport.
 
@@ -172,7 +172,7 @@ For state that only needs to survive the rounds of one input-required flow, use 
 
 ### Server-initiated requests
 
-0.x handlers called the client back mid-execution with `ctx.sample`, `ctx.elicit`, and `ctx.listRoots`. These are deprecated and era-gated in 1.0. They still work on a legacy connection. A modern request has no server-to-client channel, so they throw an error that names `inputRequired(...)` as the replacement.
+0.x handlers called the client back mid-execution with `ctx.sample`, `ctx.elicit`, and `ctx.listRoots`. These are deprecated and era-gated in 1.0. They still work on a sessionful legacy connection, which is the default. A modern request has no server-to-client channel, and neither does a legacy HTTP server running in [stateless mode](/servers/running#stateless-mode), so both throw an error that names `inputRequired(...)` as the replacement.
 
 Rewrite an interactive handler to ask by returning. Return `inputRequired(...)` with the requests the client must fulfil; the client fulfils them and retries the same call, this time carrying the answers on `ctx.inputResponses`. A handler written this way serves both eras from one code path, because a built-in legacy shim turns the return value into a real server-to-client request for 2025-era clients.
 
@@ -213,6 +213,8 @@ server.tool({ name: 'deleteFiles', description: 'Delete files after confirmation
 })
 ```
 
+On a stateless server this rewrite trades one limit for a narrower one. The shim that turns `inputRequired({ inputRequests })` into a server-to-client push needs the same live session `ctx.elicit()` needed, so a stateless server fails it the same way. Drop `inputRequests` and return only `requestState`, though, and the handler keeps working — not because the client retries anything, but because the SDK's legacy shim re-enters the handler itself, server-side, inside the same HTTP request, pausing 250ms between rounds instead of pushing a request over a session it doesn't have. That narrower form is the one multi-round-trip pattern a stateless server supports, and it has real limits worth knowing before you lean on it: the shim gives up after `inputRequired.maxRounds` rounds (8 by default), each round holds the request open at least 250ms longer, and a handler that needs to wait on something external between rounds — a person, a webhook — has no way to signal that and will simply spin to a rounds-exceeded failure instead. [Input required](/concepts/input-required#one-handler-both-eras) covers the mechanism and a worked example.
+
 [Input required](/concepts/input-required) covers the return-value pattern, reading responses, and carrying signed state across rounds.
 
 ## New capabilities
@@ -226,6 +228,7 @@ server.tool({ name: 'deleteFiles', description: 'Delete files after confirmation
 - **Modern client hardening** — `versionNegotiation` and `getProtocolEra()` control the era, and OAuth gains client-ID metadata documents (`clientMetadataUrl`, CIMD) and RFC 9207 `iss` validation ([client auth](/clients/auth)).
 - **Cache hints** — `FastMCPOptions.cacheHints` attaches per-operation `ttlMs` and `cacheScope` to cacheable results (SEP-2549), so a modern client can reuse them; FastMCP fills conservative defaults for the operations you omit ([caching](/concepts/caching)).
 - **DNS-rebinding protection** — the `dnsRebinding` option, covered above ([running a server](/servers/running)).
+- **Stateless legacy HTTP** — `RunOptions.stateless` or `FASTMCP_STATELESS_HTTP` serves each legacy HTTP request from a fresh server, with no session, for a load-balanced or serverless deployment where consecutive requests can reach different instances. Off by default, and it trades away session state and server-initiated requests on the requests it serves ([running a server](/servers/running#stateless-mode)).
 
 ## Conformance
 

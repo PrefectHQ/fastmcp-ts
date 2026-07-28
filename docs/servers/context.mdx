@@ -65,7 +65,7 @@ Progress is meaningful only when the client asked for it. A client opts in by at
 
 Sometimes a handler needs something only the client can provide — an LLM completion, a form answer, or the client's filesystem roots. How a handler asks depends on the [protocol era](/concepts/protocol-eras), and that difference shapes this whole section.
 
-The recommended, era-agnostic way is to **return** `inputRequired(...)` and read the answer when the client retries the call. A handler written that way serves both eras from one code path — the [input-required guide](/concepts/input-required) covers it end to end, and [reading input responses](#reading-input-responses) below covers the retry side on the context. The context also carries the older push-style calls described here. They still work on a legacy connection, but they are deprecated as of protocol revision 2026-07-28, and they throw on a modern request.
+The recommended, era-agnostic way is to **return** `inputRequired(...)` and read the answer when the client retries the call. A handler written that way serves both eras from one code path — the [input-required guide](/concepts/input-required) covers it end to end, and [reading input responses](#reading-input-responses) below covers the retry side on the context. The context also carries the older push-style calls described here. They still work on a sessionful legacy connection, which is the default, but they are deprecated as of protocol revision 2026-07-28, and they throw on a modern request or on a legacy HTTP server running in [stateless mode](/servers/running#stateless-mode).
 
 `ctx.sample(params)` asks the client to run LLM inference on the server's behalf and returns a completion from a real model. This is how a server uses a model without holding API keys of its own — the client owns the LLM, and the server borrows it through the context.
 
@@ -96,7 +96,9 @@ server.tool({ name: 'deploy' }, async () => {
 
 `ctx.listRoots()` returns the filesystem roots the client has declared it will expose, so a server can scope its work to paths the user has sanctioned.
 
-On a legacy connection each of the three depends on the client advertising the matching capability — `sampling`, `elicitation`, or `roots` — and throws when it is absent. On a modern request all three throw regardless, because the modern era has no server-to-client channel; the error names `inputRequired(...)` as the replacement. The client side of fulfilment is covered in [client sampling](/clients/sampling) and [handlers](/clients/handlers).
+On a sessionful legacy connection each of the three depends on the client advertising the matching capability — `sampling`, `elicitation`, or `roots` — and throws when it is absent. On a modern request, or on a legacy HTTP server running in stateless mode, all three throw regardless: the modern era has no server-to-client channel, and a stateless server has no session for the push and its reply to share, so the error names `inputRequired(...)` as the replacement either way. The client side of fulfilment is covered in [client sampling](/clients/sampling) and [handlers](/clients/handlers).
+
+That replacement error points to `inputRequired(...)`, but the return value has the same limit on a stateless server, for the same reason. An `inputRequired({ inputRequests })` entry still relies on a live session to carry the legacy shim's push and its reply, so it throws too. Only `inputRequired({ requestState })`, with no `inputRequests`, survives, and not because the client retries anything: on a legacy connection the SDK's shim re-enters your handler itself, in-process, inside the one HTTP request already open, pausing briefly between rounds instead of pushing anything over a session that isn't there. `ctx.requestState()` and `ctx.mintRequestState()` genuinely work here, since carrying state needs no session — but the re-entries are capped and each one holds that request open a little longer, so this is not a free pass. [Input required](/concepts/input-required#the-requeststate-only-pattern) covers the mechanism, its limits, and a full example.
 
 ## Reading input responses
 
@@ -121,7 +123,7 @@ server.tool({ name: 'increment' }, () => {
 })
 ```
 
-State is scoped to one connection, never shared across them, so two clients never see each other's values. But it depends on a persistent session, and the modern era's HTTP transport has none. On a modern HTTP request each accessor throws a pointed error rather than drop the write against a fresh per-request store; the message names `ctx.requestState()` and `ctx.mintRequestState()` as the replacements. Session state persists on stdio and on legacy HTTP, and throws on modern HTTP. [State and handles](/concepts/state-and-handles) covers this boundary and the portable alternatives — request state and server-minted handles — that work on every transport.
+State is scoped to one connection, never shared across them, so two clients never see each other's values. But it depends on a persistent session, and both the modern era's HTTP transport and a legacy HTTP server running in [stateless mode](/servers/running#stateless-mode) have none. On either kind of request each accessor throws a pointed error rather than drop the write against a fresh per-request store; the message names `ctx.requestState()` and `ctx.mintRequestState()` as the replacements. Session state persists on stdio and on legacy HTTP when the server is sessionful, which is the default, and throws on modern HTTP and on stateless legacy HTTP alike. [State and handles](/concepts/state-and-handles) covers this boundary and the portable alternatives — request state and server-minted handles — that work on every transport.
 
 ## Session cleanup
 
@@ -136,4 +138,4 @@ server.tool({ name: 'openStream' }, () => {
 })
 ```
 
-The callback fires when a sessionful HTTP session closes. A stateless modern HTTP request has no session, so `onClose` is a no-op there, and stdio never fires it either — the callbacks run only at a legacy HTTP session's close. Do not rely on it for correctness. For cleanup that must run on every transport, expire data on a timer behind a server-minted handle instead, the pattern [state and handles](/concepts/state-and-handles) recommends.
+The callback fires only when a sessionful legacy HTTP session closes, which is the default for legacy HTTP. Neither a modern HTTP request nor a legacy HTTP server running in [stateless mode](/servers/running#stateless-mode) has a session to close, so `onClose` is a no-op on both, and stdio never fires it either. Do not rely on it for correctness. For cleanup that must run on every transport, expire data on a timer behind a server-minted handle instead, the pattern [state and handles](/concepts/state-and-handles) recommends.

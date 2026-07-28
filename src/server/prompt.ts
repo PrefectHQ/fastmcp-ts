@@ -1,5 +1,5 @@
 import type { AuthCheck } from './auth/authorization'
-import { isInputRequiredResult } from './mrtr'
+import { isInputRequiredResult, assertInputRequestsAllowedStateless } from './mrtr'
 import type { InputRequiredResult } from './mrtr'
 import type { CompleteCallback } from './completion'
 
@@ -95,10 +95,13 @@ function isPromptMessage(value: unknown): value is PromptMessage {
  */
 export function convertPromptResult(
   value: unknown,
+  stateless?: boolean,
 ): { description?: string; messages: PromptMessage[] } | InputRequiredResult {
   // Multi-round-trip escape hatch (protocol revision 2026-07-28) — see tool.ts's
-  // convertResult for the same pattern applied to tools/call.
+  // convertResult for the same pattern applied to tools/call, including why
+  // `stateless` is a per-call parameter rather than read off an instance field.
   if (isInputRequiredResult(value)) {
+    assertInputRequestsAllowedStateless(value, stateless)
     return value
   }
   if (value instanceof PromptResult) {

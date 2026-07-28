@@ -1,7 +1,7 @@
 import { ProtocolError, ProtocolErrorCode } from "@modelcontextprotocol/server";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { isInputRequiredResult } from './mrtr'
+import { isInputRequiredResult, assertInputRequestsAllowedStateless } from './mrtr'
 import type { InputRequiredResult } from './mrtr'
 
 export class Image {
@@ -23,12 +23,23 @@ export class ToolResult {
   constructor(readonly result: CallToolResult) {}
 }
 
-export function convertResult(value: unknown): CallToolResult | InputRequiredResult {
+export function convertResult(
+  value: unknown,
+  stateless?: boolean,
+): CallToolResult | InputRequiredResult {
   // Multi-round-trip escape hatch (protocol revision 2026-07-28): a handler that
   // needs more input from the client returns inputRequired({ ... }) — passed through
   // untouched, exactly like the ToolResult escape hatch below. See inputRequired /
   // acceptedContent / inputResponse (re-exported from fastmcp-ts/server).
+  //
+  // `stateless` is undefined for FastMCP.ts's `_dispatchTool` helper (mounted-server
+  // dispatch): that call site has no per-server `opts` in scope, and its result flows
+  // back up through the mounting parent's own top-level `convertResult` call, which
+  // does have `opts.stateless` and applies the guard there — see mrtr.ts's
+  // assertInputRequestsAllowedStateless doc for why the check must key off that
+  // per-server flag rather than an instance-wide one.
   if (isInputRequiredResult(value)) {
+    assertInputRequestsAllowedStateless(value, stateless)
     return value
   }
   if (value instanceof ToolResult) {

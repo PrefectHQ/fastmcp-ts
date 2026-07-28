@@ -227,6 +227,32 @@ const SESSION_STATE_MODERN_HTTP_ERROR =
   'Use ctx.requestState() to read per-request state. ' +
   'Use ctx.mintRequestState() to carry state across a multi-round-trip flow.'
 
+/**
+ * Pointed error thrown by the same three accessors on a stateless HTTP request.
+ * Distinct from the modern-era message: this one names the switch an operator
+ * set, because the cause is deploy configuration rather than protocol revision.
+ */
+const SESSION_STATE_STATELESS_HTTP_ERROR =
+  '[fastmcp] Session state is not available on a stateless HTTP server ' +
+  '(RunOptions.stateless or FASTMCP_STATELESS_HTTP). ' +
+  'Each request runs against a fresh store that is discarded when the request ends. ' +
+  'Use ctx.requestState() to read per-request state. ' +
+  'Use ctx.mintRequestState() to carry state across a multi-round-trip flow. ' +
+  'Turn stateless off to use session state, or keep state in your own external store.'
+
+/**
+ * Pointed error for the server-initiated request APIs on a stateless HTTP
+ * request. These need a live session: capabilities are negotiated once at
+ * initialize, and the client's reply arrives as a separate request. Neither
+ * survives per-request server construction. The default "Client does not
+ * support elicitation" would blame the client for a server-side choice.
+ */
+const SERVER_INITIATED_STATELESS_HTTP_ERROR =
+  '[fastmcp] Server-initiated requests (ctx.elicit, ctx.sample, ctx.listRoots) are not available ' +
+  'on a stateless HTTP server (RunOptions.stateless or FASTMCP_STATELESS_HTTP). ' +
+  'They need a session: client capabilities are negotiated once at initialize, and the client ' +
+  'replies on a separate request. Turn stateless off to use them.'
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -251,6 +277,10 @@ const SESSION_STATE_MODERN_HTTP_ERROR =
  *   configured. Backs `ctx.mintRequestState()`; `ctx.requestState()` itself always reads
  *   through `sdkCtx.mcpReq.requestState()`, which already reflects whatever
  *   `ServerOptions.requestState.verify` (built from this same codec) resolved.
+ * @param stateless  Whether this request is being served by a stateless HTTP server
+ *   (`_makeServer`'s `opts.stateless`). Gates session state and the server-initiated
+ *   request APIs on the legacy path with a message naming the switch, distinct from the
+ *   modern era's own established errors for the same APIs.
  */
 export function createContext(
   server: Server,
@@ -258,6 +288,7 @@ export function createContext(
   auth: AccessToken | undefined,
   sessionState: Map<string, unknown>,
   requestStateCodec?: RequestStateCodec,
+  stateless?: boolean,
 ): McpContext {
   const requestId = String(sdkCtx.mcpReq.id)
   const progressToken = (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)
@@ -267,9 +298,27 @@ export function createContext(
   //  - a modern (2026-07-28) request carries a `_meta` envelope; a legacy one does not.
   //  - an HTTP-transport request carries `sdkCtx.http`; a stdio one does not.
   // These back the era gates below. `isModernEra` reorders the sample/elicit/listRoots
-  // capability guard (Req 2); `isModernHttpRequest` gates session state (Req 1).
+  // capability guard (Req 2); `isModernHttpRequest` is one of `sessionlessReason`'s two
+  // inputs, which gates session state (Req 1) below.
   const isModernEra = sdkCtx.mcpReq.envelope !== undefined
   const isModernHttpRequest = isModernEra && sdkCtx.http !== undefined
+
+  // Why session state is unavailable, or null when it is available. Two HTTP
+  // paths are sessionless for different reasons and need different messages:
+  // the modern era has no protocol session, and a stateless server discards its
+  // store per request.
+  const sessionlessReason: 'modern-http' | 'stateless-http' | null = isModernHttpRequest
+    ? 'modern-http'
+    : stateless && sdkCtx.http !== undefined
+      ? 'stateless-http'
+      : null
+
+  const sessionStateError = (): Error =>
+    new Error(
+      sessionlessReason === 'modern-http'
+        ? SESSION_STATE_MODERN_HTTP_ERROR
+        : SESSION_STATE_STATELESS_HTTP_ERROR,
+    )
 
   // Route the push-style server→client requests (sampling/createMessage,
   // elicitation/create, roots/list) raised INSIDE this tool call onto the
@@ -328,6 +377,7 @@ export function createContext(
     },
 
     async sample(params) {
+      if (sessionlessReason === 'stateless-http') throw new Error(SERVER_INITIATED_STATELESS_HTTP_ERROR)
       // On a modern (2026-07-28) request there is no server→client channel: skip the
       // legacy capability guard so the SDK's era gate throws first, naming the
       // inputRequired(...) replacement. On legacy the capability guard stays intact
@@ -362,6 +412,7 @@ export function createContext(
     },
 
     async elicit(message, schema) {
+      if (sessionlessReason === 'stateless-http') throw new Error(SERVER_INITIATED_STATELESS_HTTP_ERROR)
       // Modern era: skip the legacy capability guard so the SDK era gate throws first,
       // naming inputRequired(...). Legacy: capability guard intact. (task-9 Req 2)
       if (!isModernEra) {
@@ -388,6 +439,7 @@ export function createContext(
     },
 
     async listRoots() {
+      if (sessionlessReason === 'stateless-http') throw new Error(SERVER_INITIATED_STATELESS_HTTP_ERROR)
       // Modern era: skip the legacy capability guard so the SDK era gate throws first,
       // naming inputRequired(...). Legacy: capability guard intact. (task-9 Req 2)
       if (!isModernEra) {
@@ -417,15 +469,15 @@ export function createContext(
     },
 
     getState: (key) => {
-      if (isModernHttpRequest) throw new Error(SESSION_STATE_MODERN_HTTP_ERROR)
+      if (sessionlessReason) throw sessionStateError()
       return sessionState.get(key)
     },
     setState: (key, value) => {
-      if (isModernHttpRequest) throw new Error(SESSION_STATE_MODERN_HTTP_ERROR)
+      if (sessionlessReason) throw sessionStateError()
       sessionState.set(key, value)
     },
     deleteState: (key) => {
-      if (isModernHttpRequest) throw new Error(SESSION_STATE_MODERN_HTTP_ERROR)
+      if (sessionlessReason) throw sessionStateError()
       sessionState.delete(key)
     },
 

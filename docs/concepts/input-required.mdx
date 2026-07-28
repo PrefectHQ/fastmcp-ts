@@ -90,7 +90,7 @@ server.tool(
 )
 ```
 
-`requestState` comes back as attacker-controlled input, so integrity matters. Configure `FastMCPOptions.requestState` with an HMAC key, and every minted state is signed and verified before your handler sees it. A tampered or expired state is rejected with `-32602` before the handler runs. Without that option, `mintRequestState` falls back to an unsigned string and warns — never let unsigned state influence authorization, resource access, or business logic. [State and handles](/concepts/state-and-handles) covers `requestState` in full.
+`requestState` comes back as attacker-controlled input, so integrity matters. Configure `FastMCPOptions.requestState` with an HMAC key, and every minted state is signed and verified before your handler sees it. A tampered or expired state is rejected with `-32602` before the handler runs. Without that option, `mintRequestState` falls back to an unsigned string and warns — never let unsigned state influence authorization, resource access, or business logic. That option is not only a safety measure, either: without it, `ctx.requestState()` on the next round hands back the raw string you minted, unparsed, not the object you passed in — only a configured verify step decodes it, so a flow that reads structured state back needs `FastMCPOptions.requestState` configured to work at all. [State and handles](/concepts/state-and-handles) covers `requestState` in full.
 
 ```typescript server.ts
 const server = new FastMCP({
@@ -99,12 +99,52 @@ const server = new FastMCP({
 })
 ```
 
+### The requestState-only pattern
+
+This example will not run without `FastMCPOptions.requestState` configured with a key — and neither will the combined example above it. Without a key, `ctx.requestState()` hands the handler back the raw string `mintRequestState` minted, not the object you passed in, so `state?.index` and `state?.total` below are always `undefined` and the handler never advances. On a legacy connection — sessionful or stateless — that surfaces as the call failing once `inputRequired.maxRounds` rounds are used up (about 2 seconds at the default 250ms pacing), with the error "still required input after 8 rounds". See the `requestState` snippet above for the minimum config: a `FastMCP` constructed with `requestState: { key: /* at least 32 bytes */ }`.
+
+The example above pairs `requestState` with an elicitation, so the client still has something to fulfil each round. Some flows have nothing to ask — the handler just needs another turn to keep working. Drop `inputRequests` entirely and return `requestState` alone, and this is also the one multi-round-trip pattern that survives on a [stateless](/servers/running#stateless-mode) legacy HTTP server, for reasons covered in [one handler, both eras](#one-handler-both-eras) below.
+
+A handler that sums a large array a few items at a time can use it to carry its running position and total between rounds. This needs `FastMCPOptions.requestState` configured, per the note above:
+
+```typescript server.ts
+server.tool(
+  { name: 'sumChunked', description: 'Sum a large array a few items at a time' },
+  async (args: Record<string, unknown>) => {
+    const items = args.items as number[]
+    const CHUNK = 100
+    const ctx = server.getContext()
+
+    const state = ctx.requestState<{ index: number; total: number }>()
+    const index = state?.index ?? 0
+    const total = state?.total ?? 0
+
+    const next = items.slice(index, index + CHUNK).reduce((sum, n) => sum + n, total)
+    const nextIndex = index + CHUNK
+
+    if (nextIndex < items.length) {
+      return inputRequired({ requestState: await ctx.mintRequestState({ index: nextIndex, total: next }) })
+    }
+
+    return `Sum: ${next}`
+  },
+)
+```
+
+On a modern client this is a real retry: the client gets back `input_required` with nothing to answer, and resends the same call carrying `requestState`. On a legacy connection — sessionful or stateless — nothing is retried; the next section covers what happens instead.
+
 ## One handler, both eras
 
 The handlers above are modern-era code by shape, yet they serve legacy clients unchanged. On a legacy connection the SDK's legacy shim turns an `inputRequired(...)` return into a real server-to-client request over the live session, collects the answer, and re-enters the handler with `ctx.inputResponses` populated. You write the flow once; the shim bridges it for 2025-era clients.
 
-This is why `inputRequired(...)` is the recommended way to ask for input in new code. The older `ctx.sample()`, `ctx.elicit()`, and `ctx.listRoots()` calls still work on a legacy connection, but they throw on a modern request — the error names `inputRequired(...)` as the replacement. Reaching for the return-value form from the start means one code path for both eras. The client side of fulfilment is covered in [handlers](/clients/handlers) and [sampling](/clients/sampling).
+This is why `inputRequired(...)` is the recommended way to ask for input in new code. The older `ctx.sample()`, `ctx.elicit()`, and `ctx.listRoots()` calls still work on a sessionful legacy connection, which is the default, but they throw on a modern request, or on a legacy HTTP server running in [stateless mode](/servers/running#stateless-mode) — the error names `inputRequired(...)` as the replacement either way. Reaching for the return-value form from the start means one code path for both eras.
+
+That replacement is not a full escape from the stateless limit, though. An `inputRequests` entry, such as `inputRequired.elicit(...)`, still needs the legacy shim to turn it into a real server-to-client request over a live session. That is the same session `ctx.elicit()` needs, so it fails the same way on a stateless server.
+
+A bare `requestState`, with no `inputRequests`, is the one form that survives — but not because the client resends anything. On a legacy connection, sessionful or stateless, the shim recognizes there is nothing to push, sleeps 250ms (`REQUEST_STATE_ONLY_LEG_PACING_MS`), and re-enters your handler itself, in the same process, inside the single HTTP request the client already sent. It repeats that — sleep, re-enter, check the result — until your handler stops returning `inputRequired(...)`, or until it has looped `maxRounds` times (default 8), at which point it fails the call rather than loop forever. The client sees one request and one final response; on this path it never receives an intermediate `input_required` result and never retries anything itself. A modern client is different: there, `requestState` alone really does end the round in the client's hands, and it really does resend the call — see [the requestState-only pattern](#the-requeststate-only-pattern) above for both sides of that split.
+
+Two things follow from a loop the client cannot see or pace. Each round holds the original HTTP request open at least 250ms longer, so a flow that needs several rounds can hold a request open for whole seconds — worth weighing against the request-time budget that [stateless mode](/servers/running#stateless-mode) exists to protect. And the loop paces itself on a fixed clock; it cannot wait on anything else. A handler that expects to pause between rounds for an external event — a human approval, a webhook — has no way to signal that to the shim, and will instead spin through its rounds on the 250ms cadence until `maxRounds` runs out and the call fails. This form depends on the same legacy shim the `inputRequests` form uses; [serving knobs](#serving-knobs) below covers `legacyShim: false`, which turns off both alike. The client side of fulfilment is covered in [handlers](/clients/handlers) and [sampling](/clients/sampling).
 
 ## Serving knobs
 
-`FastMCPOptions.inputRequired` tunes the legacy shim. `maxRounds` caps how many times the shim re-enters a handler before it fails — the default is 8. `roundTimeoutMs` sets the per-leg timeout for the shim's embedded requests, defaulting to 10 minutes to allow for human-paced answers. Set `legacyShim: false` to disable the bridge, so an `inputRequired(...)` return on a legacy request fails loudly instead. These knobs affect the legacy era only; a modern client fulfils the requests itself.
+`FastMCPOptions.inputRequired` tunes the legacy shim. `maxRounds` caps how many times the shim re-enters a handler before it fails — the default is 8, and it is the only bound on a `requestState`-only flow, whose 250ms pacing between rounds is fixed and not configurable. `roundTimeoutMs` sets the per-leg timeout for the shim's embedded requests, defaulting to 10 minutes to allow for human-paced answers — it does not apply to the `requestState`-only pacing, which has no embedded request to time out. Set `legacyShim: false` to disable the bridge entirely, so an `inputRequired(...)` return on a legacy request fails loudly instead, whether or not it carries `inputRequests`. These knobs affect the legacy era only; a modern client fulfils the requests itself.

@@ -1,6 +1,6 @@
 import type { AuthCheck } from './auth/authorization'
 import type { ResourceUiMeta } from './apps/types'
-import { isInputRequiredResult } from './mrtr'
+import { isInputRequiredResult, assertInputRequestsAllowedStateless } from './mrtr'
 import type { InputRequiredResult } from './mrtr'
 import type { CompleteCallback } from './completion'
 
@@ -81,10 +81,13 @@ export function convertResourceResult(
   value: unknown,
   uri: string,
   mimeType?: string,
+  stateless?: boolean,
 ): { contents: ResourceContent[] } | InputRequiredResult {
   // Multi-round-trip escape hatch (protocol revision 2026-07-28) — see tool.ts's
-  // convertResult for the same pattern applied to tools/call.
+  // convertResult for the same pattern applied to tools/call, including why
+  // `stateless` is a per-call parameter rather than read off an instance field.
   if (isInputRequiredResult(value)) {
+    assertInputRequestsAllowedStateless(value, stateless)
     return value
   }
   if (value instanceof ResourceResult) {
