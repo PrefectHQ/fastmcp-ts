@@ -11,6 +11,7 @@
     "legacy-http-push-request-routing",
     "legacy-sse-wire-changes",
     "post-connect-step-up-auth",
+    "stateless-http",
     "stdio-modern-capability"
   ]
 }
