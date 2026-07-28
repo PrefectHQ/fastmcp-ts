@@ -246,12 +246,22 @@ const SESSION_STATE_STATELESS_HTTP_ERROR =
  * initialize, and the client's reply arrives as a separate request. Neither
  * survives per-request server construction. The default "Client does not
  * support elicitation" would blame the client for a server-side choice.
+ *
+ * Names `inputRequired({ requestState })` as the replacement, because it is the
+ * one multi-round-trip form that works without a session; the embedded-request
+ * form fails for the same reason these APIs do (see mrtr.ts's
+ * INPUT_REQUESTS_STATELESS_HTTP_ERROR). Deliberately avoids the literal
+ * "inputRequests" so the three stateless messages stay distinguishable by
+ * substring in tests: only the mrtr.ts constant contains both "inputRequests"
+ * and "requestState".
  */
 const SERVER_INITIATED_STATELESS_HTTP_ERROR =
   '[fastmcp] Server-initiated requests (ctx.elicit, ctx.sample, ctx.listRoots) are not available ' +
   'on a stateless HTTP server (RunOptions.stateless or FASTMCP_STATELESS_HTTP). ' +
   'They need a session: client capabilities are negotiated once at initialize, and the client ' +
-  'replies on a separate request. Turn stateless off to use them.'
+  'replies on a separate request. Return inputRequired({ requestState }) to carry a ' +
+  'multi-round-trip flow without a session; the embedded-request form of inputRequired needs ' +
+  'a session too. Turn stateless off to use server-initiated requests.'
 
 // ---------------------------------------------------------------------------
 // Factory

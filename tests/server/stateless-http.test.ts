@@ -330,6 +330,11 @@ describe('stateless server-initiated request guards', () => {
     const text = await res.text()
     expect(text).toContain('FASTMCP_STATELESS_HTTP')
     expect(text).not.toContain('Client does not support')
+    // The message must also name the surviving replacement, the requestState-only
+    // inputRequired form. docs/servers/context.mdx and docs/concepts/input-required.mdx
+    // both claim "the error names inputRequired(...) as the replacement either way",
+    // and this assertion is what keeps that claim true on the stateless leg.
+    expect(text).toContain('inputRequired({ requestState })')
 
     await mcp.close()
   })
@@ -351,6 +356,8 @@ describe('stateless server-initiated request guards', () => {
     const text = await res.text()
     expect(text).toContain('FASTMCP_STATELESS_HTTP')
     expect(text).not.toContain('Client does not support')
+    // See the matching assertion in the ctx.elicit test above.
+    expect(text).toContain('inputRequired({ requestState })')
 
     await mcp.close()
   })
@@ -372,6 +379,8 @@ describe('stateless server-initiated request guards', () => {
     const text = await res.text()
     expect(text).toContain('FASTMCP_STATELESS_HTTP')
     expect(text).not.toContain('Client does not support')
+    // See the matching assertion in the ctx.elicit test above.
+    expect(text).toContain('inputRequired({ requestState })')
 
     await mcp.close()
   })
@@ -533,8 +542,9 @@ describe('stateless inputRequired({ inputRequests })', () => {
     // so this assertion alone would pass even if the guard threw ctx.elicit's message instead
     // of the inputRequests one -- exactly the distinction this feature turns on. Only
     // INPUT_REQUESTS_STATELESS_HTTP_ERROR (mrtr.ts) names both 'inputRequests' (the thing
-    // being rejected) and 'requestState' (the supported alternative); SERVER_INITIATED
-    // contains neither, and SESSION_STATE contains 'requestState' but not 'inputRequests'.
+    // being rejected) and 'requestState' (the supported alternative); SERVER_INITIATED and
+    // SESSION_STATE each contain 'requestState' but not 'inputRequests' (SERVER_INITIATED
+    // says "the embedded-request form" on purpose, to preserve this distinction).
     expect(text).toContain('FASTMCP_STATELESS_HTTP')
     expect(text).toContain('inputRequests')
     expect(text).toContain('requestState')
