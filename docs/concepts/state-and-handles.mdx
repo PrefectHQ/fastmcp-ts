@@ -35,20 +35,21 @@ Session state depends on a persistent session, and the modern era's HTTP transpo
 
 Rather than drop such a write silently, FastMCP makes the accessors throw a pointed error on a modern HTTP request. The message names the request-scoped replacements — `ctx.requestState()` to read per-request state, and `ctx.mintRequestState()` to carry state across a multi-round-trip flow. A silent no-op would hide the bug; the error surfaces it at the write.
 
-Where session state survives depends on the transport, not only the era. Stdio pins one server instance — and its state store — for the whole connection, so state persists on both eras. HTTP persists on the legacy era, which is sessionful, and throws on the modern era, which is stateless.
+Where session state survives depends on the transport, and on the HTTP server's session mode, not only the era. Stdio pins one server instance — and its state store — for the whole connection, so state persists on both eras. HTTP persists on the legacy era when the server is sessionful, which is the default, and throws on the legacy era when the server runs in [stateless mode](/servers/running#stateless-mode), for the same reason it throws on the modern era: each request runs against a fresh store that is discarded when the request ends, rather than a session that outlives it.
 
 | Transport | Legacy era | Modern era |
 |---|---|---|
 | stdio | Persists | Persists |
-| HTTP | Persists | Throws |
+| HTTP, sessionful (default) | Persists | Throws |
+| HTTP, stateless | Throws | Throws |
 
-The practical read: session state is safe on stdio and on legacy HTTP. For a server that must serve modern HTTP clients, treat session state as unavailable and use request state or a handle instead.
+The practical read: session state is safe on stdio and on sessionful legacy HTTP, which is the default. For a server that must serve modern HTTP clients, or that runs legacy HTTP in stateless mode, treat session state as unavailable and use request state or a handle instead.
 
 ## Request state
 
-Request state carries data across the rounds of one input-required flow — the state the client echoes back verbatim when it retries a call. It exists precisely because modern HTTP has no session: it is how a multi-round-trip handler threads a value from the round that asks for input to the round that receives it.
+Request state carries data across the rounds of one input-required flow. On the modern era, that is genuinely the state the client echoes back verbatim when it retries a call. On a legacy connection — sessionful or stateless — nothing is retried: the SDK's legacy shim carries the value itself, re-entering the handler in-process, and the client never sees it (see [one handler, both eras](/concepts/input-required#one-handler-both-eras)). Either way, it exists because a request with no session — modern, or legacy with none — has nowhere else to carry a value from the round that asks for input to the round that receives it.
 
-A handler mints state with `ctx.mintRequestState(payload)`, returns it from `inputRequired({ requestState })`, and reads it back with `ctx.requestState<T>()` on the retry. Because the state passes through the client, it comes back as untrusted input. Configure `FastMCPOptions.requestState` with an HMAC key so every minted state is signed and verified — a tampered or expired state is rejected with `-32602` before your handler runs. Without a key, `mintRequestState` returns an unsigned string and warns; never let unsigned state influence authorization, resource access, or business logic. The [input-required guide](/concepts/input-required) shows request state in a full flow.
+A handler mints state with `ctx.mintRequestState(payload)`, returns it from `inputRequired({ requestState })`, and reads it back with `ctx.requestState<T>()` on the retry. Treat it as untrusted input on every era. On the modern era it genuinely round-trips through the client, so it is attacker-controlled by construction. On a legacy connection the shim keeps it in-process and the client never sees it — but a write-once handler cannot tell from inside itself which era served a given call, so the same signing discipline applies either way. Configure `FastMCPOptions.requestState` with an HMAC key so every minted state is signed and verified — a tampered or expired state is rejected with `-32602` before your handler runs. Without a key, `mintRequestState` returns an unsigned string and warns; never let unsigned state influence authorization, resource access, or business logic. The [input-required guide](/concepts/input-required) shows request state in a full flow.
 
 ## Server-minted handles
 

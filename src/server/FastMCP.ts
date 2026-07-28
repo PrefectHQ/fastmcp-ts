@@ -1,8 +1,8 @@
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import { hostHeaderValidation, originValidation } from "@modelcontextprotocol/node";
 import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
-import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, Server, createMcpHandler, isLegacyRequest, isJsonContentType, createRequestStateCodec, localhostAllowedHostnames, localhostAllowedOrigins, assertCompleteRequestPrompt, assertCompleteRequestResourceTemplate } from "@modelcontextprotocol/server";
-import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, CompleteRequestParams, CompleteResult, McpHttpHandler, McpHandlerRequestOptions, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
+import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, Server, createMcpHandler, legacyStatelessFallback, isLegacyRequest, isJsonContentType, createRequestStateCodec, localhostAllowedHostnames, localhostAllowedOrigins, assertCompleteRequestPrompt, assertCompleteRequestResourceTemplate } from "@modelcontextprotocol/server";
+import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, CompleteRequestParams, CompleteResult, McpHttpHandler, LegacyHttpHandler, McpHandlerRequestOptions, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
 
 // Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
 // mirrors its CACHEABLE_RESULT_METHODS literal union (SEP-2549 cacheable operations).
@@ -24,6 +24,7 @@ import type { AuthCheck } from './auth/authorization'
 import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
+import { envBool } from './env'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
 import { applyTransformChain } from './transform'
@@ -173,6 +174,18 @@ export interface RunOptions {
   port?: number
   host?: string
   path?: string
+  /**
+   * Serve the legacy (2025-era) HTTP transport statelessly: a fresh server and
+   * transport per request, no session registry, incoming `mcp-session-id`
+   * ignored, and no session id issued. Use this behind a load balancer or on
+   * serverless compute where consecutive requests reach different instances.
+   *
+   * Falls back to the `FASTMCP_STATELESS_HTTP` environment variable, then to
+   * `false`. A valid value is ignored for the stdio transport, but a malformed
+   * one still aborts stdio startup, deliberately. The modern (2026-07-28) era
+   * is already stateless and is unaffected.
+   */
+  stateless?: boolean
   /** Custom stdin stream for the stdio transport. Defaults to process.stdin. */
   stdin?: Readable
   /** Custom stdout stream for the stdio transport. Defaults to process.stdout. */
@@ -254,6 +267,17 @@ interface Session {
  * modern era rejects the RPC at the wire seam before the handler runs.
  */
 const RESOURCE_SUBSCRIPTIONS_KEY = '__fastmcp_resource_subscriptions'
+
+/**
+ * Guard message for `resources/subscribe`/`unsubscribe` on a stateless HTTP
+ * server. The server withdraws the `resources.subscribe` capability (see
+ * `_makeServer`), so a compliant client never calls these; this is the
+ * refusal for a non-compliant client that calls them anyway.
+ */
+const STATELESS_SUBSCRIBE_ERROR =
+  '[fastmcp] resources/subscribe and resources/unsubscribe are unavailable on a stateless HTTP server. ' +
+  'A stateless server keeps no session, so a subscription has nowhere to live and no channel to deliver on. ' +
+  'The server does not advertise the resources.subscribe capability; a compliant client will not call this.'
 
 /** Converts a camelCase or PascalCase name to space-separated words. e.g. `getWeather` → `"get weather"` */
 function inferDescription(name: string): string {
@@ -352,6 +376,7 @@ export class FastMCP {
   private _address: ServerAddress | null = null
   private _isRunning = false
   private _sessions = new Map<string, Session>()
+  private _stateless = false
   // Primary server used by connect() (in-process transports — always 2025-era)
   private _primaryServer: Server
   // The pinned Server instance for a run({transport:'stdio'}) connection (2025- or
@@ -365,6 +390,7 @@ export class FastMCP {
   // Modern (2026-07-28) HTTP handler — one per FastMCP instance, lazily created.
   // Builds a fresh Server (via _makeServer) per request; see createMcpHandler.
   private _modernHandler: McpHttpHandler | null = null
+  private _statelessLegacyHandler: LegacyHttpHandler | null = null
 
   private _toolRegisteredCallbacks: Array<(tool: RegisteredTool) => void> = []
   private _resourceRegisteredCallbacks: Array<(resource: RegisteredResource) => void> = []
@@ -429,8 +455,16 @@ export class FastMCP {
    * client here, so nothing needs the era fork the way `subscribe` does. The
    * SDK also requires this capability to be present to register the
    * `completion/complete` handler (`assertRequestHandlerCapability`).
+   *
+   * `stateless` withdraws the same capability for a different reason. A
+   * stateless server has no session for a subscription to live in and no
+   * channel to deliver `notifications/resources/updated` on, so it must not
+   * claim the capability.
    */
-  private _makeServer(sessionState?: Map<string, unknown>, opts?: { modern?: boolean }): Server {
+  private _makeServer(
+    sessionState?: Map<string, unknown>,
+    opts?: { modern?: boolean; stateless?: boolean },
+  ): Server {
     const state = sessionState ?? this._primaryState
     // mimeTypes announces what fastmcp can serve, symmetric with the mimeTypes the
     // client is required to declare on its own extension entry (SEP-1865).
@@ -440,7 +474,7 @@ export class FastMCP {
     const server = new Server(
       { name: this.name, version: this.version },
       {
-        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.modern ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
+        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.modern || opts?.stateless ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
         ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
         ...(this._requestStateCodec
           ? { requestState: { verify: this._requestStateCodec.verify.bind(this._requestStateCodec) } }
@@ -449,7 +483,7 @@ export class FastMCP {
       },
     )
     for (const mw of this._middleware) mw.setup?.(server)
-    this._setupHandlers(server, state)
+    this._setupHandlers(server, state, opts)
     return server
   }
 
@@ -457,10 +491,14 @@ export class FastMCP {
     return toAccessToken(authInfo) ?? await resolveCliEnvToken(this._auth)
   }
 
-  private _setupHandlers(server: Server, sessionState: Map<string, unknown>): void {
+  private _setupHandlers(
+    server: Server,
+    sessionState: Map<string, unknown>,
+    opts?: { stateless?: boolean },
+  ): void {
     server.setRequestHandler('tools/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
           const clientIsUiCapable = isUiCapable(server.getClientCapabilities())
@@ -568,7 +606,7 @@ export class FastMCP {
       const synthTool = synthesizedList.find((s) => s.name === requestedName)
       if (synthTool) {
         if (synthTool.auth) await runAuthCheck(synthTool.auth, token)
-        const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+        const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
         try {
           return await contextStore.run(ctx, () =>
             runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
@@ -588,7 +626,7 @@ export class FastMCP {
                   clearTimeout(timer),
                 )
               }
-              return convertResult(await executePromise)
+              return convertResult(await executePromise, opts?.stateless)
             }),
           )
         } catch (err) {
@@ -622,7 +660,7 @@ export class FastMCP {
 
       const resolvedTool = tool
       const rawArgs: unknown = req.params.arguments ?? {}
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
 
       try {
         return await contextStore.run(ctx, () =>
@@ -647,7 +685,7 @@ export class FastMCP {
 
             let resultValue = await executePromise
             if (resolvedTool.config.output) resultValue = await validateInput(resolvedTool.config.output, resultValue)
-            const callResult = convertResult(resultValue)
+            const callResult = convertResult(resultValue, opts?.stateless)
             // Graceful degradation: strip structuredContent for non-UI clients calling UI tools
             if (resolvedTool.config.ui) {
               const clientIsUi = isUiCapable(server.getClientCapabilities())
@@ -669,7 +707,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
           const allVisible = (
@@ -721,7 +759,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/templates/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
@@ -784,7 +822,7 @@ export class FastMCP {
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
@@ -805,7 +843,7 @@ export class FastMCP {
           }
 
           const result = await executePromise
-          return convertResourceResult(result, requestedUri, resource!.config.mimeType)
+          return convertResourceResult(result, requestedUri, resource!.config.mimeType, opts?.stateless)
         }),
       )
     })
@@ -830,6 +868,7 @@ export class FastMCP {
     // only removes uri from the caller's own subscription set, so an unknown or
     // forbidden uri is a harmless no-op, not an oracle — there is nothing to guard.
     server.setRequestHandler('resources/subscribe', async (req, sdkCtx) => {
+      if (opts?.stateless) throw new ProtocolError(ProtocolErrorCode.MethodNotFound, STATELESS_SUBSCRIBE_ERROR)
       const uri = req.params.uri
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
 
@@ -848,7 +887,7 @@ export class FastMCP {
       // caller: `{}` for a real-but-forbidden URI vs -32602 for an unknown one.
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/subscribe', req.params, ctx, async () => {
@@ -864,9 +903,10 @@ export class FastMCP {
     })
 
     server.setRequestHandler('resources/unsubscribe', async (req, sdkCtx) => {
+      if (opts?.stateless) throw new ProtocolError(ProtocolErrorCode.MethodNotFound, STATELESS_SUBSCRIBE_ERROR)
       const uri = req.params.uri
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/unsubscribe', req.params, ctx, async () => {
@@ -879,7 +919,7 @@ export class FastMCP {
 
     server.setRequestHandler('prompts/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
           const allVisible = (
@@ -967,7 +1007,7 @@ export class FastMCP {
         }
       }
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/get', req.params, ctx, async () => {
@@ -988,7 +1028,7 @@ export class FastMCP {
           // Cast: the SDK infers the handler's return type as GetPromptResult |
           // InputRequiredResult (multi-round-trip); this handler only returns the
           // "complete" shape today. inputRequired(...) support lands separately.
-          return convertPromptResult(await executePromise) as GetPromptResult
+          return convertPromptResult(await executePromise, opts?.stateless) as GetPromptResult
         }),
       )
     })
@@ -1004,7 +1044,7 @@ export class FastMCP {
     // observes it.
     server.setRequestHandler('completion/complete', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'completion/complete', req.params, ctx, async () => {
           const ref = req.params.ref
@@ -1341,6 +1381,13 @@ export class FastMCP {
 
           let resultValue = await executePromise
           if (tool.config.output) resultValue = await validateInput(tool.config.output, resultValue)
+          // Deliberately no `stateless` argument here: this method has no per-server
+          // `opts` in scope (it is only reached via `_mirrorTool`, for a mounted child),
+          // and the stateless-ness that matters is the top-level server actually
+          // serving the wire request, not this child. `_mirrorTool` passes an
+          // InputRequiredResult straight through unwrapped, so it re-enters the
+          // mounting parent's own top-level `convertResult(resultValue, opts?.stateless)`
+          // call, which applies the guard with the correct flag.
           return convertResult(resultValue)
         }),
       )
@@ -1434,6 +1481,11 @@ export class FastMCP {
             clearTimeout(timer),
           )
         }
+        // Deliberately no `stateless` argument — see the matching comment in
+        // `_dispatchTool` above. `_mirrorPrompt` passes an InputRequiredResult
+        // straight through unwrapped, so it re-enters the mounting parent's own
+        // top-level `convertPromptResult(await executePromise, opts?.stateless)`
+        // call, which applies the guard with the correct top-level flag.
         return convertPromptResult(await executePromise)
       }),
     )
@@ -1457,6 +1509,14 @@ export class FastMCP {
       // own convertResult passes it through unchanged) or an InputRequiredResult
       // (multi-round-trip escape hatch — already recognized directly by convertResult,
       // must not be wrapped).
+      //
+      // LOAD-BEARING for the stateless inputRequests guard: if this ever wraps an
+      // InputRequiredResult too, the parent's top-level convertResult takes the
+      // `instanceof ToolResult` branch instead of the `isInputRequiredResult` one, which
+      // skips assertInputRequestsAllowedStateless (mrtr.ts) entirely — a stateless legacy
+      // client would then receive an unusable inputRequests result with no error. See the
+      // matching comment on `_dispatchTool` above (this method's counterpart on the other
+      // side of the coupling).
       return child._dispatchTool(originalName, args, childCtx).then((result) =>
         isInputRequiredResult(result) ? result : new ToolResult(result),
       )
@@ -1490,6 +1550,10 @@ export class FastMCP {
     const forwardedConfig: PromptConfig = { ...(prompt.config as PromptConfig), name: key }
     this.prompt(forwardedConfig, (args?: Record<string, string>) => {
       const ctx = contextStore.getStore()!
+      // LOAD-BEARING for the stateless inputRequests guard, same reasoning as _mirrorTool's
+      // matching comment above: wrapping an InputRequiredResult here would skip the parent's
+      // top-level convertPromptResult -> assertInputRequestsAllowedStateless (mrtr.ts) check,
+      // silently handing a stateless legacy client an unusable inputRequests result.
       return child._dispatchPrompt(originalName, args ?? {}, ctx).then((result) =>
         isInputRequiredResult(result) ? result : new PromptResult(result.messages, result.description),
       )
@@ -1735,6 +1799,10 @@ export class FastMCP {
     const host = options?.host ?? process.env.MCP_HOST ?? '127.0.0.1'
     const path = options?.path ?? process.env.MCP_PATH ?? '/mcp'
 
+    // Resolved for every transport so a malformed value fails loudly at startup
+    // regardless of how the server is being served. Only the http path reads it.
+    this._stateless = options?.stateless ?? envBool('FASTMCP_STATELESS_HTTP') ?? false
+
     if (transport === 'stdio') {
       const { StdioServerTransport, serveStdio } = await import('@modelcontextprotocol/server/stdio')
       const stdioTransport = new StdioServerTransport(options?.stdin, options?.stdout)
@@ -1783,6 +1851,25 @@ export class FastMCP {
     return this._modernHandler
   }
 
+  /** Lazily builds the stateless legacy (2025-era) HTTP handler. One per FastMCP
+   * instance, mirroring _getModernHandler's per-instance, per-request-factory model.
+   *
+   * The SDK serves each POST from a fresh instance of the factory over a transport
+   * built with `sessionIdGenerator: undefined`, and answers GET and DELETE with 405
+   * because both are session operations that mean nothing per request.
+   *
+   * Only reachable when `_stateless` is on. The sessionful transport in
+   * _dispatchLegacyHttp is untouched and still serves every other deployment. */
+  private _getStatelessLegacyHandler(): LegacyHttpHandler {
+    if (!this._statelessLegacyHandler) {
+      this._statelessLegacyHandler = legacyStatelessFallback(
+        () => this._makeServer(new Map(), { stateless: true }),
+        (error) => console.error('[fastmcp] stateless legacy serving failed:', error),
+      )
+    }
+    return this._statelessLegacyHandler
+  }
+
   /**
    * Dual-era HTTP dispatch shared by the OAuth and non-OAuth serve paths. Assumes CORS
    * and auth have already been handled by the caller (req.auth already set, if any —
@@ -1817,7 +1904,17 @@ export class FastMCP {
     const parsedBody = req.method === 'POST' ? await request.json().catch(() => undefined) : undefined
 
     if (legacy) {
-      await this._dispatchLegacyHttp(req, res, parsedBody)
+      // Stateless serves 2025-era traffic per request through the SDK's own
+      // stateless leg, so consecutive requests may land on different instances.
+      // Sessionful serving is the default and keeps the in-memory session map.
+      if (this._stateless) {
+        // toNodeHandler wants a `{ fetch }`-shaped handler (FetchLikeMcpHandler);
+        // LegacyHttpHandler is the bare fetch-shaped function itself, so wrap it
+        // rather than widening toNodeHandler's own parameter type.
+        await toNodeHandler({ fetch: this._getStatelessLegacyHandler() })(req, res, parsedBody)
+      } else {
+        await this._dispatchLegacyHttp(req, res, parsedBody)
+      }
     } else {
       await toNodeHandler(this._getModernHandler())(req, res, parsedBody)
     }
@@ -2040,6 +2137,13 @@ export class FastMCP {
       await this._modernHandler.close()
       this._modernHandler = null
     }
+
+    // LegacyHttpHandler is a bare fetch-shaped function (no `.close()` to call), but it
+    // still gets nulled out here, symmetric with `_modernHandler` above: both are
+    // per-instance, lazily-built handlers (see `_getStatelessLegacyHandler`'s doc
+    // comment), and leaving this one set after close() would serve a stale handler
+    // instance if the server is run() again instead of rebuilding a fresh one.
+    this._statelessLegacyHandler = null
 
     if (this._stdioHandle) {
       await this._stdioHandle.close()
