@@ -6,6 +6,10 @@ TypeScript/Node.js implementation of [FastMCP](https://github.com/PrefectHQ/fast
 
 When writing, revising, reorganizing, or reviewing anything in `docs/` (concept guides, feature pages, API references, tutorials, or docstrings that compile into the docs), follow the conventions in the `writing-documentation` skill at `.claude/skills/writing-documentation/SKILL.md`. The docs site is Mintlify, configured in `docs/docs.json`.
 
+## Releases
+
+Releases are automated with changesets. On every push to `main`, the Release workflow (`.github/workflows/release.yml`) opens or updates the "Version Packages" PR from the files in `.changeset/`, and publishes to npm when that PR merges. No changeset file → no version bump → no release. Any PR that changes npm-visible behavior (published code under `src/`, the CLI, dependencies, build config) must include a changeset: run `npx changeset` and pick the semver level. Docs-site-only (`docs/`) and CI-only changes need none.
+
 ## Key decisions
 
 **Runtime:** Node.js only. No browser support.
