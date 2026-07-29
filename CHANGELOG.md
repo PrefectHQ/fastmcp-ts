@@ -1,5 +1,15 @@
 # @prefecthq/fastmcp-ts
 
+## 1.1.0
+
+### Minor Changes
+
+- 738fd3b: Add `--format fastmcp` to `fastmcp inspect`. The flag emits a snake_case manifest with the same field set the Python FastMCP CLI produces for its `--format fastmcp`, so cross-language consumers (Horizon) can parse one manifest shape from both stacks. The default `--json` output is unchanged.
+
+### Patch Changes
+
+- e826045: Version negotiation now defaults to `{ mode: 'auto' }` everywhere — the client probes once with `server/discover` at connect, uses the modern (2026-07-28) era when the server offers it, and falls back to the plain legacy `initialize` handshake otherwise. This applies to `Client`, `MultiServerClient`, and every connecting CLI command. Pass `versionNegotiation: { mode: 'legacy' }` (or the new CLI `--legacy` flag) for the old probe-free legacy behavior; the CLI `--modern` flag is now a deprecated no-op. `{ pin }` is unchanged.
+
 ## 1.0.0
 
 ### Major Changes
