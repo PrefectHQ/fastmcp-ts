@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/client'
 import { toNodeHandler } from '@modelcontextprotocol/node'
 import { Server, createMcpHandler } from '@modelcontextprotocol/server'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Client, MultiServerClient } from 'fastmcp-ts/client'
 import type { ClientOptions } from 'fastmcp-ts/client'
 
@@ -23,8 +23,8 @@ async function connectLegacyServer(options?: ClientOptions) {
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
   await server.connect(serverTransport)
   const client = await Client.connect(clientTransport, {
-    versionNegotiation: { mode: 'legacy' },
     ...options,
+    versionNegotiation: { mode: 'legacy' },
   })
   return { client, server }
 }
@@ -108,15 +108,8 @@ describe('Client capabilities', () => {
 })
 
 describe('Client capabilities on the modern wire', () => {
-  let cleanup: (() => Promise<void>) | undefined
-
-  afterEach(async () => {
-    await cleanup?.()
-    cleanup = undefined
-  })
-
   it('includes the extension in per-request client-capabilities metadata', async () => {
-    const receivedCapabilities: unknown[] = []
+    let receivedCapabilities: unknown
     const server = new Server(
       { name: 'test', version: '1.0.0' },
       { capabilities: { tools: {} } },
@@ -124,7 +117,7 @@ describe('Client capabilities on the modern wire', () => {
     server.setRequestHandler('tools/list', async (_request, ctx) => {
       const envelope = (ctx as { mcpReq?: { envelope?: Record<string, unknown> } }).mcpReq
         ?.envelope
-      receivedCapabilities.push(envelope?.[CLIENT_CAPABILITIES_META_KEY])
+      receivedCapabilities = envelope?.[CLIENT_CAPABILITIES_META_KEY]
       return { tools: [] }
     })
 
@@ -140,13 +133,13 @@ describe('Client capabilities on the modern wire', () => {
       capabilities: UI_EXTENSION,
       versionNegotiation: { mode: { pin: '2026-07-28' } },
     })
-    cleanup = async () => {
+    try {
+      await client.listTools()
+      expect(receivedCapabilities).toEqual(UI_EXTENSION)
+    } finally {
       await client.close()
       await handler.close()
       await new Promise<void>((resolve) => httpServer.close(() => resolve()))
     }
-
-    await client.listTools()
-    expect(receivedCapabilities).toEqual([UI_EXTENSION])
   })
 })

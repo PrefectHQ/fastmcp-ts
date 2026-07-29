@@ -35,9 +35,8 @@ export interface ClientOptions {
   auth?: BearerAuth | OAuth | AsyncHeaderAuth | string
   handlers?: ClientHandlers
   /**
-   * Additional capabilities to advertise to the server. FastMCP combines them
-   * with capabilities inferred from handlers and roots; inferred values win
-   * exact conflicts because they describe behavior FastMCP implements.
+   * Additional capabilities to advertise to the server. FastMCP preserves
+   * their settings while adding capabilities inferred from handlers and roots.
    */
   capabilities?: ClientCapabilities
   /**

@@ -6,7 +6,6 @@ interface InferredClientCapabilities {
   rootsListChanged?: boolean
 }
 
-/** Build the capabilities advertised by a FastMCP client. */
 export function buildClientCapabilities(
   supplied: ClientCapabilities | undefined,
   inferred: InferredClientCapabilities,
@@ -21,13 +20,10 @@ export function buildClientCapabilities(
   }
 
   if (inferred.elicitation) {
-    capabilities.elicitation =
-      supplied?.elicitation === undefined
-        ? {}
-        : {
-            ...supplied.elicitation,
-            form: supplied.elicitation.form ?? {},
-          }
+    const elicitation = supplied?.elicitation
+    capabilities.elicitation = elicitation
+      ? { ...elicitation, form: elicitation.form ?? {} }
+      : {}
   }
 
   if (inferred.rootsListChanged !== undefined) {
