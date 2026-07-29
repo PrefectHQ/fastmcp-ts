@@ -11,6 +11,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A PR that changes npm-visible files must carry a changeset — without one
+  # the Release workflow versions nothing and silently ships no release
+  # (AGENTS.md "Releases"). Docs-site-only and CI-only PRs pass with no
+  # changeset. An intentional no-release change opts out with
+  # `npx changeset --empty`. Push builds on main skip the job: there is no
+  # PR diff to police there, and the changesets already merged.
+  changeset-guard:
+    name: Changeset guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, so the merge base with the PR's target branch
+          # exists for the three-dot diff and `changeset status --since`.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Require a changeset for npm-visible changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        # The path filter runs before `npm ci`, so docs/CI-only PRs pass in
+        # seconds without an install. `changeset status --since` then also
+        # parse-validates the changeset files (bad frontmatter or a wrong
+        # package name fails here instead of in the Release run on main).
+        run: |
+          base="origin/$BASE_REF"
+          changed=$(git diff --name-only "$base...HEAD")
+          echo "Changed files vs $base:"
+          echo "$changed"
+          npm_visible=$(echo "$changed" | grep -E '^(src/|package\.json$|package-lock\.json$|tsup\.config\.ts$|tsconfig\.json$)' || true)
+          if [ -z "$npm_visible" ]; then
+            echo "No npm-visible changes; no changeset required."
+            exit 0
+          fi
+          echo "npm-visible changes:"
+          echo "$npm_visible"
+          added_changesets=$(echo "$changed" | grep -E '^\.changeset/.+\.md$' | grep -vE 'README\.md$' || true)
+          if [ -z "$added_changesets" ]; then
+            echo "::error::This PR changes npm-visible files but contains no changeset. Run 'npx changeset' (or 'npx changeset --empty' for an intentional no-release change) and commit the generated file."
+            exit 1
+          fi
+          echo "Changeset(s) in this PR:"
+          echo "$added_changesets"
+          npm ci
+          npx changeset status --since="$base"
+
   test:
     name: Test (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
