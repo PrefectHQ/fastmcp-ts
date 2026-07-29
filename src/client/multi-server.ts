@@ -1,7 +1,8 @@
 import type { LoggingLevel, RequestOptions as SdkRequestOptions } from "@modelcontextprotocol/server";
 import { Client as SdkClient, LOG_LEVEL_META_KEY } from '@modelcontextprotocol/client'
-import type { McpSubscription, VersionNegotiationOptions, ProtocolEra } from '@modelcontextprotocol/client'
+import type { ClientCapabilities, McpSubscription, VersionNegotiationOptions, ProtocolEra } from '@modelcontextprotocol/client'
 import type { BearerAuth, OAuth, ClientCredentials } from './auth.js'
+import { buildClientCapabilities } from './capabilities.js'
 import type { ClientHandlers, LogHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
 import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
@@ -19,7 +20,7 @@ import type {
 } from './results.js'
 import type { McpConfig, McpServerValue } from './transports.js'
 import { resolveEntryTransport } from './transports.js'
-import type { ClientDefaultOptions } from './client.js'
+import type { ClientDefaultOptions } from './options.js'
 import { ToolCallError } from './client.js'
 // ---------------------------------------------------------------------------
 // Options
@@ -27,6 +28,11 @@ import { ToolCallError } from './client.js'
 
 export interface MultiServerOptions {
   handlers?: ClientHandlers
+  /**
+   * Additional capabilities to advertise to every server. FastMCP combines
+   * them with capabilities inferred from handlers and roots.
+   */
+  capabilities?: ClientCapabilities
   /** file:// URIs to advertise to all servers as accessible roots. */
   roots?: string[]
   defaultOptions?: ClientDefaultOptions
@@ -63,6 +69,7 @@ export class MultiServerClient implements IClient {
     elicitation?: ClientHandlers['elicitation']
   }
   private readonly _roots: string[] | undefined
+  private readonly _capabilities: ClientCapabilities
   private readonly _defaultOptions: ClientDefaultOptions
   private readonly _versionNegotiation: VersionNegotiationOptions
   private _resourceSubscriptions: Map<string, ResourceUpdateHandler> = new Map()
@@ -87,6 +94,11 @@ export class MultiServerClient implements IClient {
     }
     this._versionNegotiation = options?.versionNegotiation ?? { mode: 'auto' }
     this._roots = options?.roots
+    this._capabilities = buildClientCapabilities(options?.capabilities, {
+      sampling: this._handlers.sampling !== undefined,
+      elicitation: this._handlers.elicitation !== undefined,
+      rootsListChanged: this._roots === undefined ? undefined : false,
+    })
     this._defaultOptions = options?.defaultOptions ?? {}
   }
 
@@ -591,18 +603,10 @@ export class MultiServerClient implements IClient {
     return new SdkClient(
       { name: 'fastmcp-ts', version: '1.0.0' },
       {
-        capabilities: this._buildCapabilities(),
+        capabilities: this._capabilities,
         versionNegotiation: this._versionNegotiation,
       },
     )
-  }
-
-  private _buildCapabilities() {
-    return {
-      ...(this._handlers.sampling ? { sampling: { tools: {} } } : {}),
-      ...(this._handlers.elicitation ? { elicitation: {} } : {}),
-      ...(this._roots ? { roots: { listChanged: false } } : {}),
-    }
   }
 
   private _registerHandlers(sdk: SdkClient): void {

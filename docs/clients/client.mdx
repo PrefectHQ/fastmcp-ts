@@ -68,6 +68,28 @@ const pinnedToLegacy = await Client.connect('http://localhost:3000', {
 
 The `fastmcp` [CLI](/cli) follows the same default on every transport, and its `--legacy` flag maps to `{ mode: 'legacy' }`.
 
+## Client capabilities
+
+Client capabilities tell a server which optional protocol features the client can actually use. FastMCP infers capabilities for configured sampling and elicitation handlers and for roots. You can add capabilities for other features through `ClientOptions.capabilities`. FastMCP preserves your settings while ensuring capabilities backed by configured handlers and roots remain enabled, so advertising an extension does not remove inferred support.
+
+Extensions live in the `extensions` capability map. Each key is a namespaced extension identifier, and its value contains settings defined by that extension. Advertise only extensions your host implements. Extensions are opt-in, and a server that does not recognize one can continue with core MCP behavior.
+
+```typescript
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('http://localhost:3000', {
+  capabilities: {
+    extensions: {
+      'com.example/rich-output': {
+        formats: ['application/vnd.example.card+json'],
+      },
+    },
+  },
+})
+
+await client.close()
+```
+
 ## Error handling
 
 `callTool()` throws a `ToolCallError` when the server returns `isError: true`. The error carries the server's content blocks on its `content` field:
