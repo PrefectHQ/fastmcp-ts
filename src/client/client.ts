@@ -1,7 +1,7 @@
 import { UnauthorizedError, Client as SdkClient, LOG_LEVEL_META_KEY } from "@modelcontextprotocol/client";
 import type {
+  CacheableRequestOptions as SdkCacheableRequestOptions,
   ClientCapabilities,
-  RequestOptions as SdkRequestOptions,
   McpSubscription,
   VersionNegotiationOptions,
   ProtocolEra,
@@ -17,7 +17,7 @@ import { buildClientCapabilities } from './capabilities.js'
 import type { AsyncHeaderAuth } from './auth.js'
 import type { ClientHandlers, ListChangedHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
-import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
+import type { CacheableRequestOptions, CallToolOptions, IClient, RequestOptions } from './interfaces.js'
 import type {
   ClientDefaultOptions,
   ClientOptions,
@@ -371,7 +371,7 @@ export class Client implements IClient {
   // Tools (IToolsClient)
   // -------------------------------------------------------------------------
 
-  async listTools(options?: RequestOptions): Promise<Tool[]> {
+  async listTools(options?: CacheableRequestOptions): Promise<Tool[]> {
     const result = await this._reauthRetry(() =>
       this._sdk().listTools(
         this._metaParams(),
@@ -423,7 +423,7 @@ export class Client implements IClient {
   // Resources (IResourcesClient)
   // -------------------------------------------------------------------------
 
-  async listResources(options?: RequestOptions): Promise<Resource[]> {
+  async listResources(options?: CacheableRequestOptions): Promise<Resource[]> {
     const result = await this._reauthRetry(() =>
       this._sdk().listResources(
         this._metaParams(),
@@ -433,7 +433,7 @@ export class Client implements IClient {
     return result.resources as Resource[]
   }
 
-  async listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]> {
+  async listResourceTemplates(options?: CacheableRequestOptions): Promise<ResourceTemplate[]> {
     const result = await this._reauthRetry(() =>
       this._sdk().listResourceTemplates(
         this._metaParams(),
@@ -445,7 +445,7 @@ export class Client implements IClient {
 
   async readResource(
     uri: string,
-    options?: RequestOptions,
+    options?: CacheableRequestOptions,
   ): Promise<Array<TextResourceContents | BlobResourceContents>> {
     const result = await this._reauthRetry(() =>
       this._sdk().readResource(
@@ -457,7 +457,7 @@ export class Client implements IClient {
   }
 
   /** Returns the raw SDK ReadResourceResult without unwrapping. */
-  async readResourceRaw(uri: string, options?: RequestOptions) {
+  async readResourceRaw(uri: string, options?: CacheableRequestOptions) {
     return this._reauthRetry(() =>
       this._sdk().readResource(
         { uri, ...this._metaParams() },
@@ -548,7 +548,7 @@ export class Client implements IClient {
   // Prompts (IPromptsClient)
   // -------------------------------------------------------------------------
 
-  async listPrompts(options?: RequestOptions): Promise<Prompt[]> {
+  async listPrompts(options?: CacheableRequestOptions): Promise<Prompt[]> {
     const result = await this._reauthRetry(() =>
       this._sdk().listPrompts(
         this._metaParams(),
@@ -762,17 +762,18 @@ export class Client implements IClient {
   }
 
   private _toSdkOptions(
-    options?: RequestOptions,
+    options?: CacheableRequestOptions,
     overrideProgress?: ProgressHandler,
     scopedTimeoutSeconds?: number,
-  ): SdkRequestOptions {
+  ): SdkCacheableRequestOptions {
     const timeoutSeconds =
       options?.timeout ?? scopedTimeoutSeconds ?? this._defaultOptions.timeout
     const progressHandler = overrideProgress ?? this._handlers.progress
 
-    const sdkOptions: SdkRequestOptions = {}
+    const sdkOptions: SdkCacheableRequestOptions = {}
     if (timeoutSeconds != null) sdkOptions.timeout = timeoutSeconds * 1000
     if (options?.signal) sdkOptions.signal = options.signal
+    if (options?.cacheMode) sdkOptions.cacheMode = options.cacheMode
     if (progressHandler) {
       sdkOptions.onprogress = ({ progress, total, message }) => {
         void progressHandler(progress, total, message)

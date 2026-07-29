@@ -1,11 +1,22 @@
-import type { LoggingLevel, RequestOptions as SdkRequestOptions } from "@modelcontextprotocol/server";
+import type { LoggingLevel } from "@modelcontextprotocol/server";
 import { Client as SdkClient, LOG_LEVEL_META_KEY } from '@modelcontextprotocol/client'
-import type { ClientCapabilities, McpSubscription, VersionNegotiationOptions, ProtocolEra } from '@modelcontextprotocol/client'
+import type {
+  CacheableRequestOptions as SdkCacheableRequestOptions,
+  ClientCapabilities,
+  McpSubscription,
+  VersionNegotiationOptions,
+  ProtocolEra,
+} from '@modelcontextprotocol/client'
 import type { BearerAuth, OAuth, ClientCredentials } from './auth.js'
 import { buildClientCapabilities } from './capabilities.js'
 import type { ClientHandlers, LogHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
-import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
+import type {
+  CacheableRequestOptions,
+  CallToolOptions,
+  IClient,
+  RequestOptions,
+} from './interfaces.js'
 import type {
   CallToolResult,
   CompletionResult,
@@ -220,7 +231,7 @@ export class MultiServerClient implements IClient {
   // Tools
   // -------------------------------------------------------------------------
 
-  async listTools(options?: RequestOptions): Promise<Tool[]> {
+  async listTools(options?: CacheableRequestOptions): Promise<Tool[]> {
     this._assertConnected()
     const results = await Promise.all(
       [...this._clients.entries()].map(async ([name, sdk]) => {
@@ -278,7 +289,7 @@ export class MultiServerClient implements IClient {
   // Resources
   // -------------------------------------------------------------------------
 
-  async listResources(options?: RequestOptions): Promise<Resource[]> {
+  async listResources(options?: CacheableRequestOptions): Promise<Resource[]> {
     this._assertConnected()
     const results = await Promise.all(
       [...this._clients.entries()].map(async ([name, sdk]) => {
@@ -299,7 +310,7 @@ export class MultiServerClient implements IClient {
     return results.flat()
   }
 
-  async listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]> {
+  async listResourceTemplates(options?: CacheableRequestOptions): Promise<ResourceTemplate[]> {
     this._assertConnected()
     const results = await Promise.all(
       [...this._clients.entries()].map(async ([name, sdk]) => {
@@ -322,7 +333,7 @@ export class MultiServerClient implements IClient {
 
   async readResource(
     uri: string,
-    options?: RequestOptions,
+    options?: CacheableRequestOptions,
   ): Promise<Array<TextResourceContents | BlobResourceContents>> {
     this._assertConnected()
     const sdkOptions = this._toSdkOptions(
@@ -359,7 +370,7 @@ export class MultiServerClient implements IClient {
   // Prompts
   // -------------------------------------------------------------------------
 
-  async listPrompts(options?: RequestOptions): Promise<Prompt[]> {
+  async listPrompts(options?: CacheableRequestOptions): Promise<Prompt[]> {
     this._assertConnected()
     const results = await Promise.all(
       [...this._clients.entries()].map(async ([name, sdk]) => {
@@ -651,17 +662,18 @@ export class MultiServerClient implements IClient {
   }
 
   private _toSdkOptions(
-    options?: RequestOptions,
+    options?: CacheableRequestOptions,
     overrideProgress?: ProgressHandler,
     scopedTimeoutSeconds?: number,
-  ): SdkRequestOptions {
+  ): SdkCacheableRequestOptions {
     const timeoutSeconds =
       options?.timeout ?? scopedTimeoutSeconds ?? this._defaultOptions.timeout
     const progressHandler = overrideProgress ?? this._handlers.progress
 
-    const sdkOptions: SdkRequestOptions = {}
+    const sdkOptions: SdkCacheableRequestOptions = {}
     if (timeoutSeconds != null) sdkOptions.timeout = timeoutSeconds * 1000
     if (options?.signal) sdkOptions.signal = options.signal
+    if (options?.cacheMode) sdkOptions.cacheMode = options.cacheMode
     if (progressHandler) {
       sdkOptions.onprogress = ({ progress, total, message }) => {
         void progressHandler(progress, total, message)
