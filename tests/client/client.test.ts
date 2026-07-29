@@ -101,7 +101,12 @@ describe('Client', () => {
       expect(result.content[0]).toMatchObject({ type: 'text', text: 'hello world' })
     })
 
-    it('getProtocolEra() is "legacy" for the default in-process (InMemoryTransport) connection', async () => {
+    it('the auto default lands "legacy" in process — the InMemoryTransport pairing is a 2025-era wire, so the probe falls back', async () => {
+      // The default is { mode: 'auto' }, but an in-process McpServerLike
+      // connection routes through InMemoryTransport unless the modern era is
+      // PINNED (see isPinnedModern in src/client/transports.ts). The probe
+      // answers method-not-found over the 2025-era pairing and negotiation
+      // falls back to legacy.
       const client = await Client.connect(makeServer())
       await using _ = client
       expect(client.getProtocolEra()).toBe('legacy')
@@ -178,6 +183,49 @@ describe('Client', () => {
       const tools = await client.listTools()
       expect(tools.some((t) => t.name === 'echo')).toBe(true)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Default era negotiation over real HTTP: the library default is
+// { mode: 'auto' } — one server/discover probe at connect, modern when the
+// server offers it, legacy fallback otherwise. A FastMCP server is dual-era,
+// so the default lands modern over HTTP; { mode: 'legacy' } is the explicit
+// opt-out and skips the probe.
+// ---------------------------------------------------------------------------
+
+describe('Client — default era negotiation over HTTP', () => {
+  let mcp: FastMCP | undefined
+  let url: string
+
+  async function startHttp(): Promise<string> {
+    mcp = makeServer('http-era')
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port, path } = mcp.address!
+    return `http://127.0.0.1:${port}${path}`
+  }
+
+  afterEach(async () => {
+    await mcp?.close()
+    mcp = undefined
+  })
+
+  it('the default (no versionNegotiation) negotiates modern against a dual-era FastMCP server', async () => {
+    url = await startHttp()
+    await using client = await Client.connect(url)
+    expect(client.getProtocolEra()).toBe('modern')
+    const tools = await client.listTools()
+    expect(tools.some((t) => t.name === 'echo')).toBe(true)
+  })
+
+  it("explicit { mode: 'legacy' } opts out: the same HTTP path negotiates legacy with no probe", async () => {
+    url = await startHttp()
+    await using client = await Client.connect(url, {
+      versionNegotiation: { mode: 'legacy' },
+    })
+    expect(client.getProtocolEra()).toBe('legacy')
+    const tools = await client.listTools()
+    expect(tools.some((t) => t.name === 'echo')).toBe(true)
   })
 })
 

@@ -16,7 +16,11 @@
  *     (conformance main / 0.2.x set it to the scenario's revision, e.g.
  *     `2026-07-28` for the SEP-2243 header scenarios; pinned 0.1.16 does not
  *     set it). We read it so those scenarios negotiate the modern era; when
- *     absent the fixture keeps the legacy handshake.
+ *     absent the fixture PINS the legacy handshake explicitly. The library
+ *     default is `{ mode: 'auto' }`, but the pinned 0.1.16 suite's servers
+ *     speak the 2025 era only — pinning legacy keeps every scenario
+ *     byte-identical to the recorded expectations (no `server/discover`
+ *     probe ahead of `initialize`).
  *
  * The client registers sampling + elicitation handlers so server-driven round
  * trips (MRTR / legacy sampling + elicitation) resolve, then drives the tool
@@ -67,11 +71,13 @@ const serverUrl = process.argv[process.argv.length - 1]
 const scenario = process.env.MCP_CONFORMANCE_SCENARIO ?? '(none)'
 const protocolVersion = process.env.MCP_CONFORMANCE_PROTOCOL_VERSION
 
-// 2026-07-28 selects the modern era (auto-negotiate, fall back to legacy);
-// anything else keeps the default legacy handshake. The conformance test
-// servers (0.1.16) speak 2025-era, so this resolves to legacy in practice.
+// 2026-07-28 (set by conformance-main) selects { mode: 'auto' }; anything
+// else pins { mode: 'legacy' } explicitly. The pinned 0.1.16 suite's servers
+// speak the 2025 era only, so the explicit legacy pin keeps those scenarios
+// probe-free and byte-identical — the fixture must not lean on the library
+// default, which is now { mode: 'auto' }.
 const versionNegotiation =
-  protocolVersion === '2026-07-28' ? ({ mode: 'auto' } as const) : undefined
+  protocolVersion === '2026-07-28' ? ({ mode: 'auto' } as const) : ({ mode: 'legacy' } as const)
 
 // --- Optional per-scenario context (OAuth params, scripted tool calls) ---
 type ScriptedToolCall = { name: string; arguments?: Record<string, unknown> }
@@ -312,7 +318,7 @@ async function main(): Promise<void> {
   const auth = await buildAuth()
   const client = new Client(serverUrl, {
     handlers: { sampling, elicitation },
-    ...(versionNegotiation ? { versionNegotiation } : {}),
+    versionNegotiation,
     ...(auth ? { auth } : {}),
   })
 

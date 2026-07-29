@@ -293,6 +293,42 @@ describe.sequential('CLI — inspect --format fastmcp', () => {
     expect(data.tools.map((t: { key: string }) => t.key)).toContain('tool:echo@')
   })
 
+  it('the manifest is era-invariant except negotiated capabilities: default (auto → modern) vs --legacy', async () => {
+    // Regression guard for the auto-negotiation default: the fastmcp manifest
+    // must not depend on which era the inspection connection negotiated. The
+    // default probes and lands modern (FastMCP servers are dual-era); --legacy
+    // skips the probe and runs the 2025 handshake.
+    //
+    // One justified difference exists, asserted explicitly below: the legacy
+    // initialize result advertises `resources.subscribe: true`, while the
+    // modern discover result does not — the 2026-07-28 era removes the
+    // resources/subscribe RPC in favor of a subscriptions/listen stream, so
+    // the flag is a per-era negotiated capability, not server metadata.
+    // Everything else must match field-for-field.
+    const auto = await runCli(
+      ['--quiet', 'inspect', '--file', MANIFEST_SERVER, '--format', 'fastmcp'],
+      { timeout: 25_000 },
+    )
+    expect(auto.exitCode).toBe(0)
+    const legacy = await runCli(
+      ['--quiet', 'inspect', '--file', MANIFEST_SERVER, '--format', 'fastmcp', '--legacy'],
+      { timeout: 25_000 },
+    )
+    expect(legacy.exitCode).toBe(0)
+
+    const autoData = JSON.parse(auto.stdout)
+    const legacyData = JSON.parse(legacy.stdout)
+
+    // The one era-dependent field, asserted exactly.
+    expect(legacyData.server.capabilities.resources).toEqual({ listChanged: true, subscribe: true })
+    expect(autoData.server.capabilities.resources).toEqual({ listChanged: true })
+
+    // Field-for-field equality everywhere else.
+    delete autoData.server.capabilities.resources
+    delete legacyData.server.capabilities.resources
+    expect(autoData).toEqual(legacyData)
+  }, 60_000)
+
   it('rejects an unknown --format value', async () => {
     const { exitCode, stderr } = await runCli(['inspect', '--file', SIMPLE_SERVER, '--format', 'yaml'])
     expect(exitCode).not.toBe(0)
@@ -979,11 +1015,23 @@ describe.sequential('CLI — call (--file flag)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// era negotiation — stdio / in-process (--modern, --pin)
+// era negotiation — stdio / in-process (auto default, --legacy, --pin;
+// --modern is a deprecated no-op)
 // ---------------------------------------------------------------------------
 
 describe.sequential('CLI — era negotiation (stdio / in-process)', () => {
-  it('--file --modern against a dual-era FastMCP server succeeds', async () => {
+  it('default (no era flags) over --file probes and negotiates against a dual-era FastMCP server', async () => {
+    // The default is { mode: 'auto' } on every transport. The CLI does not
+    // print the negotiated era; the library tests assert the negotiation
+    // itself, so this asserts the probing default connects and lists.
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', FASTMCP_HTTP_SERVER,
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--file --modern is a deprecated no-op (auto-negotiation is already the default)', async () => {
     const { exitCode, stderr } = await runCli([
       'list', '--file', FASTMCP_HTTP_SERVER, '--modern',
     ], { timeout: 20_000 })
@@ -991,9 +1039,9 @@ describe.sequential('CLI — era negotiation (stdio / in-process)', () => {
     expect(stderr).toMatch(/echo/)
   })
 
-  it('--command --modern against a legacy-only stdio server still succeeds (probe falls back)', async () => {
+  it('--command against a legacy-only stdio server still succeeds (the default probe falls back)', async () => {
     const { exitCode, stderr } = await runCli([
-      'list', '--command', `node ${SIMPLE_SERVER}`, '--modern',
+      'list', '--command', `node ${SIMPLE_SERVER}`,
     ])
     expect(exitCode).toBe(0)
     expect(stderr).toMatch(/echo/)
@@ -1034,11 +1082,27 @@ describe.sequential('CLI — era negotiation (stdio / in-process)', () => {
     expect(stderr).toMatch(/echo/)
   })
 
-  it('default (no --modern/--pin) behavior over --file is unchanged (legacy)', async () => {
+  it('default over --file against a legacy-only server still succeeds (the probe falls back to legacy)', async () => {
     const { exitCode, stderr } = await runCli(['list', '--file', SIMPLE_SERVER])
     expect(exitCode).toBe(0)
     expect(stderr).toMatch(/echo/)
     expect(stderr).toMatch(/add/)
+  })
+
+  it('--file --legacy skips the probe and connects over the plain legacy handshake', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', FASTMCP_HTTP_SERVER, '--legacy',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--legacy and --pin together: --pin governs and the connection succeeds', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--file', FASTMCP_HTTP_SERVER, '--legacy', '--pin', '2026-07-28',
+    ], { timeout: 20_000 })
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
   })
 
   it('--file --pin <version the server does not offer> exits non-zero with the mapped message', async () => {
@@ -1331,7 +1395,8 @@ describe.sequential('CLI — list (URL mode)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// era negotiation — HTTP (--modern is a no-op; --pin overrides auto default)
+// era negotiation — HTTP (auto default, --legacy opt-out, --pin override;
+// --modern is a deprecated no-op)
 // ---------------------------------------------------------------------------
 
 describe.sequential('CLI — era negotiation (HTTP)', () => {
@@ -1365,9 +1430,17 @@ describe.sequential('CLI — era negotiation (HTTP)', () => {
     expect(stderr).toMatch(/echo/)
   })
 
-  it('--url --modern is a harmless no-op (HTTP already defaults to auto)', async () => {
+  it('--url --modern is a deprecated no-op (every transport defaults to auto)', async () => {
     const { exitCode, stderr } = await runCli([
       'list', '--url', `http://localhost:${port}/mcp`, '--modern',
+    ])
+    expect(exitCode).toBe(0)
+    expect(stderr).toMatch(/echo/)
+  })
+
+  it('--url --legacy opts out of the probe and connects over the plain legacy handshake', async () => {
+    const { exitCode, stderr } = await runCli([
+      'list', '--url', `http://localhost:${port}/mcp`, '--legacy',
     ])
     expect(exitCode).toBe(0)
     expect(stderr).toMatch(/echo/)

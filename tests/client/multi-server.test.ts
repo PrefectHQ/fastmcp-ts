@@ -328,10 +328,25 @@ describe('Client — Multi-server', () => {
   // -------------------------------------------------------------------------
 
   describe('versionNegotiation', () => {
-    it('with no versionNegotiation, every server negotiates legacy era', async () => {
+    it('with no versionNegotiation, in-process entries land legacy — the auto default probes over the 2025-era InMemoryTransport pairing and falls back', async () => {
+      // Both entries are in-process FastMCP instances (McpServerLike). The
+      // default is { mode: 'auto' }, but in-process connections route through
+      // InMemoryTransport unless the modern era is pinned, so the probe falls
+      // back and each sub-client negotiates legacy.
       const a = makeServerA()
       const b = makeServerB()
       await using client = await MultiServerClient.connect({ mcpServers: { a, b } })
+      expect(client.getProtocolEra('a')).toBe('legacy')
+      expect(client.getProtocolEra('b')).toBe('legacy')
+    })
+
+    it("explicit { mode: 'legacy' } negotiates legacy on every server with no probe", async () => {
+      const a = makeServerA()
+      const b = makeServerB()
+      await using client = await MultiServerClient.connect(
+        { mcpServers: { a, b } },
+        { versionNegotiation: { mode: 'legacy' } },
+      )
       expect(client.getProtocolEra('a')).toBe('legacy')
       expect(client.getProtocolEra('b')).toBe('legacy')
     })

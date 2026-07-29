@@ -2,7 +2,7 @@
 title: "CancellationMiddleware"
 ---
 
-Defined in: [server/middleware.ts:338](https://github.com/PrefectHQ/fastmcp-ts/blob/9a190cd8187c0e4c6123cc65b41e3559ef08c78b/src/server/middleware.ts#L338)
+Defined in: [server/middleware.ts:338](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/server/middleware.ts#L338)
 
 Intercepts `notifications/cancelled` from the client and aborts the matching
 in-flight handler via Promise.race + AbortController.
@@ -41,7 +41,7 @@ new CancellationMiddleware(): CancellationMiddleware;
 onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:348](https://github.com/PrefectHQ/fastmcp-ts/blob/9a190cd8187c0e4c6123cc65b41e3559ef08c78b/src/server/middleware.ts#L348)
+Defined in: [server/middleware.ts:348](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/server/middleware.ts#L348)
 
 #### Parameters
 
@@ -69,7 +69,7 @@ Defined in: [server/middleware.ts:348](https://github.com/PrefectHQ/fastmcp-ts/b
 setup(server): void;
 ```
 
-Defined in: [server/middleware.ts:341](https://github.com/PrefectHQ/fastmcp-ts/blob/9a190cd8187c0e4c6123cc65b41e3559ef08c78b/src/server/middleware.ts#L341)
+Defined in: [server/middleware.ts:341](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/server/middleware.ts#L341)
 
 Called once per Server instance. Use to register notification handlers or other server-level setup.
 
