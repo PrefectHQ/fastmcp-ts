@@ -1,5 +1,6 @@
 import { UnauthorizedError, Client as SdkClient, LOG_LEVEL_META_KEY } from "@modelcontextprotocol/client";
 import type {
+  ClientCapabilities,
   RequestOptions as SdkRequestOptions,
   McpSubscription,
   VersionNegotiationOptions,
@@ -12,6 +13,7 @@ import type {
   ServerCapabilities,
 } from "@modelcontextprotocol/client";
 import { BearerAuth, OAuth } from './auth.js'
+import { mergeClientCapabilities } from './capabilities.js'
 import type { AsyncHeaderAuth } from './auth.js'
 import type { ClientHandlers, ListChangedHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
@@ -78,6 +80,13 @@ export interface ClientOptions {
    */
   auth?: BearerAuth | OAuth | AsyncHeaderAuth | string
   handlers?: ClientHandlers
+  /**
+   * Additional capabilities to advertise to the server. These are merged
+   * recursively with capabilities inferred from handlers and roots. On an
+   * exact leaf conflict, the inferred value wins because it describes the
+   * behavior FastMCP actually implements.
+   */
+  capabilities?: ClientCapabilities
   /**
    * Filesystem roots to advertise to the server.
    * Accepts a static array of strings / Root objects, or an async callback
@@ -199,6 +208,7 @@ export class Client implements IClient {
   private readonly _handlers: Required<Omit<ClientHandlers, OptionalHandlerKeys>> &
     Pick<ClientHandlers, OptionalHandlerKeys>
   private readonly _roots: (() => Promise<Root[]>) | undefined
+  private readonly _capabilities: ClientCapabilities | undefined
   private readonly _autoInitialize: boolean
   private readonly _versionNegotiation: VersionNegotiationOptions
   private readonly _prior: PriorDiscovery | undefined
@@ -227,6 +237,7 @@ export class Client implements IClient {
       onPromptsListChanged: options?.handlers?.onPromptsListChanged,
     }
     this._roots = options?.roots ? normalizeRootsOption(options.roots) : undefined
+    this._capabilities = options?.capabilities
     this._autoInitialize = options?.autoInitialize ?? true
     this._versionNegotiation = options?.versionNegotiation ?? { mode: 'auto' }
     this._prior = options?.prior
@@ -877,12 +888,13 @@ export class Client implements IClient {
     return sdkOptions
   }
 
-  private _buildCapabilities() {
-    return {
+  private _buildCapabilities(): ClientCapabilities {
+    const inferred: ClientCapabilities = {
       ...(this._handlers.sampling ? { sampling: { tools: {} } } : {}),
       ...(this._handlers.elicitation ? { elicitation: {} } : {}),
       ...(this._roots ? { roots: { listChanged: true } } : {}),
     }
+    return mergeClientCapabilities(this._capabilities, inferred)
   }
 
   private _buildListChangedConfig() {

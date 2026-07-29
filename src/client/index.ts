@@ -39,6 +39,8 @@ export type {
 } from './handlers.js'
 export { defaultLogHandler, defaultProgressHandler } from './handlers.js'
 
+export type { ClientCapabilities } from '@modelcontextprotocol/client'
+
 export type {
   RequestOptions,
   CallToolOptions,
