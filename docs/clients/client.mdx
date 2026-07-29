@@ -70,7 +70,7 @@ The `fastmcp` [CLI](/cli) follows the same default on every transport, and its `
 
 ## Client capabilities
 
-Client capabilities tell a server which optional protocol features the client can actually use. FastMCP infers capabilities for configured sampling and elicitation handlers and for roots. You can add capabilities for other features through `ClientOptions.capabilities`. FastMCP recursively merges nested capability objects, so advertising an extension does not remove sampling, elicitation, or roots support. When your configuration and an inferred capability set the same leaf field, the inferred value wins because it describes behavior FastMCP actually implements.
+Client capabilities tell a server which optional protocol features the client can actually use. FastMCP infers capabilities for configured sampling and elicitation handlers and for roots. You can add capabilities for other features through `ClientOptions.capabilities`. FastMCP combines your additions with those inferred capabilities, so advertising an extension does not remove sampling, elicitation, or roots support. When your configuration and an inferred capability set the same field, the inferred value wins because it describes behavior FastMCP actually implements.
 
 Extensions live in the `extensions` capability map. Each key is a namespaced extension identifier, and its value contains settings defined by that extension. Advertise only extensions your host implements. Extensions are opt-in, and a server that does not recognize one can continue with core MCP behavior.
 

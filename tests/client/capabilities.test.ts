@@ -7,7 +7,8 @@ import {
 import { toNodeHandler } from '@modelcontextprotocol/node'
 import { Server, createMcpHandler } from '@modelcontextprotocol/server'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Client } from 'fastmcp-ts/client'
+import { Client, MultiServerClient } from 'fastmcp-ts/client'
+import type { ClientOptions } from 'fastmcp-ts/client'
 
 const UI_EXTENSION = {
   extensions: {
@@ -17,7 +18,7 @@ const UI_EXTENSION = {
   },
 }
 
-async function connectLegacyServer(options?: Parameters<typeof Client.connect>[1]) {
+async function connectLegacyServer(options?: ClientOptions) {
   const server = new Server({ name: 'test', version: '1.0.0' }, { capabilities: {} })
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
   await server.connect(serverTransport)
@@ -44,6 +45,7 @@ describe('Client capabilities', () => {
       capabilities: {
         ...UI_EXTENSION,
         sampling: { context: { customContext: true } },
+        elicitation: { url: {} },
       },
       roots: ['file:///workspace'],
       handlers: {
@@ -65,11 +67,32 @@ describe('Client capabilities', () => {
           context: { customContext: true },
           tools: {},
         },
-        elicitation: {},
+        elicitation: { form: {}, url: {} },
       })
     } finally {
       await client.close()
       await server.close()
+    }
+  })
+
+  it('advertises custom capabilities to every server in a multi-server client', async () => {
+    const a = new Server({ name: 'a', version: '1.0.0' }, { capabilities: {} })
+    const b = new Server({ name: 'b', version: '1.0.0' }, { capabilities: {} })
+    const client = await MultiServerClient.connect(
+      { mcpServers: { a, b } },
+      {
+        capabilities: UI_EXTENSION,
+        versionNegotiation: { mode: 'legacy' },
+      },
+    )
+
+    try {
+      expect(a.getClientCapabilities()?.extensions).toEqual(UI_EXTENSION.extensions)
+      expect(b.getClientCapabilities()?.extensions).toEqual(UI_EXTENSION.extensions)
+    } finally {
+      await client.close()
+      await a.close()
+      await b.close()
     }
   })
 

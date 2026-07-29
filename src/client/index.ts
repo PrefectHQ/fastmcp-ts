@@ -86,7 +86,7 @@ export type {
 } from './transports.js'
 export { StdioTransport } from './transports.js'
 
-export type { ClientOptions, ClientDefaultOptions, RootInput, RootsValue } from './client.js'
+export type { ClientOptions, ClientDefaultOptions, RootInput, RootsValue } from './options.js'
 export { Client, ToolCallError } from './client.js'
 
 export type { MultiServerOptions } from './multi-server.js'

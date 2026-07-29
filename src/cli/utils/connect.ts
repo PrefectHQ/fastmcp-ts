@@ -1,5 +1,5 @@
 import { Client } from '../../client/client.js'
-import type { ClientOptions } from '../../client/client.js'
+import type { ClientOptions } from '../../client/options.js'
 import { StdioTransport } from '../../client/transports.js'
 import type { CliAuth } from './auth.js'
 import type { FileSpec } from './file-spec.js'
