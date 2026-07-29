@@ -22,7 +22,8 @@ export default defineCommand({
     auth: { type: 'string', description: 'Bearer token' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
     format: { type: 'string', description: 'Output format: fastmcp (the snake_case manifest the Python FastMCP CLI emits for --format fastmcp). Implies JSON output.' },
-    modern: { type: 'boolean', description: 'Turn on version negotiation for stdio and in-process connections', default: false },
+    modern: { type: 'boolean', description: 'Deprecated no-op: auto-negotiation is the default on every transport', default: false },
+    legacy: { type: 'boolean', description: 'Force the legacy 2025 protocol era; skips the server/discover probe', default: false },
     pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args }) {
@@ -51,7 +52,7 @@ export default defineCommand({
         ? { kind: 'stdio' as const, command: args.command }
         : { kind: 'url' as const, url: args.url! }
 
-    const era = { modern: args.modern, pin: args.pin }
+    const era = { modern: args.modern, legacy: args.legacy, pin: args.pin }
 
     let client
     try {

@@ -72,7 +72,7 @@ const result = await client.callTool('add', { a: 1, b: 2 })
 
 This is the recommended way to test a server. You exercise the real registration, validation, conversion, and context machinery without spawning anything, so tests stay fast and assert against genuine protocol behavior rather than a mock. The connection requires the server to attach its side before the client's side completes, and the client coordinates that handshake automatically as part of `connect()` — you only pass the instance.
 
-The in-memory pairing is a 2025-era transport, so an in-process connection is [legacy](/concepts/protocol-eras) unless you pin the modern era. Pass `versionNegotiation: { mode: { pin: '2026-07-28' } }` and the client routes through the server's modern stateless handler instead of the in-memory pair, which lets a test exercise modern-era behavior with no network. The default and the `'auto'` and `'legacy'` modes all use the in-memory pairing and connect legacy.
+The in-memory pairing is a 2025-era transport, so an in-process connection is [legacy](/concepts/protocol-eras) unless you pin the modern era. Pass `versionNegotiation: { mode: { pin: '2026-07-28' } }` and the client routes through the server's modern stateless handler instead of the in-memory pair, which lets a test exercise modern-era behavior with no network. The default `{ mode: 'auto' }` and the explicit `'legacy'` mode both use the in-memory pairing and connect legacy; under `'auto'` the probe answers method-not-found over the 2025-era pairing and negotiation falls back.
 
 ```typescript
 const client = await Client.connect(server, {

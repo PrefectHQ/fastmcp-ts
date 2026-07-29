@@ -59,7 +59,7 @@ Handlers, by contrast, are shared. A single `log`, `sampling`, or `elicitation` 
 
 ## Protocol era
 
-Every sub-connection speaks a [protocol era](/concepts/protocol-eras), and a `MultiServerClient` negotiates one the same way a single client does. The `versionNegotiation` option applies one mode to every server in the config, and each sub-connection then negotiates its own era against its own server — so one client can end up modern on one server and legacy on another. `getProtocolEra(serverName)` reports the era a named server settled on.
+Every sub-connection speaks a [protocol era](/concepts/protocol-eras), and a `MultiServerClient` negotiates one the same way a single client does. The default is `{ mode: 'auto' }`: each sub-connection probes its own server once and negotiates its own era, so one client can end up modern on one server and legacy on another. The `versionNegotiation` option applies one mode to every server in the config; pass `{ mode: 'legacy' }` to opt every connection out of the probe. `getProtocolEra(serverName)` reports the era a named server settled on.
 
 ```typescript
 const client = await Client.connect({
@@ -67,9 +67,7 @@ const client = await Client.connect({
     github: { url: 'https://github-mcp.example.com' },
     jira:   { command: 'npx', args: ['jira-mcp'] },
   },
-}, {
-  versionNegotiation: { mode: 'auto' },
-})
+})   // auto by default: each server probes and negotiates independently
 
 client.getProtocolEra('github')   // 'modern' or 'legacy'
 ```

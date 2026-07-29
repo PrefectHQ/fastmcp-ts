@@ -103,7 +103,9 @@ await client.close()
 
 // ── 11. Version negotiation ───────────────────────────────────────────────────
 // fastmcp servers speak both protocol eras (2025 and 2026-07-28) at once.
-// `{ mode: 'auto' }` asks a client to use the newest era the server offers.
+// `{ mode: 'auto' }` is the default: the client probes once and uses the
+// newest era the server offers (spelled out here for the demo; pass
+// `{ mode: 'legacy' }` to skip the probe and force the 2025 era).
 
 console.log('\n── version negotiation ──────────────────────')
 const modernClient = new Client(SERVER_URL, {

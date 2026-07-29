@@ -21,7 +21,8 @@ export default defineCommand({
     prompts: { type: 'boolean', description: 'Also list prompts', default: false },
     'input-schema': { type: 'boolean', description: 'Expand input schemas', default: false },
     json: { type: 'boolean', description: 'Output JSON', default: false },
-    modern: { type: 'boolean', description: 'Turn on version negotiation for stdio and in-process connections', default: false },
+    modern: { type: 'boolean', description: 'Deprecated no-op: auto-negotiation is the default on every transport', default: false },
+    legacy: { type: 'boolean', description: 'Force the legacy 2025 protocol era; skips the server/discover probe', default: false },
     pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args }) {
@@ -47,7 +48,7 @@ export default defineCommand({
         ? { kind: 'stdio' as const, command: args.command }
         : { kind: 'url' as const, url: args.url! }
 
-    const era = { modern: args.modern, pin: args.pin }
+    const era = { modern: args.modern, legacy: args.legacy, pin: args.pin }
 
     let client
     try {

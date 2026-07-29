@@ -10,35 +10,41 @@ export type TransportMode =
   | { kind: 'stdio'; command: string; args?: string[] }
   | { kind: 'inprocess'; spec: FileSpec }
 
-/** CLI-level era selection (`--modern`, `--pin`); resolved to a concrete
- * `versionNegotiation` mode per transport by `resolveVersionNegotiation`. */
+/** CLI-level era selection (`--legacy`, `--pin`; `--modern` is a deprecated
+ * no-op); resolved to a concrete `versionNegotiation` mode by
+ * `resolveVersionNegotiation`. */
 export interface EraOptions {
+  /** Deprecated no-op, kept so existing invocations do not break:
+   * auto-negotiation is the default on every transport. */
   modern?: boolean
+  /** Force the legacy 2025 era: `{ mode: 'legacy' }`, no `server/discover`
+   * probe. */
+  legacy?: boolean
   pin?: string
 }
 
 /**
- * Default negotiation mode per transport kind, decided in one place so every
+ * One negotiation default on every transport, decided in one place so every
  * connecting command (list/call/inspect) behaves identically:
- * - `url` (HTTP) defaults to `'auto'` — the transport already carries the
- *   headers a probe needs, so there is no probe-stall risk.
- * - `stdio`/`inprocess` (CLI-spawned) default to `'legacy'` (omitted) per SDK
- *   probe-stall guidance; `--modern` opts them into `'auto'`.
- * `--pin` overrides the default on any transport — it is the stronger
- * request, so it wins even when `--modern` is also given.
+ * - The default is `{ mode: 'auto' }`: probe once with `server/discover`, use
+ *   the modern (2026-07-28) era when the server offers it, fall back to the
+ *   plain legacy handshake otherwise. The SDK keeps the probe stall-safe on
+ *   stdio (sibling-process probe, timeout falls back to legacy).
+ * - `--legacy` is the opt-out: `{ mode: 'legacy' }` skips the probe entirely.
+ * - `--pin` overrides the rest on any transport — it is the strongest
+ *   request, so it wins even when `--legacy` (or the deprecated no-op
+ *   `--modern`) is also given, mirroring the old pin-beats-modern precedence.
+ * Returns an explicit mode in every case rather than `undefined`, so the CLI
+ * never leans silently on the library default.
  */
-function resolveVersionNegotiation(
-  kind: TransportMode['kind'],
-  era?: EraOptions,
-): ClientOptions['versionNegotiation'] {
+function resolveVersionNegotiation(era?: EraOptions): ClientOptions['versionNegotiation'] {
   if (era?.pin) return { mode: { pin: era.pin } }
-  if (kind === 'url') return { mode: 'auto' }
-  if (era?.modern) return { mode: 'auto' }
-  return undefined
+  if (era?.legacy) return { mode: 'legacy' }
+  return { mode: 'auto' }
 }
 
 export async function connectClient(mode: TransportMode, auth?: CliAuth, era?: EraOptions): Promise<Client> {
-  const versionNegotiation = resolveVersionNegotiation(mode.kind, era)
+  const versionNegotiation = resolveVersionNegotiation(era)
 
   if (mode.kind === 'url') {
     const client = new Client(mode.url, { auth, versionNegotiation })

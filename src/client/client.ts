@@ -91,13 +91,20 @@ export interface ClientOptions {
   autoInitialize?: boolean
   defaultOptions?: ClientDefaultOptions
   /**
-   * Opt-in protocol version negotiation (protocol revision 2026-07-28 and later).
-   * The default is `'legacy'`: connect() runs the plain 2025 sequence, byte-identical
-   * to today's behavior (no probe, no new headers). Pass `{ mode: 'auto' }` to probe
-   * with `server/discover` and use the modern era when the server supports it
-   * (falling back to legacy otherwise), or `{ mode: { pin: '2026-07-28' } }` to
-   * require the modern era outright. See `getProtocolEra()` to read the negotiated
-   * result after connecting.
+   * Protocol version negotiation (protocol revision 2026-07-28 and later).
+   * The default is `{ mode: 'auto' }`: connect() probes the server once with
+   * `server/discover` and uses the modern (2026-07-28) era on definitive
+   * modern evidence, falling back to the plain legacy `initialize` handshake
+   * on anything else (a method-not-found answer, silence on a local stdio
+   * pipe, a probe child that exits). The probe is stall-safe in the SDK: on
+   * stdio it runs against a short-lived sibling process and a timeout falls
+   * back to legacy, while on HTTP — where silence means an outage — a probe
+   * timeout rejects with a typed error instead of hanging. Pass
+   * `{ mode: 'legacy' }` to opt out: no probe, the 2025 sequence
+   * byte-identical to prior behavior. Pass `{ mode: { pin: '2026-07-28' } }`
+   * to require the modern era outright — connect() throws if the server
+   * cannot speak it. See `getProtocolEra()` to read the negotiated result
+   * after connecting.
    */
   versionNegotiation?: VersionNegotiationOptions
   /**
@@ -193,7 +200,7 @@ export class Client implements IClient {
     Pick<ClientHandlers, OptionalHandlerKeys>
   private readonly _roots: (() => Promise<Root[]>) | undefined
   private readonly _autoInitialize: boolean
-  private readonly _versionNegotiation: VersionNegotiationOptions | undefined
+  private readonly _versionNegotiation: VersionNegotiationOptions
   private readonly _prior: PriorDiscovery | undefined
   private readonly _inputRequired: InputRequiredOptions | undefined
   private readonly _responseCacheStore: ResponseCacheStore | undefined
@@ -221,7 +228,7 @@ export class Client implements IClient {
     }
     this._roots = options?.roots ? normalizeRootsOption(options.roots) : undefined
     this._autoInitialize = options?.autoInitialize ?? true
-    this._versionNegotiation = options?.versionNegotiation
+    this._versionNegotiation = options?.versionNegotiation ?? { mode: 'auto' }
     this._prior = options?.prior
     this._inputRequired = options?.inputRequired
     this._responseCacheStore = options?.responseCacheStore
@@ -265,7 +272,7 @@ export class Client implements IClient {
       {
         capabilities: this._buildCapabilities(),
         listChanged: this._buildListChangedConfig(),
-        ...(this._versionNegotiation ? { versionNegotiation: this._versionNegotiation } : {}),
+        versionNegotiation: this._versionNegotiation,
         ...(this._inputRequired ? { inputRequired: this._inputRequired } : {}),
         ...(this._responseCacheStore ? { responseCacheStore: this._responseCacheStore } : {}),
         ...(this._cachePartition !== undefined ? { cachePartition: this._cachePartition } : {}),
@@ -307,8 +314,13 @@ export class Client implements IClient {
         await this._finishAuth(transport, callbackParams)
         // The original transport is already started and cannot be reconnected;
         // build a fresh one for the authenticated attempt. It reads the tokens
-        // finishAuth stored in the auth provider.
-        const retry = await resolveTransport(this._input, this._auth)
+        // finishAuth stored in the auth provider. Pass the same resolution
+        // options as the primary attempt so the retry keeps the SSE opt-in and
+        // the era-negotiation mode.
+        const retry = await resolveTransport(this._input, this._auth, {
+          legacySSE: this._legacySSE,
+          versionNegotiation: this._versionNegotiation,
+        })
         if (retry.beforeConnect) await retry.beforeConnect()
         this._transport = retry.transport
         await sdkClient.connect(retry.transport)
@@ -421,26 +433,31 @@ export class Client implements IClient {
 
   /**
    * The connected server's self-reported identity (`serverInfo`: name, version,
-   * and optional title / websiteUrl / icons), when it identified itself.
-   * Required on the legacy `initialize` result; optional on a modern
-   * (2026-07-28) connection, so this can be `undefined` there. `undefined`
-   * before connect().
+   * and optional title / websiteUrl / icons), when it identified itself. On a
+   * legacy connection it comes from the `initialize` result, where it is
+   * required. On a modern (2026-07-28) connection it comes from the
+   * `server/discover` result's metadata — FastMCP servers advertise it there,
+   * but an anonymous modern server may omit it, leaving this `undefined`.
+   * `undefined` before connect().
    */
   getServerInfo(): Implementation | undefined {
     return this._sdkClient?.getServerVersion()
   }
 
   /**
-   * The server's `instructions` string from the legacy `initialize` result,
-   * when the server provided one. `undefined` otherwise and before connect().
+   * The server's `instructions` string, when the server provided one — from
+   * the legacy `initialize` result or, on a modern (2026-07-28) connection,
+   * from the `server/discover` result. `undefined` otherwise and before
+   * connect().
    */
   getInstructions(): string | undefined {
     return this._sdkClient?.getInstructions()
   }
 
   /**
-   * The capabilities the server advertised during connection. `undefined`
-   * before connect().
+   * The capabilities the server advertised during connection — on the legacy
+   * `initialize` result, or on the `server/discover` result for a modern
+   * (2026-07-28) connection. `undefined` before connect().
    */
   getServerCapabilities(): ServerCapabilities | undefined {
     return this._sdkClient?.getServerCapabilities()

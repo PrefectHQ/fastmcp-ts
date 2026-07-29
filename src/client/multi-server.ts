@@ -31,11 +31,14 @@ export interface MultiServerOptions {
   roots?: string[]
   defaultOptions?: ClientDefaultOptions
   /**
-   * Opt-in protocol version negotiation, applied identically to every server
-   * in the config (protocol revision 2026-07-28 and later). See
+   * Protocol version negotiation, applied identically to every server in the
+   * config (protocol revision 2026-07-28 and later). See
    * `ClientOptions.versionNegotiation` on the single-server `Client` — same
    * semantics, just applied per sub-client here since each connected server
-   * negotiates its own era independently. Default `'legacy'`.
+   * negotiates its own era independently. Default `{ mode: 'auto' }`: each
+   * sub-client probes its server once and falls back to legacy when the
+   * server offers no modern era; `{ mode: 'legacy' }` opts every connection
+   * out of the probe.
    */
   versionNegotiation?: VersionNegotiationOptions
 }
@@ -61,7 +64,7 @@ export class MultiServerClient implements IClient {
   }
   private readonly _roots: string[] | undefined
   private readonly _defaultOptions: ClientDefaultOptions
-  private readonly _versionNegotiation: VersionNegotiationOptions | undefined
+  private readonly _versionNegotiation: VersionNegotiationOptions
   private _resourceSubscriptions: Map<string, ResourceUpdateHandler> = new Map()
   /** Modern-era (2026-07-28) subscriptions/listen streams, one per server that
    * currently has active resource subscriptions — see Client's own field of the
@@ -82,7 +85,7 @@ export class MultiServerClient implements IClient {
       sampling: options?.handlers?.sampling,
       elicitation: options?.handlers?.elicitation,
     }
-    this._versionNegotiation = options?.versionNegotiation
+    this._versionNegotiation = options?.versionNegotiation ?? { mode: 'auto' }
     this._roots = options?.roots
     this._defaultOptions = options?.defaultOptions ?? {}
   }
@@ -589,7 +592,7 @@ export class MultiServerClient implements IClient {
       { name: 'fastmcp-ts', version: '1.0.0' },
       {
         capabilities: this._buildCapabilities(),
-        ...(this._versionNegotiation ? { versionNegotiation: this._versionNegotiation } : {}),
+        versionNegotiation: this._versionNegotiation,
       },
     )
   }

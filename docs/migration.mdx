@@ -5,7 +5,7 @@ description: "Upgrade a 0.x server or client to FastMCP 1.0 — what breaks, wha
 icon: "arrow-up-right-dots"
 ---
 
-FastMCP 1.0 adds the 2026-07-28 modern protocol era alongside the 2025 protocol your 0.x code already speaks. The upgrade is designed so it does not rewrite your server or client. A 1.0 server serves both eras with no configuration, and a 1.0 client defaults to the legacy era — byte-identical to 2025 — until you opt into the modern one. Most 0.x code compiles and runs against 1.0 unchanged. [Protocol eras](/concepts/protocol-eras) installs that model; this page is the mechanical upgrade path.
+FastMCP 1.0 adds the 2026-07-28 modern protocol era alongside the 2025 protocol your 0.x code already speaks. The upgrade is designed so it does not rewrite your server or client. A 1.0 server serves both eras with no configuration, and a 1.0 client negotiates automatically: one `server/discover` probe at connect, the modern era when the server offers it, and the legacy 2025 handshake otherwise. Against a 0.x-only server that fallback keeps the wire behavior you have today, and `versionNegotiation: { mode: 'legacy' }` opts a client out of the probe entirely. Most 0.x code compiles and runs against 1.0 unchanged. [Protocol eras](/concepts/protocol-eras) installs that model; this page is the mechanical upgrade path.
 
 The breaks fall into two groups. A small set applies the moment you upgrade, whatever era you speak. A larger set takes effect only once you opt a client into the modern era. Clear the first group to get onto 1.0, then adopt the modern era deliberately.
 
@@ -113,11 +113,11 @@ If you register `CachingMiddleware` with its default cache key, 1.0 changes what
 
 ## Modern era
 
-Everything below changes behavior only when a client negotiates the modern era, or when the server itself runs legacy HTTP in [stateless mode](/servers/running#stateless-mode) — that server-side switch trades away the same session-dependent behavior on legacy traffic too. A client that keeps the default legacy era, against an ordinary sessionful server, sees none of this, so you can adopt the modern era one connection at a time.
+Everything below changes behavior only when a client negotiates the modern era, or when the server itself runs legacy HTTP in [stateless mode](/servers/running#stateless-mode) — that server-side switch trades away the same session-dependent behavior on legacy traffic too. A client that lands on the legacy era — because the server offers no modern era under the default auto negotiation, or because you passed `{ mode: 'legacy' }` — sees none of this against an ordinary sessionful server, so you can adopt the modern era one connection at a time.
 
 ### Negotiation defaults
 
-The library `Client` defaults to the legacy era on every transport. `Client.connect(url)` runs the plain 2025 sequence — no probe, no new headers — exactly as in 0.x. You opt into the modern era per connection through `versionNegotiation`. `{ mode: 'auto' }` probes the server with `server/discover` and uses the modern era when the server offers it, falling back to legacy otherwise. `{ mode: { pin: '2026-07-28' } }` requires it and throws `-32022` if the server cannot speak it. After connecting, `getProtocolEra()` reports the negotiated era.
+The library `Client` defaults to `{ mode: 'auto' }` on every transport. `Client.connect(url)` probes the server once with `server/discover`, uses the modern era when the server offers it, and falls back to the legacy 2025 handshake otherwise — so against a 0.x-only server the connection behaves as it did before, after one probe the server answers with method-not-found. The probe is stall-safe: over stdio it runs against a sibling process and a timeout falls back to legacy; over HTTP a timeout rejects with a typed error. To skip the probe and keep the exact 2025 connect sequence, pass `{ mode: 'legacy' }`. `{ mode: { pin: '2026-07-28' } }` requires the modern era and throws `-32022` if the server cannot speak it. After connecting, `getProtocolEra()` reports the negotiated era.
 
 ```typescript 0.x
 import { Client } from '@prefecthq/fastmcp-ts/client'
@@ -128,15 +128,18 @@ const client = await Client.connect('http://localhost:3000')
 ```typescript 1.0
 import { Client } from '@prefecthq/fastmcp-ts/client'
 
-// Opt into the modern era; fall back to legacy when the server is 0.x-only.
-const client = await Client.connect('http://localhost:3000', {
-  versionNegotiation: { mode: 'auto' },
-})
+// Default: modern when the server offers it, legacy fallback when it is 0.x-only.
+const client = await Client.connect('http://localhost:3000')
 
 client.getProtocolEra()   // 'modern' or 'legacy'
+
+// Opt out: byte-identical to the 0.x connect sequence, no probe.
+const legacyClient = await Client.connect('http://localhost:3000', {
+  versionNegotiation: { mode: 'legacy' },
+})
 ```
 
-The `fastmcp` CLI layers its own defaults on top: an HTTP `--url` negotiates automatically, a spawned stdio server stays legacy until you pass `--modern`, and `--pin <version>` forces an exact era on any transport. That auto-for-HTTP behavior belongs to the CLI, not to the `Client` class. The [CLI reference](/cli) has the flags.
+The `fastmcp` CLI follows the same default on every transport. `--legacy` opts a connection out of the probe, `--pin <version>` forces an exact era on any transport, and `--modern` is now a deprecated no-op. The [CLI reference](/cli) has the flags.
 
 ### Session state
 

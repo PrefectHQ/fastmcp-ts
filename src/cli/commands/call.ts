@@ -62,7 +62,8 @@ export default defineCommand({
     auth: { type: 'string', description: 'Bearer token' },
     'input-json': { type: 'string', description: 'Raw JSON input instead of key=value args' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
-    modern: { type: 'boolean', description: 'Turn on version negotiation for stdio and in-process connections', default: false },
+    modern: { type: 'boolean', description: 'Deprecated no-op: auto-negotiation is the default on every transport', default: false },
+    legacy: { type: 'boolean', description: 'Force the legacy 2025 protocol era; skips the server/discover probe', default: false },
     pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args, rawArgs }) {
@@ -88,7 +89,7 @@ export default defineCommand({
         ? { kind: 'stdio' as const, command: args.command }
         : { kind: 'url' as const, url: args.url! }
 
-    const era = { modern: args.modern, pin: args.pin }
+    const era = { modern: args.modern, legacy: args.legacy, pin: args.pin }
 
     let client
     try {
@@ -124,6 +125,9 @@ export default defineCommand({
       )
     }
 
+    // String-valued flags only: boolean flags (--modern, --legacy, --json)
+    // carry no separate value token, so they never appear in rawArgs as a
+    // bare word to exclude from key=value parsing.
     const flagValues = new Set([target, args.url, args.command, args.file, args.export, args.auth, args['input-json'], args.pin].filter(Boolean) as string[])
     const kvRaw = (rawArgs as string[]).filter((a) => !a.startsWith('-') && !flagValues.has(a))
     let input: Record<string, unknown> = args['input-json']

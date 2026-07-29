@@ -50,21 +50,23 @@ const result = await client.callTool('add', { a: 1, b: 2 })
 
 Every connection speaks one of two [protocol eras](/concepts/protocol-eras): the **legacy** era, which is the 2025 protocol, or the **modern** era, protocol revision 2026-07-28. A server serves both at once. A client picks one per connection through the `versionNegotiation` option, and the choice is made when you connect.
 
-The default is `'legacy'` on every transport, HTTP and stdio alike. `Client.connect('http://localhost:3000')` runs the plain 2025 sequence — byte-identical to today's behavior, with no probe and no new headers — so existing code keeps working unchanged until you ask for more. The default never probes, which also avoids a stall: a `server/discover` probe against an unresponsive legacy server can hang.
+The default is `{ mode: 'auto' }` on every transport, HTTP and stdio alike. `Client.connect('http://localhost:3000')` probes the server once with `server/discover` and uses the modern era on definitive modern evidence; anything else falls back to the plain legacy `initialize` handshake, so a 2025-only server keeps working with no configuration. The probe is stall-safe in the SDK: over stdio it runs against a short-lived sibling process and a timeout falls back to legacy, while over HTTP a probe timeout rejects with a typed error rather than hanging.
 
-You opt into the modern era explicitly. Pass `{ mode: 'auto' }` to probe the server with `server/discover` and use the modern era when the server supports it, falling back to legacy otherwise. Pass `{ mode: { pin: '2026-07-28' } }` to require the modern era outright — `connect()` throws `-32022 UnsupportedProtocolVersion` if the server cannot speak it. After connecting, `getProtocolEra()` reports the negotiated result: `'modern'`, `'legacy'`, or `undefined` before you connect.
+Pass `{ mode: 'legacy' }` to opt out: no probe, and the connect sequence is byte-identical to 2025 behavior. Pass `{ mode: { pin: '2026-07-28' } }` to require the modern era outright; `connect()` throws `-32022 UnsupportedProtocolVersion` if the server cannot speak it. After connecting, `getProtocolEra()` reports the negotiated result: `'modern'`, `'legacy'`, or `undefined` before you connect.
 
 ```typescript
 import { Client } from '@prefecthq/fastmcp-ts/client'
 
-const client = await Client.connect('http://localhost:3000', {
-  versionNegotiation: { mode: 'auto' },   // modern when supported, else legacy
-})
+const client = await Client.connect('http://localhost:3000')   // auto by default
 
 client.getProtocolEra()   // 'modern' or 'legacy'
+
+const pinnedToLegacy = await Client.connect('http://localhost:3000', {
+  versionNegotiation: { mode: 'legacy' },   // opt out: no probe, 2025 wire only
+})
 ```
 
-The `fastmcp` [CLI](/cli) applies its own per-transport defaults on top of the library — an HTTP URL defaults to `{ mode: 'auto' }` there. That is a CLI choice, not a library default. The `Client` class always defaults to `'legacy'` unless you set `versionNegotiation` yourself.
+The `fastmcp` [CLI](/cli) follows the same default on every transport, and its `--legacy` flag maps to `{ mode: 'legacy' }`.
 
 ## Error handling
 
