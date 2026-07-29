@@ -9,7 +9,6 @@ import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
 import type {
   CallToolResult,
   CompletionResult,
-  ContentBlock,
   GetPromptResult,
   Prompt,
   Resource,
@@ -18,6 +17,7 @@ import type {
   ResourceTemplate,
   Tool,
 } from './results.js'
+import { normalizeCallToolResult } from './results.js'
 import type { McpConfig, McpServerValue } from './transports.js'
 import { resolveEntryTransport } from './transports.js'
 import type { ClientDefaultOptions } from './options.js'
@@ -267,11 +267,7 @@ export class MultiServerClient implements IClient {
       { name: localName, arguments: args ?? {}, ...this._metaParamsFor(serverName) },
       sdkOptions,
     )
-    return {
-      content: result.content as ContentBlock[],
-      structuredContent: (result.structuredContent as TData | undefined) ?? null,
-      isError: result.isError === true,
-    }
+    return normalizeCallToolResult<TData>(result)
   }
 
   // -------------------------------------------------------------------------

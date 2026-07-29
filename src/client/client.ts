@@ -38,6 +38,7 @@ import type {
   Root,
   Tool,
 } from './results.js'
+import { normalizeCallToolResult } from './results.js'
 import type { ClientTransportInput, McpConfig } from './transports.js'
 import { resolveTransport } from './transports.js'
 import type { MultiServerOptions } from './multi-server.js'
@@ -412,11 +413,7 @@ export class Client implements IClient {
     const result = await this._reauthRetry(() =>
       this._sdk().callTool({ name, arguments: args ?? {}, ...this._metaParams() }, sdkOptions),
     )
-    return {
-      content: result.content as ContentBlock[],
-      structuredContent: (result.structuredContent as TData | undefined) ?? null,
-      isError: result.isError === true,
-    }
+    return normalizeCallToolResult<TData>(result)
   }
 
   // -------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod/v4'
-import { FastMCP, Image } from 'fastmcp-ts/server'
+import { FastMCP, Image, ToolResult } from 'fastmcp-ts/server'
 import { Client, ToolCallError } from 'fastmcp-ts/client'
 import type { Tool } from 'fastmcp-ts/client'
 
@@ -138,6 +138,31 @@ describe('Client — Tools', () => {
           const result = await client.callToolRaw('fail', {})
           expect(result.isError).toBe(true)
           expect(result.content[0]).toMatchObject({ type: 'text' })
+        },
+      )
+    })
+
+    it('preserves metadata and extension fields', async () => {
+      await withServer(
+        (mcp) => {
+          mcp.tool(
+            { name: 'extended', description: 'a tool', input: z.object({}) },
+            () =>
+              new ToolResult({
+                content: [{ type: 'text', text: 'extended' }],
+                _meta: { 'com.example/trace': 'trace-123' },
+                'com.example/result': { display: 'card' },
+              }),
+          )
+        },
+        async (client) => {
+          const raw = await client.callToolRaw('extended', {})
+          expect(raw._meta).toMatchObject({ 'com.example/trace': 'trace-123' })
+          expect(raw['com.example/result']).toEqual({ display: 'card' })
+
+          const result = await client.callTool('extended', {})
+          expect(result._meta).toMatchObject({ 'com.example/trace': 'trace-123' })
+          expect(result['com.example/result']).toEqual({ display: 'card' })
         },
       )
     })
