@@ -2,11 +2,15 @@ import { defineCommand } from 'citty'
 import { parseFileSpec } from '../utils/file-spec.js'
 import { connectClient } from '../utils/connect.js'
 import { resolveAuth } from '../utils/auth.js'
+import { buildFastmcpManifest } from '../utils/manifest.js'
 import { withSpinner } from '../ui/spinner.js'
 import { output, setJsonMode } from '../ui/format.js'
 import { log } from '../ui/output.js'
 import { renderTable } from '../ui/table.js'
 import { cliError, formatError, EXIT } from '../utils/error.js'
+
+declare const __FASTMCP_VERSION__: string
+declare const __MCP_SDK_VERSION__: string
 
 export default defineCommand({
   meta: { name: 'inspect', description: 'Inspect tools, resources, and prompts from an MCP server' },
@@ -17,11 +21,15 @@ export default defineCommand({
     export: { type: 'string', description: 'Named export to resolve (e.g. server); overrides file:export syntax' },
     auth: { type: 'string', description: 'Bearer token' },
     json: { type: 'boolean', description: 'Output JSON', default: false },
+    format: { type: 'string', description: 'Output format: fastmcp (the snake_case manifest the Python FastMCP CLI emits for --format fastmcp). Implies JSON output.' },
     modern: { type: 'boolean', description: 'Turn on version negotiation for stdio and in-process connections', default: false },
     pin: { type: 'string', description: 'Pin the protocol era to this revision (e.g. 2026-07-28)' },
   },
   async run({ args }) {
-    if (args.json) setJsonMode(true)
+    if (args.format !== undefined && args.format !== 'fastmcp') {
+      cliError(`Unknown format "${args.format}". Supported formats: fastmcp`)
+    }
+    if (args.json || args.format) setJsonMode(true)
     if (!args.url && !args.command && !args.file) {
       cliError('Provide a server URL, --command <cmd>, or --file <file>')
     }
@@ -55,6 +63,34 @@ export default defineCommand({
     }
 
     try {
+      if (args.format === 'fastmcp') {
+        const [tools, resources, templates, prompts] = await Promise.all([
+          client.listTools().catch(() => [] as Awaited<ReturnType<typeof client.listTools>>),
+          client.listResources().catch(() => [] as Awaited<ReturnType<typeof client.listResources>>),
+          client.listResourceTemplates().catch(() => [] as Awaited<ReturnType<typeof client.listResourceTemplates>>),
+          client.listPrompts().catch(() => [] as Awaited<ReturnType<typeof client.listPrompts>>),
+        ])
+
+        const manifest = buildFastmcpManifest({
+          serverInfo: client.getServerInfo(),
+          instructions: client.getInstructions(),
+          capabilities: client.getServerCapabilities(),
+          // A --file entrypoint is a FastMCP server (Python generation 2, the
+          // only case Python's inspect supports); over --url/--command the
+          // generation is unknowable from the wire.
+          generation: mode.kind === 'inprocess' ? 2 : null,
+          fastmcpVersion: __FASTMCP_VERSION__,
+          mcpVersion: __MCP_SDK_VERSION__,
+          tools,
+          prompts,
+          resources,
+          templates,
+        })
+
+        output(manifest, () => {})
+        return
+      }
+
       const [tools, resources, prompts] = await Promise.all([
         client.listTools().catch(() => [] as Awaited<ReturnType<typeof client.listTools>>),
         client.listResources().catch(() => [] as Awaited<ReturnType<typeof client.listResources>>),

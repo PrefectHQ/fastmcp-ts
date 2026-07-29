@@ -70,6 +70,12 @@ fastmcp inspect --url http://localhost:3000
 fastmcp inspect --file server.ts --json
 ```
 
+For build tooling that consumes the same manifest from TypeScript and Python servers, `--format fastmcp` emits the manifest the [Python FastMCP CLI](https://gofastmcp.com/patterns/cli) produces for `fastmcp inspect --format fastmcp`: snake_case keys (`input_schema`, `mime_type`, `uri_template`), a `server` section with name, version, and capabilities, an `environment` section with the generating versions, and a `templates` list alongside tools, prompts, and resources. `--format` implies JSON output, so `--json` is redundant with it. Fields the Python CLI reads from server-side state that never crosses the wire — component `tags`, template `parameters` — are `null`, matching what Python's own client-based inspection emits.
+
+```bash
+fastmcp inspect --file server.ts --format fastmcp
+```
+
 `fastmcp list` covers the same ground for a server already running, connecting over a URL or a `--command`. Use `inspect --file` when you have the source and want it spun up for you; use `list` when the server is already up and you are talking to it over the wire. When you pass `--command`, give the binary and its arguments separately rather than one string — `--command npx --args tsx,server.ts`, not a single `"npx tsx server.ts"` — so the binary resolves correctly.
 
 ```bash
