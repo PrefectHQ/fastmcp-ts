@@ -10,7 +10,7 @@
 
   // The Python docs URL comes from that repo's pyproject.toml / README.
   var PYTHON_DOCS_URL = "https://gofastmcp.com";
-  var TYPESCRIPT_DOCS_URL = "/";
+  var TYPESCRIPT_DOCS_URL = "https://fastmcp-ts.docs.prefect.io/";
 
   var URLS = { python: PYTHON_DOCS_URL, typescript: TYPESCRIPT_DOCS_URL };
 
@@ -26,6 +26,8 @@
   function buildDropdown() {
     var label = document.createElement("label");
     label.id = "language-switch";
+    // The CSS keys the trigger's language icon off this attribute.
+    label.dataset.lang = CURRENT_LANGUAGE;
 
     var select = document.createElement("select");
     select.setAttribute("aria-label", "Switch documentation language");
@@ -42,6 +44,7 @@
     });
 
     select.addEventListener("change", function () {
+      label.dataset.lang = select.value;
       if (select.value === CURRENT_LANGUAGE) return;
       window.location.href = URLS[select.value];
     });
