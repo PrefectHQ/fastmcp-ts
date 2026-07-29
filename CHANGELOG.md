@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.2.0
+
+### Minor Changes
+
+- a9ba088: Allow clients to advertise custom capabilities and extensions alongside FastMCP-inferred capabilities.
+
 ## 1.1.0
 
 ### Minor Changes
