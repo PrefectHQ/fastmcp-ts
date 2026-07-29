@@ -8,6 +8,8 @@ import type {
   InputRequiredOptions,
   ResponseCacheStore,
   Transport,
+  Implementation,
+  ServerCapabilities,
 } from "@modelcontextprotocol/client";
 import { BearerAuth, OAuth } from './auth.js'
 import type { AsyncHeaderAuth } from './auth.js'
@@ -415,6 +417,33 @@ export class Client implements IClient {
    */
   getProtocolEra(): ProtocolEra | undefined {
     return this._sdkClient?.getProtocolEra()
+  }
+
+  /**
+   * The connected server's self-reported identity (`serverInfo`: name, version,
+   * and optional title / websiteUrl / icons), when it identified itself.
+   * Required on the legacy `initialize` result; optional on a modern
+   * (2026-07-28) connection, so this can be `undefined` there. `undefined`
+   * before connect().
+   */
+  getServerInfo(): Implementation | undefined {
+    return this._sdkClient?.getServerVersion()
+  }
+
+  /**
+   * The server's `instructions` string from the legacy `initialize` result,
+   * when the server provided one. `undefined` otherwise and before connect().
+   */
+  getInstructions(): string | undefined {
+    return this._sdkClient?.getInstructions()
+  }
+
+  /**
+   * The capabilities the server advertised during connection. `undefined`
+   * before connect().
+   */
+  getServerCapabilities(): ServerCapabilities | undefined {
+    return this._sdkClient?.getServerCapabilities()
   }
 
   // -------------------------------------------------------------------------

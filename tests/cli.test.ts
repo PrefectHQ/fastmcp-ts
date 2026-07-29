@@ -39,6 +39,7 @@ const ENTRYPOINT_FACTORY_SERVER = resolve(import.meta.dirname, 'fixtures/entrypo
 const ENTRYPOINT_ALREADY_RUNNING_SERVER = resolve(import.meta.dirname, 'fixtures/entrypoint-already-running-server.ts')
 const ENTRYPOINT_INVALID_EXPORT = resolve(import.meta.dirname, 'fixtures/entrypoint-invalid-export.ts')
 const ENTRYPOINT_AUTODETECT_SKIP = resolve(import.meta.dirname, 'fixtures/entrypoint-autodetect-skip-fixture.ts')
+const MANIFEST_SERVER = resolve(import.meta.dirname, 'fixtures/manifest-server.ts')
 
 // Claude Desktop's config directory is OS-specific (mirrors the branching in
 // src/cli/utils/config-paths.ts). Resolve it relative to HOME on the current
@@ -186,6 +187,126 @@ describe.sequential('CLI — inspect', () => {
     const { exitCode, stderr } = await runCli(['inspect'])
     expect(exitCode).not.toBe(0)
     expect(stderr).toMatch(/--url|--command|--file/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// inspect --format fastmcp (Python-compatible manifest)
+// ---------------------------------------------------------------------------
+
+describe.sequential('CLI — inspect --format fastmcp', () => {
+  it('emits the Python fastmcp manifest: snake_case keys and the Python field set', async () => {
+    const { exitCode, stdout } = await runCli(
+      ['--quiet', 'inspect', '--file', MANIFEST_SERVER, '--format', 'fastmcp'],
+      { timeout: 25_000 },
+    )
+    expect(exitCode).toBe(0)
+    const data = JSON.parse(stdout)
+
+    // Top-level structure, in Python's field order.
+    expect(Object.keys(data)).toEqual([
+      'server', 'environment', 'tools', 'prompts', 'resources', 'templates',
+    ])
+
+    // server — matches Python's `server` section field-for-field.
+    expect(Object.keys(data.server)).toEqual([
+      'name', 'instructions', 'version', 'website_url', 'icons', 'generation', 'capabilities',
+    ])
+    expect(data.server.name).toBe('manifest-fixture')
+    expect(data.server.version).toBe('2.3.4')
+    expect(data.server.instructions).toBeNull()
+    expect(data.server.website_url).toBeNull()
+    expect(data.server.icons).toBeNull()
+    expect(data.server.generation).toBe(2) // --file entrypoint is a FastMCP server
+    expect(data.server.capabilities.tools).toEqual({ listChanged: true })
+
+    // environment — versions of the generating CLI, like Python's section.
+    const { version } = JSON.parse(
+      await readFile(resolve(import.meta.dirname, '../package.json'), 'utf8'),
+    ) as { version: string }
+    expect(data.environment.fastmcp).toBe(version)
+    expect(typeof data.environment.mcp).toBe('string')
+    expect(data.environment.mcp.length).toBeGreaterThan(0)
+
+    // tools — Python ToolInfo field set, snake_case, `{prefix}:{name}@` keys.
+    const toolFields = [
+      'key', 'name', 'description', 'input_schema', 'output_schema',
+      'annotations', 'tags', 'title', 'icons', 'meta',
+    ]
+    const echo = data.tools.find((t: { name: string }) => t.name === 'echo')
+    expect(Object.keys(echo)).toEqual(toolFields)
+    expect(echo.key).toBe('tool:echo@')
+    expect(echo.title).toBe('Echo')
+    expect(echo.input_schema.type).toBe('object')
+    expect(echo.input_schema.properties.message).toBeDefined()
+    expect(echo.output_schema).toBeNull()
+    expect(echo.tags).toBeNull()
+
+    const add = data.tools.find((t: { name: string }) => t.name === 'add')
+    expect(add.output_schema.properties.sum).toEqual({ type: 'number' })
+    expect(add.title).toBeNull()
+
+    // prompts — arguments in Python's {name, description, required} shape.
+    expect(Object.keys(data.prompts[0])).toEqual([
+      'key', 'name', 'description', 'arguments', 'tags', 'title', 'icons', 'meta',
+    ])
+    expect(data.prompts[0].key).toBe('prompt:greet@')
+    expect(data.prompts[0].arguments).toEqual([
+      { name: 'name', description: 'Who to greet', required: true },
+      { name: 'tone', description: null, required: null },
+    ])
+
+    // resources — URI-keyed, mime_type snake_cased, annotations passed through.
+    expect(Object.keys(data.resources[0])).toEqual([
+      'key', 'uri', 'name', 'description', 'mime_type', 'annotations',
+      'tags', 'title', 'icons', 'meta',
+    ])
+    expect(data.resources[0].key).toBe('resource:memo://greeting@')
+    expect(data.resources[0].mime_type).toBe('text/plain')
+    expect(data.resources[0].annotations).toEqual({ audience: ['user'], priority: 0.5 })
+
+    // templates — listed (unlike the default output), Python TemplateInfo shape.
+    expect(Object.keys(data.templates[0])).toEqual([
+      'key', 'uri_template', 'name', 'description', 'mime_type', 'parameters',
+      'annotations', 'tags', 'title', 'icons', 'meta',
+    ])
+    expect(data.templates[0].key).toBe('template:user://{id}@')
+    expect(data.templates[0].uri_template).toBe('user://{id}')
+    expect(data.templates[0].parameters).toBeNull()
+    expect(data.templates[0].mime_type).toBeNull()
+
+    // No camelCase leaks anywhere in the manifest.
+    expect(stdout).not.toMatch(/"inputSchema"|"outputSchema"|"mimeType"|"uriTemplate"|"websiteUrl"/)
+  }, 30_000)
+
+  it('implies JSON output without --json and matches the --json variant', async () => {
+    const bare = await runCli(['--quiet', 'inspect', '--file', SIMPLE_SERVER, '--format', 'fastmcp'])
+    expect(bare.exitCode).toBe(0)
+    const withJson = await runCli(['--quiet', 'inspect', '--file', SIMPLE_SERVER, '--format', 'fastmcp', '--json'])
+    expect(withJson.exitCode).toBe(0)
+    expect(JSON.parse(bare.stdout)).toEqual(JSON.parse(withJson.stdout))
+
+    const data = JSON.parse(bare.stdout)
+    expect(data.server.name).toBe('test-server')
+    expect(data.server.version).toBe('1.0.0')
+    // A generic SDK server over --file still yields the full field set.
+    expect(data.tools.map((t: { key: string }) => t.key)).toContain('tool:echo@')
+  })
+
+  it('rejects an unknown --format value', async () => {
+    const { exitCode, stderr } = await runCli(['inspect', '--file', SIMPLE_SERVER, '--format', 'yaml'])
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toMatch(/Unknown format "yaml"/)
+    expect(stderr).toMatch(/fastmcp/)
+  })
+
+  it('leaves the default --json output unchanged (camelCase, no manifest sections)', async () => {
+    const { exitCode, stdout } = await runCli(['--quiet', 'inspect', '--file', SIMPLE_SERVER, '--json'])
+    expect(exitCode).toBe(0)
+    const data = JSON.parse(stdout)
+    expect(Object.keys(data)).toEqual(['tools', 'resources', 'prompts'])
+    expect(data.tools[0].inputSchema).toBeDefined()
+    expect(stdout).not.toMatch(/"input_schema"|"server"|"environment"|"templates"/)
   })
 })
 

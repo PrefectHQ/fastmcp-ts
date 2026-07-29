@@ -9,7 +9,20 @@ const pkg = JSON.parse(readFileSync('./package.json', 'utf8')) as {
 // The v2 MCP SDK packages all share one version number during the beta
 // (see migration guide: "As of 2.0.0-beta.1 all v2 packages share one version
 // number"), so @modelcontextprotocol/server is representative of the whole set.
-const sdkVersion = pkg.dependencies['@modelcontextprotocol/server'] ?? 'unknown'
+// Read the installed package's actual version — the declared dependency is a
+// semver range ("^2.0.0"), not a version, and both `fastmcp version` and the
+// `inspect --format fastmcp` manifest report it as a concrete version.
+function resolveSdkVersion(): string {
+  try {
+    const sdkPkg = JSON.parse(
+      readFileSync('./node_modules/@modelcontextprotocol/server/package.json', 'utf8'),
+    ) as { version: string }
+    return sdkPkg.version
+  } catch {
+    return pkg.dependencies['@modelcontextprotocol/server'] ?? 'unknown'
+  }
+}
+const sdkVersion = resolveSdkVersion()
 
 // v2 packages ship well-formed package.json "exports" maps (explicit
 // import/require conditions, fully-extensioned files) for every public
