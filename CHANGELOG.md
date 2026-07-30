@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.2.1
+
+### Patch Changes
+
+- f8b0c1d: Preserve metadata and extension fields in client tool call results.
+
 ## 1.2.0
 
 ### Minor Changes
