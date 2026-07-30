@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod/v4'
-import { FastMCP } from 'fastmcp-ts/server'
+import { FastMCP, ToolResult } from 'fastmcp-ts/server'
 import { Client, MultiServerClient } from 'fastmcp-ts/client'
 import type { TextResourceContents } from "@modelcontextprotocol/server";
 
@@ -206,6 +206,24 @@ describe('Client — Multi-server', () => {
       await using client = await MultiServerClient.connect({ mcpServers: { err: mcp } })
       const result = await client.callToolRaw('err_fail')
       expect(result.isError).toBe(true)
+    })
+
+    it('callToolRaw() preserves metadata and extension fields', async () => {
+      const mcp = new FastMCP({ name: 'extended', version: '1.0.0' })
+      mcp.tool(
+        { name: 'result', description: 'extended result', input: z.object({}) },
+        () =>
+          new ToolResult({
+            content: [{ type: 'text', text: 'extended' }],
+            _meta: { 'com.example/trace': 'trace-123' },
+            'com.example/result': { display: 'card' },
+          }),
+      )
+      await using client = await MultiServerClient.connect({ mcpServers: { extended: mcp } })
+
+      const result = await client.callToolRaw('extended_result')
+      expect(result._meta).toMatchObject({ 'com.example/trace': 'trace-123' })
+      expect(result['com.example/result']).toEqual({ display: 'card' })
     })
   })
 

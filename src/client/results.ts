@@ -1,4 +1,5 @@
-import type { CreateMessageResult, CreateMessageResultWithTools, ContentBlock } from "@modelcontextprotocol/server";
+import type { CallToolResult as SdkCallToolResult } from '@modelcontextprotocol/client'
+import type { CreateMessageResult, CreateMessageResultWithTools } from "@modelcontextprotocol/server";
 
 export type {
   Tool,
@@ -29,12 +30,22 @@ export type {
 export type AnySamplingResult = CreateMessageResult | CreateMessageResultWithTools
 /**
  * The SDK's CallToolResult with a typed generic for structuredContent.
- * Use TData to get typed access to structured tool output.
+ * The intersection retains its open extension fields while narrowing the two
+ * values FastMCP normalizes.
  */
-export type CallToolResult<TData = unknown> = {
-  content: ContentBlock[]
+export type CallToolResult<TData = unknown> = SdkCallToolResult & {
   structuredContent: TData | null
   isError: boolean
+}
+
+export function normalizeCallToolResult<TData = unknown>(
+  result: SdkCallToolResult,
+): CallToolResult<TData> {
+  return {
+    ...result,
+    structuredContent: (result.structuredContent as TData | undefined) ?? null,
+    isError: result.isError === true,
+  }
 }
 
 export type CompletionResult = {
