@@ -32,6 +32,7 @@ import type { Transform, ToolView, ResourceView, PromptView, SynthesizedTool } f
 import { convertResult, toJsonSchema, validateInput, ToolResult } from './tool'
 import { isInputRequiredResult } from './mrtr'
 import {
+  attachResourceUiMeta,
   convertResourceResult,
   isUriTemplate,
   matchTemplate,
@@ -843,7 +844,8 @@ export class FastMCP {
           }
 
           const result = await executePromise
-          return convertResourceResult(result, requestedUri, resource!.config.mimeType, opts?.stateless)
+          const converted = convertResourceResult(result, requestedUri, resource!.config.mimeType, opts?.stateless)
+          return attachResourceUiMeta(converted, resource!.config.ui, isUiCapable(server.getClientCapabilities()))
         }),
       )
     })

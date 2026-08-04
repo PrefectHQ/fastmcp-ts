@@ -2,7 +2,7 @@
 title: "JwtBearerOptions"
 ---
 
-Defined in: [client/auth.ts:758](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L758)
+Defined in: [client/auth.ts:758](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L758)
 
 Configuration for [JwtBearerAuth](/api/client/classes/JwtBearerAuth).
 
@@ -21,7 +21,7 @@ service-account token, a cloud instance-identity JWT, etc.).
 assertion: AssertionSource;
 ```
 
-Defined in: [client/auth.ts:766](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L766)
+Defined in: [client/auth.ts:766](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L766)
 
 The workload assertion (a signed JWT). Pass a string for a fixed assertion,
 or a callback to mint/read a fresh one each time a token is fetched (the
@@ -35,7 +35,7 @@ usual case — workload JWTs are short-lived).
 optional authMethod?: ClientAuthMethod;
 ```
 
-Defined in: [client/auth.ts:773](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L773)
+Defined in: [client/auth.ts:773](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L773)
 
 Token-endpoint client authentication. Default: `none` (public client — the
 assertion itself is the credential, so no separate client secret is sent).
@@ -48,7 +48,7 @@ assertion itself is the credential, so no separate client secret is sent).
 optional clientId?: string;
 ```
 
-Defined in: [client/auth.ts:768](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L768)
+Defined in: [client/auth.ts:768](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L768)
 
 The client identifier registered for this workload.
 
@@ -60,7 +60,7 @@ The client identifier registered for this workload.
 optional clientSecret?: string;
 ```
 
-Defined in: [client/auth.ts:775](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L775)
+Defined in: [client/auth.ts:775](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L775)
 
 Client secret, when `authMethod` is `client_secret_basic`/`_post`.
 
@@ -72,7 +72,7 @@ Client secret, when `authMethod` is `client_secret_basic`/`_post`.
 optional refreshBufferSeconds?: number;
 ```
 
-Defined in: [client/auth.ts:788](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L788)
+Defined in: [client/auth.ts:788](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L788)
 
 How many seconds before expiry to proactively re-fetch. Default: 60.
 
@@ -84,7 +84,7 @@ How many seconds before expiry to proactively re-fetch. Default: 60.
 optional scope?: string;
 ```
 
-Defined in: [client/auth.ts:777](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L777)
+Defined in: [client/auth.ts:777](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L777)
 
 Requested scopes (space-separated).
 
@@ -96,7 +96,7 @@ Requested scopes (space-separated).
 optional store?: KeyValueStore;
 ```
 
-Defined in: [client/auth.ts:786](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L786)
+Defined in: [client/auth.ts:786](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L786)
 
 Persistent token store. Default: in-memory. The cache key is derived from
 `tokenEndpoint` alone, with no client identity in it — use one store per
@@ -113,6 +113,6 @@ cached tokens.
 tokenEndpoint: string;
 ```
 
-Defined in: [client/auth.ts:760](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/auth.ts#L760)
+Defined in: [client/auth.ts:760](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/auth.ts#L760)
 
 The authorization server's token endpoint.

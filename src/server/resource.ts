@@ -37,7 +37,7 @@ export interface ResourceConfig {
   /** Arbitrary tags for server-side filtering. */
   tags?: string[]
   auth?: AuthCheck
-  /** Apps extension metadata. Included in _meta.ui in resources/list for UI-capable clients. */
+  /** Apps extension metadata. Included as `_meta.ui` on resources/list entries and on every resources/read content item for UI-capable clients. */
   ui?: ResourceUiMeta
   /**
    * Autocompletion callbacks for this resource template's RFC 6570 variables,
@@ -60,13 +60,14 @@ export class ResourceResult {
       mimeType?: string
       text?: string
       blob?: string
+      _meta?: Record<string, unknown>
     }>,
   ) {}
 }
 
 type ResourceContent =
-  | { uri: string; mimeType?: string; text: string }
-  | { uri: string; mimeType?: string; blob: string }
+  | { uri: string; mimeType?: string; text: string; _meta?: Record<string, unknown> }
+  | { uri: string; mimeType?: string; blob: string; _meta?: Record<string, unknown> }
 
 /**
  * Converts a resource handler's return value into the MCP ReadResourceResult shape.
@@ -114,6 +115,28 @@ export function convertResourceResult(
   }
   // string, number, boolean
   return { contents: [{ uri, mimeType: mimeType ?? 'text/plain', text: String(value) }] }
+}
+
+/**
+ * Attaches the resource's declared `ui` config to every content item as
+ * `_meta.ui`, mirroring the resources/list gating. SEP-1865 hosts build the
+ * sandboxed iframe's CSP from the resources/read response, so the metadata
+ * must ride on the read contents, not only on list entries.
+ *
+ * No-op when the resource declares no `ui`, the client is not UI-capable, or
+ * the result is an InputRequiredResult. A handler-provided `_meta` (via
+ * ResourceResult) wins key-by-key; an explicit `_meta.ui` overrides the
+ * declared config for that item.
+ */
+export function attachResourceUiMeta(
+  result: { contents: ResourceContent[] } | InputRequiredResult,
+  ui: ResourceUiMeta | undefined,
+  uiCapable: boolean,
+): { contents: ResourceContent[] } | InputRequiredResult {
+  if (!ui || !uiCapable || isInputRequiredResult(result)) return result
+  return {
+    contents: result.contents.map((c) => ({ ...c, _meta: { ui, ...c._meta } })),
+  }
 }
 
 /** Returns true if the URI string contains RFC 6570 template expressions. */
