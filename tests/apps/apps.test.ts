@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import {
   FastMCP,
+  ResourceResult,
   Column, Row, Grid,
   Text, Badge, Table,
   Bar, Line, Area, Pie,
@@ -508,6 +509,155 @@ describe('Apps', () => {
         type: 'text',
         props: { content: { type: 'rx', props: { expression: 'greeting' } } },
       })
+    })
+  })
+
+  describe('resources/read _meta.ui', () => {
+    it('read contents carry _meta.ui for a UI-capable client', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource(
+        {
+          uri: 'ui://my-app/view',
+          mimeType: 'text/html;profile=mcp-app',
+          ui: {
+            csp: { connectDomains: ['api.example.com'], resourceDomains: ['https://cdn.example.com'] },
+            permissions: { camera: {} },
+            domain: 'my-app.example.com',
+            prefersBorder: false,
+          },
+        },
+        () => '<h1>Hello</h1>',
+      )
+      const { client, close } = await createUiTestClient(mcp)
+      try {
+        const result = await client.readResource({ uri: 'ui://my-app/view' })
+        const content = result.contents[0] as { _meta?: { ui?: unknown } }
+        expect(content._meta?.ui).toMatchObject({
+          csp: { connectDomains: ['api.example.com'], resourceDomains: ['https://cdn.example.com'] },
+          permissions: { camera: {} },
+          domain: 'my-app.example.com',
+          prefersBorder: false,
+        })
+      } finally {
+        await close()
+      }
+    })
+
+    it('read contents carry no _meta for a non-UI client', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource(
+        {
+          uri: 'ui://my-app/view',
+          mimeType: 'text/html;profile=mcp-app',
+          ui: { csp: { resourceDomains: ['https://cdn.example.com'] } },
+        },
+        () => '<h1>Hello</h1>',
+      )
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.readResource({ uri: 'ui://my-app/view' })
+        const content = result.contents[0] as { _meta?: unknown }
+        expect(content._meta).toBeUndefined()
+      } finally {
+        await close()
+      }
+    })
+
+    it('read contents carry no _meta when the resource declares no ui config', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource(
+        { uri: 'ui://my-app/view', mimeType: 'text/html;profile=mcp-app' },
+        () => '<h1>Hello</h1>',
+      )
+      const { client, close } = await createUiTestClient(mcp)
+      try {
+        const result = await client.readResource({ uri: 'ui://my-app/view' })
+        const content = result.contents[0] as { _meta?: unknown }
+        expect(content._meta).toBeUndefined()
+      } finally {
+        await close()
+      }
+    })
+
+    it('a handler-provided ResourceResult _meta wins over the declared ui config', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource(
+        { uri: 'ui://my-app/view', mimeType: 'text/html;profile=mcp-app', ui: { prefersBorder: true } },
+        () =>
+          new ResourceResult([
+            {
+              uri: 'ui://my-app/view',
+              mimeType: 'text/html;profile=mcp-app',
+              text: '<h1>A</h1>',
+              _meta: { ui: { prefersBorder: false } },
+            },
+            {
+              uri: 'ui://my-app/view#b',
+              mimeType: 'text/html;profile=mcp-app',
+              text: '<h1>B</h1>',
+              _meta: { other: 'kept' },
+            },
+          ]),
+      )
+      const { client, close } = await createUiTestClient(mcp)
+      try {
+        const result = await client.readResource({ uri: 'ui://my-app/view' })
+        const [a, b] = result.contents as Array<{
+          _meta?: { ui?: { prefersBorder?: boolean }; other?: string }
+        }>
+        expect(a._meta?.ui).toEqual({ prefersBorder: false }) // explicit _meta.ui wins
+        expect(b._meta?.ui).toEqual({ prefersBorder: true })  // declared config fills in
+        expect(b._meta?.other).toBe('kept')                   // sibling keys preserved
+      } finally {
+        await close()
+      }
+    })
+
+    it('a template resource read carries _meta.ui on the expanded URI', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource(
+        {
+          uri: 'ui://widgets/{id}',
+          mimeType: 'text/html;profile=mcp-app',
+          ui: { csp: { resourceDomains: ['https://example.com'] } },
+        },
+        (params) => `<h1>Widget ${params?.id}</h1>`,
+      )
+      const { client, close } = await createUiTestClient(mcp)
+      try {
+        const result = await client.readResource({ uri: 'ui://widgets/42' })
+        const content = result.contents[0] as {
+          text?: string
+          _meta?: { ui?: { csp?: { resourceDomains?: string[] } } }
+        }
+        expect(content.text).toBe('<h1>Widget 42</h1>')
+        expect(content._meta?.ui?.csp?.resourceDomains).toEqual(['https://example.com'])
+      } finally {
+        await close()
+      }
+    })
+
+    it('a mounted child resource read carries the child-declared _meta.ui', async () => {
+      const child = new FastMCP({ name: 'child' })
+      child.resource(
+        {
+          uri: 'ui://app/view',
+          mimeType: 'text/html;profile=mcp-app',
+          ui: { domain: 'child.example.com' },
+        },
+        () => '<h1>Child</h1>',
+      )
+      const parent = new FastMCP({ name: 'parent' })
+      parent.mount(child, 'sub')
+      const { client, close } = await createUiTestClient(parent)
+      try {
+        // prefixResourceUri inserts the prefix after the scheme: ui://sub/app/view
+        const result = await client.readResource({ uri: 'ui://sub/app/view' })
+        const content = result.contents[0] as { _meta?: { ui?: { domain?: string } } }
+        expect(content._meta?.ui?.domain).toBe('child.example.com')
+      } finally {
+        await close()
+      }
     })
   })
 })

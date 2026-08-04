@@ -22,6 +22,7 @@ Defined in: [server/resource.ts:57](https://github.com/PrefectHQ/fastmcp-ts/blob
 ##### contents
 
 \{
+  `_meta?`: `Record`&lt;`string`, `unknown`&gt;;
   `blob?`: `string`;
   `mimeType?`: `string`;
   `text?`: `string`;
@@ -38,6 +39,7 @@ Defined in: [server/resource.ts:57](https://github.com/PrefectHQ/fastmcp-ts/blob
 
 ```ts
 readonly contents: {
+  _meta?: Record<string, unknown>;
   blob?: string;
   mimeType?: string;
   text?: string;
@@ -46,6 +48,12 @@ readonly contents: {
 ```
 
 Defined in: [server/resource.ts:58](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/resource.ts#L58)
+
+#### \_meta?
+
+```ts
+optional _meta?: Record<string, unknown>;
+```
 
 #### blob?
 
