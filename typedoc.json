@@ -3,6 +3,7 @@
   "entryPoints": ["src/server/index.ts", "src/client/index.ts"],
   "tsconfig": "tsconfig.typedoc.json",
   "plugin": ["typedoc-plugin-markdown", "./scripts/typedoc-mintlify.mjs"],
+  "sourceLinkTemplate": "https://github.com/PrefectHQ/fastmcp-ts/blob/main/{path}#L{line}",
   "out": "docs/api",
   "fileExtension": ".mdx",
   "entryFileName": "index",
