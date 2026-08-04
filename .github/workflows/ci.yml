@@ -62,6 +62,41 @@ jobs:
           npm ci
           npx changeset status --since="$base"
 
+  # docs/api is generated output of `npm run docs:api`. typedoc pins its
+  # source links via sourceLinkTemplate, so regeneration is deterministic:
+  # on an up-to-date tree it is a byte-identical no-op. A change to
+  # documented source without a regen leaves the committed API docs stale;
+  # this job regenerates and fails on any difference. Fix locally with
+  # `npm run docs:api` and commit the result.
+  docs-freshness:
+    name: API docs freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regenerate API docs
+        run: npm run docs:api
+
+      - name: Fail if committed docs/api is stale
+        run: |
+          stale=$(git status --porcelain -- docs/api)
+          if [ -n "$stale" ]; then
+            echo "::error::docs/api is stale. Run 'npm run docs:api' and commit the result."
+            echo "Stale files:"
+            echo "$stale"
+            git diff -- docs/api | head -200
+            exit 1
+          fi
+          echo "docs/api is up to date."
+
   test:
     name: Test (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
