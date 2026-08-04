@@ -2,7 +2,7 @@
 title: "MultiServerClient"
 ---
 
-Defined in: [client/multi-server.ts:50](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L50)
+Defined in: [client/multi-server.ts:56](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L56)
 
 ## Implements
 
@@ -16,7 +16,7 @@ Defined in: [client/multi-server.ts:50](https://github.com/PrefectHQ/fastmcp-ts/
 new MultiServerClient(config, options?): MultiServerClient;
 ```
 
-Defined in: [client/multi-server.ts:80](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L80)
+Defined in: [client/multi-server.ts:87](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L87)
 
 #### Parameters
 
@@ -40,7 +40,7 @@ Defined in: [client/multi-server.ts:80](https://github.com/PrefectHQ/fastmcp-ts/
 asyncDispose: Promise<void>;
 ```
 
-Defined in: [client/multi-server.ts:159](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L159)
+Defined in: [client/multi-server.ts:171](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L171)
 
 #### Returns
 
@@ -61,7 +61,7 @@ callTool<TData>(
    options?): Promise<CallToolResult<TData>>;
 ```
 
-Defined in: [client/multi-server.ts:225](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L225)
+Defined in: [client/multi-server.ts:237](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L237)
 
 #### Type Parameters
 
@@ -102,7 +102,7 @@ callToolRaw<TData>(
    options?): Promise<CallToolResult<TData>>;
 ```
 
-Defined in: [client/multi-server.ts:242](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L242)
+Defined in: [client/multi-server.ts:254](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L254)
 
 #### Type Parameters
 
@@ -136,7 +136,7 @@ Defined in: [client/multi-server.ts:242](https://github.com/PrefectHQ/fastmcp-ts
 close(): Promise<void>;
 ```
 
-Defined in: [client/multi-server.ts:145](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L145)
+Defined in: [client/multi-server.ts:157](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L157)
 
 #### Returns
 
@@ -158,7 +158,7 @@ complete(
    options?): Promise<CompletionResult>;
 ```
 
-Defined in: [client/multi-server.ts:483](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L483)
+Defined in: [client/multi-server.ts:491](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L491)
 
 #### Parameters
 
@@ -209,7 +209,7 @@ Defined in: [client/multi-server.ts:483](https://github.com/PrefectHQ/fastmcp-ts
 connect(): Promise<void>;
 ```
 
-Defined in: [client/multi-server.ts:97](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L97)
+Defined in: [client/multi-server.ts:109](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L109)
 
 #### Returns
 
@@ -232,7 +232,7 @@ getPrompt(
 }>;
 ```
 
-Defined in: [client/multi-server.ts:364](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L364)
+Defined in: [client/multi-server.ts:372](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L372)
 
 #### Parameters
 
@@ -266,7 +266,7 @@ Defined in: [client/multi-server.ts:364](https://github.com/PrefectHQ/fastmcp-ts
 getProtocolEra(serverName): ProtocolEra | undefined;
 ```
 
-Defined in: [client/multi-server.ts:189](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L189)
+Defined in: [client/multi-server.ts:201](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L201)
 
 The protocol era negotiated with a specific named server: `'modern'` for
 2026-07-28, `'legacy'` for 2025-11-25 and earlier, `undefined` if the
@@ -294,7 +294,7 @@ client-wide value.
 isConnected(): boolean;
 ```
 
-Defined in: [client/multi-server.ts:163](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L163)
+Defined in: [client/multi-server.ts:175](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L175)
 
 #### Returns
 
@@ -313,7 +313,7 @@ listPrompts(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/multi-server.ts:350](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L350)
+Defined in: [client/multi-server.ts:358](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L358)
 
 #### Parameters
 
@@ -339,7 +339,7 @@ listResources(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/multi-server.ts:269](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L269)
+Defined in: [client/multi-server.ts:277](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L277)
 
 #### Parameters
 
@@ -365,7 +365,7 @@ listResourceTemplates(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/multi-server.ts:290](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L290)
+Defined in: [client/multi-server.ts:298](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L298)
 
 #### Parameters
 
@@ -391,7 +391,7 @@ listTools(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/multi-server.ts:211](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L211)
+Defined in: [client/multi-server.ts:223](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L223)
 
 #### Parameters
 
@@ -416,7 +416,7 @@ Defined in: [client/multi-server.ts:211](https://github.com/PrefectHQ/fastmcp-ts
 ping(options?): Promise<boolean>;
 ```
 
-Defined in: [client/multi-server.ts:195](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L195)
+Defined in: [client/multi-server.ts:207](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L207)
 
 See Client.ping's docs — the same era-routing applies here, per server,
 since each connected server negotiates its own era independently.
@@ -447,7 +447,7 @@ readResource(uri, options?): Promise<(
 })[]>;
 ```
 
-Defined in: [client/multi-server.ts:311](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L311)
+Defined in: [client/multi-server.ts:319](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L319)
 
 #### Parameters
 
@@ -479,7 +479,7 @@ Defined in: [client/multi-server.ts:311](https://github.com/PrefectHQ/fastmcp-ts
 setLogLevel(level, options?): Promise<void>;
 ```
 
-Defined in: [client/multi-server.ts:540](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L540)
+Defined in: [client/multi-server.ts:548](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L548)
 
 See Client.setLogLevel's docs — the same era-routing applies here, per
 server: legacy sends the real `logging/setLevel` RPC; modern records the
@@ -516,7 +516,7 @@ subscribeResource(
    options?): Promise<void>;
 ```
 
-Defined in: [client/multi-server.ts:384](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L384)
+Defined in: [client/multi-server.ts:392](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L392)
 
 See Client.subscribeResource's docs — the same era-routing applies here,
 per server, since each connected server negotiates its own era.
@@ -551,7 +551,7 @@ per server, since each connected server negotiates its own era.
 unsubscribeResource(uri, options?): Promise<void>;
 ```
 
-Defined in: [client/multi-server.ts:426](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L426)
+Defined in: [client/multi-server.ts:434](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L434)
 
 #### Parameters
 
@@ -579,7 +579,7 @@ Defined in: [client/multi-server.ts:426](https://github.com/PrefectHQ/fastmcp-ts
 static connect(config, options?): Promise<MultiServerClient>;
 ```
 
-Defined in: [client/multi-server.ts:167](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/multi-server.ts#L167)
+Defined in: [client/multi-server.ts:179](https://github.com/PrefectHQ/fastmcp-ts/blob/56f3841e2ba0e13a403f2ccffb238c08b1fcdccc/src/client/multi-server.ts#L179)
 
 #### Parameters
 
