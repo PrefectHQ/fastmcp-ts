@@ -2,7 +2,7 @@
 title: "Client"
 ---
 
-Defined in: [client/client.ts:173](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L173)
+Defined in: [client/client.ts:72](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L72)
 
 ## Implements
 
@@ -16,7 +16,7 @@ Defined in: [client/client.ts:173](https://github.com/PrefectHQ/fastmcp-ts/blob/
 new Client(input, options?): Client;
 ```
 
-Defined in: [client/client.ts:217](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L217)
+Defined in: [client/client.ts:117](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L117)
 
 #### Parameters
 
@@ -40,7 +40,7 @@ Defined in: [client/client.ts:217](https://github.com/PrefectHQ/fastmcp-ts/blob/
 asyncDispose: Promise<void>;
 ```
 
-Defined in: [client/client.ts:373](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L373)
+Defined in: [client/client.ts:278](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L278)
 
 #### Returns
 
@@ -61,7 +61,7 @@ callTool<TData>(
    options?): Promise<CallToolResult<TData>>;
 ```
 
-Defined in: [client/client.ts:480](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L480)
+Defined in: [client/client.ts:385](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L385)
 
 #### Type Parameters
 
@@ -102,7 +102,7 @@ callToolRaw<TData>(
    options?): Promise<CallToolResult<TData>>;
 ```
 
-Defined in: [client/client.ts:498](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L498)
+Defined in: [client/client.ts:403](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L403)
 
 Returns the full result including isError without throwing.
 
@@ -138,7 +138,7 @@ Returns the full result including isError without throwing.
 close(): Promise<void>;
 ```
 
-Defined in: [client/client.ts:356](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L356)
+Defined in: [client/client.ts:261](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L261)
 
 #### Returns
 
@@ -160,7 +160,7 @@ complete(
    options?): Promise<CompletionResult>;
 ```
 
-Defined in: [client/client.ts:675](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L675)
+Defined in: [client/client.ts:576](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L576)
 
 #### Parameters
 
@@ -211,7 +211,7 @@ Defined in: [client/client.ts:675](https://github.com/PrefectHQ/fastmcp-ts/blob/
 connect(): Promise<void>;
 ```
 
-Defined in: [client/client.ts:245](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L245)
+Defined in: [client/client.ts:150](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L150)
 
 #### Returns
 
@@ -229,7 +229,7 @@ Defined in: [client/client.ts:245](https://github.com/PrefectHQ/fastmcp-ts/blob/
 getInstructions(): string | undefined;
 ```
 
-Defined in: [client/client.ts:453](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L453)
+Defined in: [client/client.ts:358](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L358)
 
 The server's `instructions` string, when the server provided one — from
 the legacy `initialize` result or, on a modern (2026-07-28) connection,
@@ -253,7 +253,7 @@ getPrompt(
 }>;
 ```
 
-Defined in: [client/client.ts:657](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L657)
+Defined in: [client/client.ts:558](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L558)
 
 #### Parameters
 
@@ -287,7 +287,7 @@ Defined in: [client/client.ts:657](https://github.com/PrefectHQ/fastmcp-ts/blob/
 getProtocolEra(): ProtocolEra | undefined;
 ```
 
-Defined in: [client/client.ts:430](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L430)
+Defined in: [client/client.ts:335](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L335)
 
 The protocol era negotiated at connect(): `'modern'` for 2026-07-28 (per-request
 envelope), `'legacy'` for 2025-11-25 and earlier (the `initialize` handshake).
@@ -308,7 +308,7 @@ getServerCapabilities():
   | undefined;
 ```
 
-Defined in: [client/client.ts:462](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L462)
+Defined in: [client/client.ts:367](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L367)
 
 The capabilities the server advertised during connection — on the legacy
 `initialize` result, or on the `server/discover` result for a modern
@@ -331,7 +331,7 @@ getServerInfo():
   | undefined;
 ```
 
-Defined in: [client/client.ts:443](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L443)
+Defined in: [client/client.ts:348](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L348)
 
 The connected server's self-reported identity (`serverInfo`: name, version,
 and optional title / websiteUrl / icons), when it identified itself. On a
@@ -355,7 +355,7 @@ but an anonymous modern server may omit it, leaving this `undefined`.
 isConnected(): boolean;
 ```
 
-Defined in: [client/client.ts:377](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L377)
+Defined in: [client/client.ts:282](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L282)
 
 #### Returns
 
@@ -374,7 +374,7 @@ listPrompts(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/client.ts:647](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L647)
+Defined in: [client/client.ts:548](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L548)
 
 #### Parameters
 
@@ -400,7 +400,7 @@ listResources(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/client.ts:522](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L522)
+Defined in: [client/client.ts:423](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L423)
 
 #### Parameters
 
@@ -426,7 +426,7 @@ listResourceTemplates(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/client.ts:532](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L532)
+Defined in: [client/client.ts:433](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L433)
 
 #### Parameters
 
@@ -452,7 +452,7 @@ listTools(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/client.ts:470](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L470)
+Defined in: [client/client.ts:375](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L375)
 
 #### Parameters
 
@@ -477,7 +477,7 @@ Defined in: [client/client.ts:470](https://github.com/PrefectHQ/fastmcp-ts/blob/
 notifyRootsChanged(): Promise<void>;
 ```
 
-Defined in: [client/client.ts:954](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L954)
+Defined in: [client/client.ts:847](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L847)
 
 Notify the connected server that the client's roots list has changed.
 The server should re-issue a roots/list request to get the updated list.
@@ -494,7 +494,7 @@ The server should re-issue a roots/list request to get the updated list.
 ping(options?): Promise<boolean>;
 ```
 
-Defined in: [client/client.ts:416](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L416)
+Defined in: [client/client.ts:321](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L321)
 
 Liveness check. On a legacy-era connection this sends the `ping` RPC. On a
 modern (2026-07-28) connection `ping` is not a wire method — the era's
@@ -531,7 +531,7 @@ readResource(uri, options?): Promise<(
 })[]>;
 ```
 
-Defined in: [client/client.ts:542](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L542)
+Defined in: [client/client.ts:443](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L443)
 
 #### Parameters
 
@@ -565,7 +565,7 @@ readResourceRaw(uri, options?): Promise<{
 }>;
 ```
 
-Defined in: [client/client.ts:556](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L556)
+Defined in: [client/client.ts:457](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L457)
 
 Returns the raw SDK ReadResourceResult without unwrapping.
 
@@ -593,7 +593,7 @@ Returns the raw SDK ReadResourceResult without unwrapping.
 setLogLevel(level, options?): Promise<void>;
 ```
 
-Defined in: [client/client.ts:704](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L704)
+Defined in: [client/client.ts:605](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L605)
 
 Sets the minimum severity level for log messages sent by the server. On a
 legacy-era connection this sends the `logging/setLevel` RPC, unchanged. On
@@ -633,7 +633,7 @@ subscribeResource(
    options?): Promise<void>;
 ```
 
-Defined in: [client/client.ts:574](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L574)
+Defined in: [client/client.ts:475](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L475)
 
 Subscribes to change notifications for a resource URI. `handler` fires whenever
 the server sends a matching update, on either protocol era: on a legacy
@@ -673,7 +673,7 @@ dispatch to the same `notifications/resources/updated` handler registered in
 unsubscribeResource(uri, options?): Promise<void>;
 ```
 
-Defined in: [client/client.ts:592](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L592)
+Defined in: [client/client.ts:493](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L493)
 
 #### Parameters
 
@@ -703,7 +703,7 @@ Defined in: [client/client.ts:592](https://github.com/PrefectHQ/fastmcp-ts/blob/
 static connect(input, options?): Promise<MultiServerClient>;
 ```
 
-Defined in: [client/client.ts:382](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L382)
+Defined in: [client/client.ts:287](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L287)
 
 Creates a connected MultiServerClient when given a multi-entry McpConfig.
 
@@ -727,7 +727,7 @@ Creates a connected MultiServerClient when given a multi-entry McpConfig.
 static connect(input, options?): Promise<Client>;
 ```
 
-Defined in: [client/client.ts:384](https://github.com/PrefectHQ/fastmcp-ts/blob/8976c37f79efa6b87809b884f29a1f235a8c4ad1/src/client/client.ts#L384)
+Defined in: [client/client.ts:289](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L289)
 
 Creates a connected Client for a single-server transport. Use with `await using` for automatic cleanup.
 
