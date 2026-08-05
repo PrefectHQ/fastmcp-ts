@@ -9,10 +9,10 @@
  */
 
 import { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport } from '../dist/client.js'
-import { FastMCP, createProxy, createOpenAPIServer } from '../dist/server.js'
+import { FastMCP, createProxy, createOpenAPIServer, forwardableHeaders } from '../dist/server.js'
 import { Readable, Writable } from 'node:stream'
 
-const required = { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport, FastMCP, createProxy, createOpenAPIServer }
+const required = { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport, FastMCP, createProxy, createOpenAPIServer, forwardableHeaders }
 const missing = Object.entries(required).filter(([, v]) => v === undefined).map(([k]) => k)
 
 if (missing.length) {
