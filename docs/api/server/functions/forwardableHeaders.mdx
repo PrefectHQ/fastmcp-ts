@@ -1,0 +1,35 @@
+---
+title: "forwardableHeaders"
+---
+
+```ts
+function forwardableHeaders(headers, options?): Headers;
+```
+
+Defined in: [server/httpContext.ts:135](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L135)
+
+Copy of `headers` that is safe to attach to an outbound request to another
+service. Drops credentials (authorization, cookie, proxy-*), hop-by-hop
+headers, message-framing headers (host, content-length, content-type,
+expect), and every `mcp-*` protocol header. Deployment-specific credential
+headers are covered by `FastMCPOptions.http.redactHeaders`: they are already
+absent from `ctx.http.headers`. `include` re-admits specific names.
+Re-admitting 'authorization' forwards the caller's credential; the MCP spec
+forbids passing the inbound token to upstream APIs, so mint your own
+upstream credential instead.
+
+## Parameters
+
+### headers
+
+`Headers`
+
+### options?
+
+#### include?
+
+`string`[]
+
+## Returns
+
+`Headers`

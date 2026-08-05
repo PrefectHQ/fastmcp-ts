@@ -1,0 +1,75 @@
+---
+title: "HttpRequestContext"
+---
+
+Defined in: [server/httpContext.ts:51](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L51)
+
+Read-only, per-request snapshot of the HTTP request that carried the current
+MCP message. Present wherever the server is reached over an HTTP transport;
+`undefined` on stdio.
+
+REDACTION: credential headers (see DEFAULT\_SENSITIVE\_HEADERS, tuned
+by `FastMCPOptions.http`) are withheld from `headers` and listed in
+`redactedHeaderNames`, so a `null` lookup is never silent. The redaction
+guards accidental egress: tool results and logs flow into model context by
+design. A `RequestVerifier` receives the FULL wire headers instead (its
+`redactedHeaderNames` is empty): the verifier is the credential-handling
+code.
+
+TRUST: every value here is client-controlled input. Nothing in this object
+is authenticated. Do not derive authorization from it in handlers. For
+header-established identity (trusted reverse proxy), configure
+`FastMCPOptions.auth` with a `RequestVerifier` so identity flows through
+`ctx.auth` like every other authenticated request. See docs:
+servers/auth/trusted-proxy.
+
+## Properties
+
+### headers
+
+```ts
+readonly headers: Headers;
+```
+
+Defined in: [server/httpContext.ts:53](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L53)
+
+Headers of the carrying HTTP request, minus the sensitive set. A per-request copy; mutations affect nothing.
+
+***
+
+### method
+
+```ts
+readonly method: string;
+```
+
+Defined in: [server/httpContext.ts:57](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L57)
+
+HTTP method of the carrying request (e.g. 'POST').
+
+***
+
+### redactedHeaderNames
+
+```ts
+readonly redactedHeaderNames: readonly string[];
+```
+
+Defined in: [server/httpContext.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L55)
+
+Names (lowercase, sorted) that were present on the wire but withheld from `headers`.
+
+***
+
+### url
+
+```ts
+readonly url: string;
+```
+
+Defined in: [server/httpContext.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L64)
+
+Origin-form request target (path + query, e.g. '/mcp?tenant=a'). Scheme and
+authority are deliberately absent: behind a proxy this server cannot know
+the external URL. Reconstruct it from your proxy's forwarded headers if you
+need it.

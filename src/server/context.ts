@@ -2,6 +2,8 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import type { Server, ServerContext, RequestStateCodec } from '@modelcontextprotocol/server'
 import type { AccessToken } from './auth/types'
 import type { InputResponses } from './mrtr'
+import { buildHttpRequestContext, resolveSensitiveHeaders } from './httpContext'
+import type { HttpRequestContext } from './httpContext'
 
 // ---------------------------------------------------------------------------
 // Supporting types
@@ -82,6 +84,17 @@ export interface McpContext {
   auth: AccessToken | undefined
   /** The MCP request ID for the current call. */
   requestId: string | undefined
+
+  /**
+   * The HTTP request carrying the current MCP message, when serving over an
+   * HTTP transport; `undefined` on stdio. Fresh per request: on a sessionful
+   * connection each request's own headers appear here, never the
+   * initialize-time ones. Credential headers are withheld by default and
+   * listed in `http.redactedHeaderNames` (tune with `FastMCPOptions.http`).
+   * Untrusted input; see HttpRequestContext's docs before deriving any
+   * authorization from it.
+   */
+  http: HttpRequestContext | undefined
 
   // --- Logging ---
 
@@ -299,6 +312,7 @@ export function createContext(
   sessionState: Map<string, unknown>,
   requestStateCodec?: RequestStateCodec,
   stateless?: boolean,
+  sensitiveHeaders?: ReadonlySet<string>,
 ): McpContext {
   const requestId = String(sdkCtx.mcpReq.id)
   const progressToken = (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)
@@ -359,9 +373,16 @@ export function createContext(
     await sdkCtx.mcpReq.log(level, message, loggerName)
   }
 
+  const httpReq = sdkCtx.http?.req
+  // Default to the standard sensitive set if a call site does not pass one:
+  // redaction must fail closed, never open.
+  const sensitive = sensitiveHeaders ?? resolveSensitiveHeaders()
+
   return {
     auth,
     requestId,
+
+    http: httpReq ? buildHttpRequestContext(httpReq, sensitive) : undefined,
 
     log,
     debug: (msg, logger) => log('debug', msg, logger),

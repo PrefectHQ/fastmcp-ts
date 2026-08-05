@@ -20,10 +20,13 @@ import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node
 import type { AddressInfo } from 'node:net'
 import { AuthorizationError } from './auth/types'
 import type { TokenVerifier, AccessToken } from './auth/types'
+import type { RequestVerifier } from './auth/types'
+import { isRequestVerifier } from './auth/types'
 import type { AuthCheck } from './auth/authorization'
 import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
+import { resolveSensitiveHeaders, nodeRequestToHttpContext } from './httpContext'
 import { envBool } from './env'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
@@ -66,10 +69,27 @@ export interface OAuthConfig {
 export interface FastMCPOptions {
   name: string
   version?: string
-  /** Simple bearer-token verifier for non-OAuth auth scenarios. */
-  auth?: TokenVerifier
+  /**
+   * Bearer-token verifier, or a RequestVerifier for header-based
+   * (trusted-proxy) deployments. See each type's docs. A RequestVerifier
+   * applies to HTTP transports only; stdio's FASTMCP_CLI_AUTH_TOKEN needs a
+   * TokenVerifier. When both `oauth` and `auth` are set, `oauth` serves the
+   * endpoint and `auth` is ignored.
+   */
+  auth?: TokenVerifier | RequestVerifier
   /** Full OAuth 2.1 server with Dynamic Client Registration support. */
   oauth?: OAuthConfig
+  /**
+   * HTTP request context tuning for `ctx.http`. `redactHeaders` adds names to
+   * the sensitive set withheld from `ctx.http.headers` (defaults:
+   * authorization, cookie, proxy-authorization, mcp-session-id); use it for
+   * deployment-specific credentials such as a proxy shared-secret header.
+   * `exposeHeaders` removes names from the set; it is the explicit, greppable
+   * opt-out. Withheld names are listed in `ctx.http.redactedHeaderNames`.
+   * Redaction applies to `ctx.http` only; a RequestVerifier always sees the
+   * full wire headers.
+   */
+  http?: { redactHeaders?: string[]; exposeHeaders?: string[] }
   /** Maximum number of tools returned per listTools page. Default: 50. */
   toolsPageSize?: number
   /** Maximum number of resources (or templates) returned per page. Default: 50. */
@@ -321,8 +341,10 @@ function toAccessToken(authInfo: AuthInfo | undefined): AccessToken | undefined 
 // undefined = not yet resolved; null = env var absent or verification failed.
 let _cliEnvToken: AccessToken | null | undefined
 
-async function resolveCliEnvToken(verifier: TokenVerifier | undefined): Promise<AccessToken | undefined> {
-  if (!verifier) return undefined
+async function resolveCliEnvToken(
+  verifier: TokenVerifier | RequestVerifier | undefined,
+): Promise<AccessToken | undefined> {
+  if (!verifier || !('verify' in verifier)) return undefined
   if (_cliEnvToken !== undefined) return _cliEnvToken ?? undefined
   const raw = process.env['FASTMCP_CLI_AUTH_TOKEN']
   if (!raw) { _cliEnvToken = null; return undefined }
@@ -351,8 +373,9 @@ export class FastMCP {
   readonly name: string
   readonly version: string
 
-  private _auth: TokenVerifier | undefined
+  private _auth: TokenVerifier | RequestVerifier | undefined
   private _oauth: OAuthConfig | undefined
+  private _sensitiveHeaders: Set<string>
   private _toolsPageSize: number
   private _resourcesPageSize: number
   private _tools = new Map<string, RegisteredTool>()
@@ -404,6 +427,7 @@ export class FastMCP {
     this.version = options.version ?? '0.0.1'
     this._auth = options.auth
     this._oauth = options.oauth
+    this._sensitiveHeaders = resolveSensitiveHeaders(options.http)
     this._toolsPageSize = options.toolsPageSize ?? 50
     this._resourcesPageSize = options.resourcesPageSize ?? 50
     this._promptsPageSize = options.promptsPageSize ?? 50
@@ -499,7 +523,7 @@ export class FastMCP {
   ): void {
     server.setRequestHandler('tools/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
           const clientIsUiCapable = isUiCapable(server.getClientCapabilities())
@@ -607,7 +631,7 @@ export class FastMCP {
       const synthTool = synthesizedList.find((s) => s.name === requestedName)
       if (synthTool) {
         if (synthTool.auth) await runAuthCheck(synthTool.auth, token)
-        const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+        const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
         try {
           return await contextStore.run(ctx, () =>
             runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
@@ -661,7 +685,7 @@ export class FastMCP {
 
       const resolvedTool = tool
       const rawArgs: unknown = req.params.arguments ?? {}
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       try {
         return await contextStore.run(ctx, () =>
@@ -708,7 +732,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
           const allVisible = (
@@ -760,7 +784,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/templates/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
@@ -823,7 +847,7 @@ export class FastMCP {
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
@@ -889,7 +913,7 @@ export class FastMCP {
       // caller: `{}` for a real-but-forbidden URI vs -32602 for an unknown one.
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/subscribe', req.params, ctx, async () => {
@@ -908,7 +932,7 @@ export class FastMCP {
       if (opts?.stateless) throw new ProtocolError(ProtocolErrorCode.MethodNotFound, STATELESS_SUBSCRIBE_ERROR)
       const uri = req.params.uri
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/unsubscribe', req.params, ctx, async () => {
@@ -921,7 +945,7 @@ export class FastMCP {
 
     server.setRequestHandler('prompts/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
           const allVisible = (
@@ -1009,7 +1033,7 @@ export class FastMCP {
         }
       }
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/get', req.params, ctx, async () => {
@@ -1046,7 +1070,7 @@ export class FastMCP {
     // observes it.
     server.setRequestHandler('completion/complete', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'completion/complete', req.params, ctx, async () => {
           const ref = req.params.ref
@@ -2079,18 +2103,34 @@ export class FastMCP {
 
       // Auth middleware
       if (auth) {
-        const authHeader = req.headers.authorization
-        const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-        if (!bearer) {
-          res
-            .writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="mcp"' })
-            .end(JSON.stringify({ error: 'Missing bearer token' }))
-          return
-        }
-
-        try {
-          const accessToken = await auth.verify(bearer)
+        if (isRequestVerifier(auth)) {
+          let accessToken: AccessToken
+          try {
+            accessToken = await auth.verifyRequest(nodeRequestToHttpContext(req))
+          } catch (err) {
+            if (err instanceof AuthorizationError) {
+              res
+                .writeHead(403, { 'Content-Type': 'application/json' })
+                .end(JSON.stringify({ error: err.message }))
+            } else {
+              res
+                .writeHead(401, { 'Content-Type': 'application/json' })
+                .end(JSON.stringify({ error: err instanceof Error ? err.message : 'Authentication failed' }))
+            }
+            return
+          }
+          if (!accessToken.token) {
+            // Operator bug, not a client error: an empty token would collapse
+            // every header-authenticated caller into one response-cache
+            // partition (see CachingMiddleware's auth partitioning).
+            console.error(
+              '[fastmcp] RequestVerifier.verifyRequest must set AccessToken.token to a stable, non-empty per-identity value. It keys response-cache partitioning and downstream identity.',
+            )
+            res
+              .writeHead(500, { 'Content-Type': 'application/json' })
+              .end(JSON.stringify({ error: 'verifyRequest returned an AccessToken with an empty token' }))
+            return
+          }
           ;(req as IncomingMessage & { auth: AuthInfo }).auth = {
             token: accessToken.token,
             clientId: accessToken.clientId ?? '',
@@ -2098,17 +2138,38 @@ export class FastMCP {
             expiresAt: accessToken.expiresAt,
             extra: accessToken.claims,
           }
-        } catch (err) {
-          if (err instanceof AuthorizationError) {
-            res
-              .writeHead(403, { 'Content-Type': 'application/json' })
-              .end(JSON.stringify({ error: err.message }))
-          } else {
+        } else {
+          const authHeader = req.headers.authorization
+          const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+          if (!bearer) {
             res
               .writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="mcp"' })
-              .end(JSON.stringify({ error: err instanceof Error ? err.message : 'Authentication failed' }))
+              .end(JSON.stringify({ error: 'Missing bearer token' }))
+            return
           }
-          return
+
+          try {
+            const accessToken = await auth.verify(bearer)
+            ;(req as IncomingMessage & { auth: AuthInfo }).auth = {
+              token: accessToken.token,
+              clientId: accessToken.clientId ?? '',
+              scopes: accessToken.scopes,
+              expiresAt: accessToken.expiresAt,
+              extra: accessToken.claims,
+            }
+          } catch (err) {
+            if (err instanceof AuthorizationError) {
+              res
+                .writeHead(403, { 'Content-Type': 'application/json' })
+                .end(JSON.stringify({ error: err.message }))
+            } else {
+              res
+                .writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="mcp"' })
+                .end(JSON.stringify({ error: err instanceof Error ? err.message : 'Authentication failed' }))
+            }
+            return
+          }
         }
       }
 

@@ -696,6 +696,12 @@
             "isDeprecated": false
           },
           {
+            "title": "HttpRequestContext",
+            "kind": 256,
+            "path": "server/interfaces/HttpRequestContext.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "HTTPRoute",
             "kind": 256,
             "path": "server/interfaces/HTTPRoute.mdx",
@@ -807,6 +813,12 @@
             "title": "RequestBodyInfo",
             "kind": 256,
             "path": "server/interfaces/RequestBodyInfo.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RequestVerifier",
+            "kind": 256,
+            "path": "server/interfaces/RequestVerifier.mdx",
             "isDeprecated": false
           },
           {
@@ -1063,6 +1075,12 @@
             "title": "ForEach",
             "kind": 64,
             "path": "server/functions/ForEach.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "forwardableHeaders",
+            "kind": 64,
+            "path": "server/functions/forwardableHeaders.mdx",
             "isDeprecated": false
           },
           {

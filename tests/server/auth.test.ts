@@ -15,9 +15,12 @@ import {
   multiAuth,
   oauthProvider,
   oauthProxy,
+  AuthorizationError,
+  CachingMiddleware,
 } from 'fastmcp-ts/server'
-import type { AccessToken } from 'fastmcp-ts/server'
-import { connectHttpClient, rawPost } from '../helpers/http'
+import type { AccessToken, RequestVerifier } from 'fastmcp-ts/server'
+import { connectHttpClient, connectHttpClientWithHeaders, rawPost } from '../helpers/http'
+import { connectEra, ERA_COMBOS } from '../helpers/eras'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -881,6 +884,214 @@ describe('Server — Authentication', () => {
       )
 
       await expect(multi.verify('unknown-token')).rejects.toThrow()
+    })
+  })
+
+  describe('RequestVerifier (header-based auth)', () => {
+    function headerVerifier(): RequestVerifier {
+      return {
+        async verifyRequest(request) {
+          if (request.headers.get('x-proxy-secret') !== 'proxy-shared-secret') {
+            throw new Error('Missing or wrong proxy secret')
+          }
+          const userId = request.headers.get('x-user-id')
+          if (!userId) throw new Error('No identity header')
+          if (userId === 'banned') throw new AuthorizationError('banned user')
+          return {
+            token: userId,
+            clientId: userId,
+            scopes: (request.headers.get('x-scopes') ?? '').split(' ').filter(Boolean),
+            claims: { sub: userId },
+          }
+        },
+      }
+    }
+
+    async function startServer(verifier: RequestVerifier = headerVerifier()) {
+      const mcp = new FastMCP({ name: 'test', auth: verifier })
+      mcp.tool({ name: 'whoami', description: 'test' }, () => {
+        const auth = mcp.getContext().auth
+        return `sub:${(auth?.claims as { sub?: string } | undefined)?.sub ?? 'none'}`
+      })
+      await mcp.run({ transport: 'http', port: 0 })
+      const addr = mcp.address!
+      const host = addr.host === '0.0.0.0' ? '127.0.0.1' : addr.host
+      return { mcp, url: new URL(`http://${host}:${addr.port}${addr.path}`) }
+    }
+
+    it('admits a request with valid identity headers; identity lands in ctx.auth', async () => {
+      const { mcp, url } = await startServer()
+      const { client, close } = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-1',
+      })
+      try {
+        const result = await client.callTool({ name: 'whoami', arguments: {} })
+        expect((result.content as Array<{ text: string }>)[0].text).toBe('sub:u-1')
+      } finally {
+        await close()
+        await mcp.close()
+      }
+    })
+
+    it('verifyRequest sees the FULL wire headers, including credentials', async () => {
+      let sawAuthorization: string | null = 'not-called'
+      let sawRedactedNames: readonly string[] | undefined
+      const { mcp, url } = await startServer({
+        async verifyRequest(request) {
+          sawAuthorization = request.headers.get('authorization')
+          sawRedactedNames = request.redactedHeaderNames
+          return { token: 'u-x', scopes: [], claims: {} }
+        },
+      })
+      try {
+        const { client, close } = await connectHttpClientWithHeaders(url, {
+          Authorization: 'Bearer wire-visible',
+          'x-user-id': 'u-x',
+        })
+        await client.callTool({ name: 'whoami', arguments: {} })
+        await close()
+        expect(sawAuthorization).toBe('Bearer wire-visible')
+        expect(sawRedactedNames).toEqual([])
+      } finally {
+        await mcp.close()
+      }
+    })
+
+    it('rejects with 401 (no WWW-Authenticate) when the verifier throws a plain error', async () => {
+      const { mcp, url } = await startServer()
+      try {
+        const res = await rawPost(url, undefined, { 'x-proxy-secret': 'proxy-shared-secret' })
+        expect(res.status).toBe(401)
+        expect(res.headers.get('www-authenticate')).toBeNull()
+      } finally {
+        await mcp.close()
+      }
+    })
+
+    it('rejects with 403 on AuthorizationError', async () => {
+      const { mcp, url } = await startServer()
+      try {
+        const res = await rawPost(url, undefined, {
+          'x-proxy-secret': 'proxy-shared-secret',
+          'x-user-id': 'banned',
+        })
+        expect(res.status).toBe(403)
+      } finally {
+        await mcp.close()
+      }
+    })
+
+    it('rejects with 500 when verifyRequest returns an empty token (operator bug)', async () => {
+      const { mcp, url } = await startServer({
+        async verifyRequest() {
+          return { token: '', scopes: [], claims: {} }
+        },
+      })
+      try {
+        const res = await rawPost(url, undefined, { 'x-user-id': 'u-1' })
+        expect(res.status).toBe(500)
+      } finally {
+        await mcp.close()
+      }
+    })
+
+    it('stdio with a RequestVerifier: connects, ctx.auth is undefined, no crash', async () => {
+      const mcp = new FastMCP({ name: 'test', auth: headerVerifier() })
+      let auth: unknown = 'not-set'
+      mcp.tool({ name: 'probe', description: 'test' }, () => {
+        auth = mcp.getContext().auth
+        return 'ok'
+      })
+      const combo = ERA_COMBOS.find((c) => c.name === 'stdio-legacy')!
+      const { client, close } = await connectEra(mcp, combo)
+      try {
+        await client.callTool({ name: 'probe', arguments: {} })
+        expect(auth).toBeUndefined()
+      } finally {
+        await close()
+      }
+    })
+
+    it('per-tool AuthCheck and tools/list filtering work on header-derived identity', async () => {
+      const mcp = new FastMCP({ name: 'test', auth: headerVerifier() })
+      mcp.tool({ name: 'open', description: 'test' }, () => 'open-ok')
+      mcp.tool(
+        { name: 'admin-only', description: 'test', auth: requireScopes('admin') },
+        () => 'admin-ok',
+      )
+      await mcp.run({ transport: 'http', port: 0 })
+      const addr = mcp.address!
+      const host = addr.host === '0.0.0.0' ? '127.0.0.1' : addr.host
+      const url = new URL(`http://${host}:${addr.port}${addr.path}`)
+
+      const admin = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-admin',
+        'x-scopes': 'admin',
+      })
+      const plain = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-plain',
+      })
+      try {
+        const adminNames = (await admin.client.listTools()).tools.map((t) => t.name).sort()
+        expect(adminNames).toEqual(['admin-only', 'open'])
+        const plainNames = (await plain.client.listTools()).tools.map((t) => t.name)
+        expect(plainNames).toEqual(['open'])
+
+        const ok = await admin.client.callTool({ name: 'admin-only', arguments: {} })
+        expect((ok.content as Array<{ text: string }>)[0].text).toBe('admin-ok')
+        await expect(
+          plain.client.callTool({ name: 'admin-only', arguments: {} }),
+        ).rejects.toThrow()
+      } finally {
+        await admin.close()
+        await plain.close()
+        await mcp.close()
+      }
+    })
+
+    it('CachingMiddleware partitions header-derived identities by token hash', async () => {
+      let executions = 0
+      const mcp = new FastMCP({
+        name: 'test',
+        auth: headerVerifier(),
+        middleware: [new CachingMiddleware(60_000)],
+      })
+      mcp.tool({ name: 'whoami-cached', description: 'test' }, () => {
+        executions++
+        const auth = mcp.getContext().auth
+        return `sub:${(auth?.claims as { sub?: string } | undefined)?.sub ?? 'none'}`
+      })
+      await mcp.run({ transport: 'http', port: 0 })
+      const addr = mcp.address!
+      const host = addr.host === '0.0.0.0' ? '127.0.0.1' : addr.host
+      const url = new URL(`http://${host}:${addr.port}${addr.path}`)
+
+      const a = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-a',
+      })
+      const b = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-b',
+      })
+      try {
+        const text = async (c: typeof a, name: string) =>
+          ((await c.client.callTool({ name, arguments: {} })).content as Array<{ text: string }>)[0]
+            .text
+
+        expect(await text(a, 'whoami-cached')).toBe('sub:u-a')
+        expect(await text(a, 'whoami-cached')).toBe('sub:u-a') // cache hit, same identity
+        expect(executions).toBe(1)
+        expect(await text(b, 'whoami-cached')).toBe('sub:u-b') // different identity: NOT served from a's cache
+        expect(executions).toBe(2)
+      } finally {
+        await a.close()
+        await b.close()
+        await mcp.close()
+      }
     })
   })
 })

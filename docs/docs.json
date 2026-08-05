@@ -51,6 +51,7 @@
             "pages": [
               "servers/auth/overview",
               "servers/auth/token-verification",
+              "servers/auth/trusted-proxy",
               "servers/auth/oauth",
               "servers/auth/authorization"
             ]
@@ -150,6 +151,7 @@
                   "api/server/interfaces/FileStorageAdapter",
                   "api/server/interfaces/FileUploadOptions",
                   "api/server/interfaces/FormInputOptions",
+                  "api/server/interfaces/HttpRequestContext",
                   "api/server/interfaces/HTTPRoute",
                   "api/server/interfaces/IfNode",
                   "api/server/interfaces/McpContext",
@@ -169,6 +171,7 @@
                   "api/server/interfaces/PromptMessage",
                   "api/server/interfaces/PromptView",
                   "api/server/interfaces/RequestBodyInfo",
+                  "api/server/interfaces/RequestVerifier",
                   "api/server/interfaces/ResourceAnnotations",
                   "api/server/interfaces/ResourceConfig",
                   "api/server/interfaces/ResourceUiMeta",
@@ -220,6 +223,7 @@
                   "api/server/functions/createProxy",
                   "api/server/functions/debugTokenVerifier",
                   "api/server/functions/ForEach",
+                  "api/server/functions/forwardableHeaders",
                   "api/server/functions/Grid",
                   "api/server/functions/If",
                   "api/server/functions/Input",

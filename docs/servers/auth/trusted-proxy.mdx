@@ -1,0 +1,65 @@
+---
+title: "Trusted proxies"
+description: "Authenticate from headers set by a reverse proxy or gateway"
+icon: "network-wired"
+---
+
+Some deployments terminate authentication at a reverse proxy or gateway. The proxy verifies the caller and forwards the resolved identity as request headers. Configure a `RequestVerifier` to accept that identity. It replaces the bearer-token `TokenVerifier` in `FastMCPOptions.auth`.
+
+```typescript
+import { FastMCP, AuthorizationError } from 'fastmcp-ts/server'
+import type { RequestVerifier } from 'fastmcp-ts/server'
+import { timingSafeEqual } from 'node:crypto'
+
+const PROXY_SECRET = process.env.PROXY_SHARED_SECRET!
+
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  return ab.length === bb.length && timingSafeEqual(ab, bb)
+}
+
+const proxyAuth: RequestVerifier = {
+  async verifyRequest(request) {
+    // 1. Verify provenance FIRST. Headers are forgeable by any direct caller.
+    //    The verifier sees the full wire headers; ctx.http does not.
+    const secret = request.headers.get('x-proxy-secret')
+    if (!secret || !safeEqual(secret, PROXY_SECRET)) {
+      throw new Error('Request did not come through the proxy')
+    }
+    // 2. Read the identity the proxy established.
+    const userId = request.headers.get('x-auth-request-user')
+    if (!userId) throw new Error('Proxy did not forward an identity')
+    // 3. Return it as an AccessToken. `token` MUST be a stable, non-empty,
+    //    per-identity value: it keys response-cache partitioning.
+    return {
+      token: userId,
+      clientId: userId,
+      scopes: (request.headers.get('x-auth-request-groups') ?? '').split(',').filter(Boolean),
+      claims: { sub: userId },
+    }
+  },
+}
+
+const mcp = new FastMCP({
+  name: 'internal-tools',
+  auth: proxyAuth,
+  // Keep the proxy secret out of ctx.http and out of anything forwarded:
+  http: { redactHeaders: ['x-proxy-secret'] },
+})
+```
+
+The verifier runs once per HTTP request, before dispatch. The returned `AccessToken` becomes `ctx.auth`, exactly as with a bearer token. Per-tool `auth` checks, `tools/list` filtering, and `CachingMiddleware` partitioning all keep working.
+
+Throw `AuthorizationError` to reject with HTTP 403. Any other error rejects with HTTP 401. The error message is returned to the client in the response body. Do not put secrets in thrown error messages.
+
+## Deployment checklist
+
+A `RequestVerifier` is only as trustworthy as the path between the proxy and this server. Before you trust a header:
+
+1. **Verify provenance in the verifier.** Check a shared secret the proxy injects (as above), or terminate mTLS between proxy and server. Never trust identity headers on their own.
+2. **Close the direct path.** Bind the server to a loopback or private interface, and restrict ingress with network policy so only the proxy can reach it. Anyone who can reach the port directly can send any headers.
+3. **Strip inbound identity headers at the proxy.** Configure the proxy to overwrite `x-auth-request-*` (or your chosen names) on every request, so a client cannot smuggle its own values through.
+4. **Redact your secret headers.** Add the provenance secret and any other deployment credentials to `http.redactHeaders`. They then never appear in `ctx.http.headers` and can never be forwarded from it.
+5. **Keep identity per request.** Do not copy identity into session state. The verifier already runs on every request; let `ctx.auth` be the only identity source.
+6. **Do not forward inbound credentials upstream.** The MCP specification forbids passing inbound tokens to upstream APIs. Use `forwardableHeaders()` when forwarding request headers, and mint your own upstream credentials.
