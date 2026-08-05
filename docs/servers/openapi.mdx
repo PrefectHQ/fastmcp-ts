@@ -1,0 +1,100 @@
+---
+title: "OpenAPI Generation"
+description: "Generate a complete MCP server from any OpenAPI 3.x specification"
+icon: "file-code"
+---
+
+Most HTTP APIs already describe themselves. An OpenAPI spec names every operation, types every parameter, and shapes every response; that is exactly the information an MCP server needs to advertise tools. `createOpenAPIServer()` reads a spec and returns a ready `FastMCP`: every operation becomes a tool whose input schema is derived from the operation's parameters and request body, and whose handler calls the real API endpoint. You write no handlers and no schemas; the spec is the source of truth.
+
+```typescript
+import { createOpenAPIServer } from '@prefecthq/fastmcp-ts/server'
+import { readFileSync } from 'node:fs'
+
+const server = createOpenAPIServer({
+  spec: readFileSync('./petstore.yaml', 'utf8'),
+  name: 'Petstore',
+})
+
+await server.run()
+```
+
+The generated server is a plain `FastMCP`, so everything else in this documentation applies to it unchanged: [run it](/servers/running) on stdio or HTTP, [mount it](/servers/composition) into a gateway, wrap it in [middleware](/servers/middleware), or gate it with [auth](/servers/auth/overview). This is the TypeScript counterpart of Python FastMCP's `FastMCP.from_openapi`, and the two implementations generate identical component names and schemas from the same spec, so a server can move between the two runtimes without its clients noticing.
+
+`spec` accepts a parsed object or YAML/JSON text, in OpenAPI 3.0 or 3.1. References must be local to the document; an external `$ref` is rejected, because the generator will not fetch remote schemas at build time.
+
+## Generated tools
+
+Each operation's tool advertises a single flat input schema. Path, query, header, and cookie parameters merge with the request body's properties into one object, so a model calling the tool fills in plain named arguments and the generator routes each one back to its proper location in the HTTP request. When a parameter name appears in more than one location, the non-body occurrences are disambiguated with a location suffix (`id__path`, `id__query`); body properties always keep their bare names.
+
+The output schema comes from the operation's success response (the first of 200, 201, 202, 204, or any other 2xx). MCP requires tool output schemas to be objects, so a response typed as an array or scalar is wrapped in `{ result: ... }` and the schema carries an `x-fastmcp-wrap-result` marker; at call time the response is wrapped to match. JSON responses become `structuredContent`, everything else is returned as text, and a non-2xx status becomes a tool error carrying the status code, reason, and response body.
+
+Tool names come from the spec, in this order: the `operationId` (trimmed at the first `__`), an override from the `names` option, the operation's summary, or `{METHOD}_{path}` as a last resort. Names are slugified, capped at 56 characters, and deduplicated with numeric suffixes (`search`, `search_2`). To rename specific operations, map their operationIds:
+
+```typescript
+const server = createOpenAPIServer({
+  spec,
+  names: { listPets__v2: 'pets_index' },
+})
+```
+
+## The HTTP client
+
+Requests go to the spec's first `servers` entry by default, with server variables filled from their declared defaults. The `client` option overrides or completes that: a spec with no servers entry (or a relative one) needs an explicit `baseUrl`. Default headers ride on every request, `auth` resolves fresh headers per request (the right hook for token refresh), and `timeoutMs` bounds each call at 30 seconds unless you say otherwise. Request-specific values always win: a header parameter supplied by the caller replaces a default header of the same name.
+
+```typescript
+const server = createOpenAPIServer({
+  spec,
+  client: {
+    baseUrl: 'https://api.example.com',
+    headers: { 'user-agent': 'petstore-mcp' },
+    auth: { getHeaders: async () => ({ authorization: `Bearer ${await getToken()}` }) },
+    timeoutMs: 10_000,
+  },
+})
+```
+
+The client sends with the global `fetch`. Pass `client.fetch` to substitute your own, for proxying, recording, or tests.
+
+## Route maps
+
+By default every operation becomes a tool, which is the right call for LLM clients: tools are the component type models can invoke. Route maps let you carve out exceptions. Each map matches on HTTP methods, a path pattern (searched unanchored, so `pets` matches `/api/pets/{id}`), and required tags; the first matching map decides whether the route becomes a `tool`, `resource`, `resourceTemplate`, or is excluded entirely. Your maps are checked in order before the default catch-all.
+
+```typescript
+const server = createOpenAPIServer({
+  spec,
+  routeMaps: [
+    { pattern: '^/admin/', mcpType: 'exclude' },
+    { methods: ['GET'], pattern: '\\{', mcpType: 'resourceTemplate' },
+    { methods: ['GET'], mcpType: 'resource' },
+  ],
+})
+```
+
+This example is the classic REST reading: admin endpoints disappear, GETs with path parameters become resource templates, other GETs become resources, and every write remains a tool. A generated resource lives at `resource://{name}`; a template appends its path parameters in alphabetical order (`resource://getPet/{petId}`), and reading one routes the parameters back into the HTTP path.
+
+For decisions a declarative map cannot express, `routeMapFn` runs on every route after the maps and may return a different type (or nothing, to keep the mapped one). A map can also attach `mcpTags` to the components it creates, and the top-level `tags` option tags everything, which pairs well with [transforms](/servers/transforms) like `VersionFilter`.
+
+## Customizing components
+
+`componentFn` is the last word before registration. It receives the parsed route and the component about to be registered, and mutates it in place: rename a tool, rewrite a description for the model's benefit, adjust tags, or tighten a schema.
+
+```typescript
+const server = createOpenAPIServer({
+  spec,
+  componentFn: (route, component) => {
+    if (component.kind === 'tool' && route.method === 'DELETE') {
+      component.description = `${component.description} (Destructive: cannot be undone.)`
+    }
+  },
+})
+```
+
+By default tools advertise the exact output schema derived from the spec. If the upstream API's responses drift from its spec (a common ailment), set `validateOutput: false` and tools advertise a permissive object schema instead, so structurally surprising responses still flow through as structured JSON.
+
+## Running with npx
+
+A generated server file is an ordinary FastMCP entry point, so the [CLI](/cli) treats it like any other server: `npx fastmcp run server.ts` for stdio, `npx fastmcp inspect --file server.ts` to see what was generated, and the standard env vars (`MCP_TRANSPORT`, `MCP_PORT`) select the transport in deployment.
+
+## Python parity
+
+Generation is contract-compatible with Python FastMCP: names, input schemas, output schemas, wrap markers, collision suffixes, and route-map semantics match, and the test suite pins them against snapshots generated by the Python implementation. Two runtime behaviors differ. Python forwards inbound MCP HTTP request headers to the upstream API; the TypeScript server does not, because its request context does not yet expose inbound headers, so upstream credentials belong in `client.headers` or `client.auth`. And where Python renders error-response bodies through its own object formatting, TypeScript appends the raw response text; the `HTTP error {status}` prefix is identical in both.

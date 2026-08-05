@@ -1,0 +1,23 @@
+---
+title: "createOpenAPIServer"
+---
+
+```ts
+function createOpenAPIServer(options): FastMCP;
+```
+
+Defined in: server/openapi/index.ts:143
+
+Create a FastMCP server from an OpenAPI 3.0/3.1 specification. Every
+operation becomes an MCP component (tool by default; see `routeMaps`)
+whose handler calls the described HTTP endpoint.
+
+## Parameters
+
+### options
+
+[`OpenAPIServerOptions`](/api/server/interfaces/OpenAPIServerOptions)
+
+## Returns
+
+[`FastMCP`](/api/server/classes/FastMCP)

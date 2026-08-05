@@ -1,0 +1,67 @@
+---
+title: "RouteMap"
+---
+
+Defined in: server/openapi/types.ts:85
+
+Mapping rule from HTTP routes to FastMCP component types.
+
+## Properties
+
+### mcpTags?
+
+```ts
+optional mcpTags?: string[];
+```
+
+Defined in: server/openapi/types.ts:95
+
+Extra tags applied to components created by this map.
+
+***
+
+### mcpType
+
+```ts
+mcpType: MCPType;
+```
+
+Defined in: server/openapi/types.ts:93
+
+The component type to create for matching routes.
+
+***
+
+### methods?
+
+```ts
+optional methods?: "*" | HttpMethod[];
+```
+
+Defined in: server/openapi/types.ts:87
+
+HTTP methods to match. `'*'` (default) matches every method.
+
+***
+
+### pattern?
+
+```ts
+optional pattern?: string | RegExp;
+```
+
+Defined in: server/openapi/types.ts:89
+
+Pattern searched (unanchored) against the route path. Default matches all.
+
+***
+
+### tags?
+
+```ts
+optional tags?: string[];
+```
+
+Defined in: server/openapi/types.ts:91
+
+Tags that must ALL be present on the route for the map to match.

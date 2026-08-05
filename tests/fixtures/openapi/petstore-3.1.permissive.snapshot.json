@@ -1,0 +1,593 @@
+{
+  "tools": [
+    {
+      "name": "pets_index",
+      "description": "Returns every pet in the store.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 20,
+            "description": "Maximum number of pets to return."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "pending",
+              "sold"
+            ]
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "x-fastmcp-wrap-result": true
+      },
+      "tags": [
+        "pets",
+        "read"
+      ]
+    },
+    {
+      "name": "createPet",
+      "description": "Create a pet",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/$defs/Category"
+          },
+          "status": {
+            "$ref": "#/$defs/PetStatus"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "$defs": {
+          "Category": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "PetStatus": {
+            "type": "string",
+            "enum": [
+              "available",
+              "pending",
+              "sold"
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": [
+        "pets",
+        "write"
+      ]
+    },
+    {
+      "name": "getPetById",
+      "description": "Get a pet",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "integer",
+            "description": "Pet identifier."
+          }
+        },
+        "required": [
+          "petId"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": [
+        "pets",
+        "read"
+      ]
+    },
+    {
+      "name": "replacePet",
+      "description": "Replace a pet",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "petId__path": {
+            "type": "integer",
+            "description": "Pet identifier. (Path parameter)"
+          },
+          "petId": {
+            "type": "integer",
+            "description": "Pet id in body."
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "petId__path",
+          "name"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": [
+        "pets",
+        "write"
+      ]
+    },
+    {
+      "name": "deletePet",
+      "description": "Executes DELETE /pets/{petId}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "integer",
+            "description": "Pet identifier."
+          }
+        },
+        "required": [
+          "petId"
+        ]
+      },
+      "outputSchema": null,
+      "tags": [
+        "pets",
+        "write"
+      ]
+    },
+    {
+      "name": "Get_pet_photos",
+      "description": "Get pet photos!",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "petId"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "x-fastmcp-wrap-result": true
+      },
+      "tags": [
+        "pets"
+      ]
+    },
+    {
+      "name": "getOwnerPet",
+      "description": "Executes GET /owners/{ownerId}/pets/{petId}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "integer"
+          },
+          "ownerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "petId",
+          "ownerId"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": [
+        "pets"
+      ]
+    },
+    {
+      "name": "GET_search",
+      "description": "Executes GET /search",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "q"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": []
+    },
+    {
+      "name": "getReport",
+      "description": "Executes GET /reports",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "format__query": {
+            "type": "string",
+            "description": "(Query parameter)"
+          },
+          "format__header": {
+            "type": "string",
+            "description": "(Header parameter)"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "x-fastmcp-wrap-result": true
+      },
+      "tags": []
+    },
+    {
+      "name": "createOrder",
+      "description": "Executes POST /orders",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku",
+          "quantity"
+        ],
+        "$defs": {
+          "OrderExtra": {
+            "properties": {
+              "note": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "integer"
+              }
+            },
+            "type": "object",
+            "required": [
+              "quantity"
+            ]
+          },
+          "OrderBase": {
+            "properties": {
+              "sku": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "integer"
+              }
+            },
+            "type": "object",
+            "required": [
+              "sku"
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": [
+        "orders"
+      ]
+    },
+    {
+      "name": "createShape",
+      "description": "Executes POST /shapes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Selects the variant. Accepted values: 'circle', 'square'. 'circle' uses radius, area; 'square' uses side, area. Send only the fields belonging to the selected variant."
+          },
+          "label": {
+            "type": "string"
+          },
+          "radius": {
+            "type": "number"
+          },
+          "area": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "side": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "$defs": {
+          "Circle": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "radius": {
+                "type": "number"
+              },
+              "area": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "Shape": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "type": "object",
+            "required": [
+              "kind"
+            ]
+          },
+          "Square": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/Shape"
+              },
+              {
+                "properties": {
+                  "side": {
+                    "type": "number"
+                  },
+                  "area": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": [
+        "shapes"
+      ]
+    },
+    {
+      "name": "createNote",
+      "description": "Executes POST /notes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note_text": {
+            "type": "string",
+            "title": "Note Text"
+          }
+        },
+        "required": [
+          "note_text"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "x-fastmcp-wrap-result": true
+      },
+      "tags": []
+    },
+    {
+      "name": "uploadFile",
+      "description": "Executes POST /upload",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": []
+    },
+    {
+      "name": "generatePetInventoryAuditReportForVeterinaryComplianceRe",
+      "description": "Executes POST /audits",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": []
+    },
+    {
+      "name": "duplicate_name",
+      "description": "Executes GET /dup-a",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": []
+    },
+    {
+      "name": "duplicate_name_2",
+      "description": "Executes GET /dup-b",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": []
+    },
+    {
+      "name": "headersTest",
+      "description": "Executes GET /headers-test",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "X-Request-ID": {
+            "type": "string"
+          },
+          "session": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "X-Request-ID"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": []
+    },
+    {
+      "name": "filterItems",
+      "description": "Executes GET /filter",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filter": {
+            "properties": {
+              "color": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "x-fastmcp-wrap-result": true
+      },
+      "tags": []
+    },
+    {
+      "name": "contentParam",
+      "description": "Executes GET /content-param",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "payload": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "tags": []
+    }
+  ],
+  "resources": [],
+  "resourceTemplates": []
+}

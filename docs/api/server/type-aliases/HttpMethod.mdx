@@ -1,0 +1,16 @@
+---
+title: "HttpMethod"
+---
+
+```ts
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS" | "HEAD" | "TRACE";
+```
+
+Defined in: server/openapi/types.ts:10
+
+Shared types for the OpenAPI integration.
+
+The intermediate representation (HTTPRoute and friends) is a direct port of
+Python FastMCP's `fastmcp.utilities.openapi.models` so the two
+implementations generate identical MCP components from the same spec. The
+parity contract is pinned by the snapshots in `tests/fixtures/openapi/`.

@@ -1,0 +1,661 @@
+{
+  "tools": [
+    {
+      "name": "createPet",
+      "description": "Create a pet",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/$defs/Category"
+          },
+          "status": {
+            "$ref": "#/$defs/PetStatus"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "$defs": {
+          "Category": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "PetStatus": {
+            "type": "string",
+            "enum": [
+              "available",
+              "pending",
+              "sold"
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/$defs/Category"
+          },
+          "status": {
+            "$ref": "#/$defs/PetStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "x-fastmcp-top-level-schema": "Pet",
+        "$defs": {
+          "Category": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "Pet": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "category": {
+                "$ref": "#/$defs/Category"
+              },
+              "status": {
+                "$ref": "#/$defs/PetStatus"
+              }
+            },
+            "type": "object",
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "PetStatus": {
+            "type": "string",
+            "enum": [
+              "available",
+              "pending",
+              "sold"
+            ]
+          }
+        }
+      },
+      "tags": [
+        "api",
+        "pets",
+        "write"
+      ]
+    },
+    {
+      "name": "replacePet",
+      "description": "Replace a pet",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "petId__path": {
+            "type": "integer",
+            "description": "Pet identifier. (Path parameter)"
+          },
+          "petId": {
+            "type": "integer",
+            "description": "Pet id in body."
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "petId__path",
+          "name"
+        ]
+      },
+      "outputSchema": {
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/$defs/Category"
+          },
+          "status": {
+            "$ref": "#/$defs/PetStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "x-fastmcp-top-level-schema": "Pet",
+        "$defs": {
+          "Category": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "Pet": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "category": {
+                "$ref": "#/$defs/Category"
+              },
+              "status": {
+                "$ref": "#/$defs/PetStatus"
+              }
+            },
+            "type": "object",
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "PetStatus": {
+            "type": "string",
+            "enum": [
+              "available",
+              "pending",
+              "sold"
+            ]
+          }
+        }
+      },
+      "tags": [
+        "api",
+        "pets",
+        "write"
+      ]
+    },
+    {
+      "name": "deletePet",
+      "description": "Executes DELETE /pets/{petId}",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "integer",
+            "description": "Pet identifier."
+          }
+        },
+        "required": [
+          "petId"
+        ]
+      },
+      "outputSchema": null,
+      "tags": [
+        "api",
+        "pets",
+        "write"
+      ]
+    },
+    {
+      "name": "createOrder",
+      "description": "Executes POST /orders",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku",
+          "quantity"
+        ],
+        "$defs": {
+          "OrderExtra": {
+            "properties": {
+              "note": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "integer"
+              }
+            },
+            "type": "object",
+            "required": [
+              "quantity"
+            ]
+          },
+          "OrderBase": {
+            "properties": {
+              "sku": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "integer"
+              }
+            },
+            "type": "object",
+            "required": [
+              "sku"
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          }
+        },
+        "type": "object",
+        "x-fastmcp-top-level-schema": "Order",
+        "$defs": {
+          "Order": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "sku": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        }
+      },
+      "tags": [
+        "api",
+        "orders"
+      ]
+    },
+    {
+      "name": "createShape",
+      "description": "Executes POST /shapes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Selects the variant. Accepted values: 'circle', 'square'. 'circle' uses radius, area; 'square' uses side, area. Send only the fields belonging to the selected variant."
+          },
+          "label": {
+            "type": "string"
+          },
+          "radius": {
+            "type": "number"
+          },
+          "area": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "side": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "$defs": {
+          "Circle": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "radius": {
+                "type": "number"
+              },
+              "area": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "Shape": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "type": "object",
+            "required": [
+              "kind"
+            ]
+          },
+          "Square": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/Shape"
+              },
+              {
+                "properties": {
+                  "side": {
+                    "type": "number"
+                  },
+                  "area": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "x-fastmcp-top-level-schema": "Shape",
+        "$defs": {
+          "Shape": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "type": "object",
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      },
+      "tags": [
+        "api",
+        "shapes"
+      ]
+    },
+    {
+      "name": "createNote",
+      "description": "Executes POST /notes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note_text": {
+            "type": "string",
+            "title": "Note Text"
+          }
+        },
+        "required": [
+          "note_text"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "x-fastmcp-wrap-result": true
+      },
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "name": "uploadFile",
+      "description": "Executes POST /upload",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ]
+      },
+      "outputSchema": {
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "name": "generatePetInventoryAuditReportForVeterinaryComplianceRe",
+      "description": "Executes POST /audits",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "outputSchema": {
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "tags": [
+        "api"
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "uri": "resource://listPets",
+      "name": "listPets",
+      "description": "Returns every pet in the store.",
+      "mimeType": "application/json",
+      "tags": [
+        "api",
+        "pets",
+        "read"
+      ]
+    },
+    {
+      "uri": "resource://getReport",
+      "name": "getReport",
+      "description": "Represents /reports",
+      "mimeType": "text/plain",
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "uri": "resource://duplicate_name",
+      "name": "duplicate_name",
+      "description": "Represents /dup-a",
+      "mimeType": "application/json",
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "uri": "resource://duplicate_name_2",
+      "name": "duplicate_name_2",
+      "description": "Represents /dup-b",
+      "mimeType": "application/json",
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "uri": "resource://headersTest",
+      "name": "headersTest",
+      "description": "Represents /headers-test",
+      "mimeType": "application/json",
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "uri": "resource://filterItems",
+      "name": "filterItems",
+      "description": "Represents /filter",
+      "mimeType": "application/json",
+      "tags": [
+        "api"
+      ]
+    },
+    {
+      "uri": "resource://contentParam",
+      "name": "contentParam",
+      "description": "Represents /content-param",
+      "mimeType": "application/json",
+      "tags": [
+        "api"
+      ]
+    }
+  ],
+  "resourceTemplates": [
+    {
+      "uriTemplate": "resource://getPetById/{petId}",
+      "name": "getPetById",
+      "description": "Get a pet",
+      "mimeType": "application/json",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "integer",
+            "description": "Pet identifier."
+          }
+        },
+        "required": [
+          "petId"
+        ]
+      },
+      "tags": [
+        "api",
+        "pets",
+        "read",
+        "templated"
+      ]
+    },
+    {
+      "uriTemplate": "resource://Get_pet_photos/{petId}",
+      "name": "Get_pet_photos",
+      "description": "Get pet photos!",
+      "mimeType": "application/json",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "petId"
+        ]
+      },
+      "tags": [
+        "api",
+        "pets",
+        "templated"
+      ]
+    },
+    {
+      "uriTemplate": "resource://getOwnerPet/{ownerId}/{petId}",
+      "name": "getOwnerPet",
+      "description": "Template for /owners/{ownerId}/pets/{petId}",
+      "mimeType": "application/json",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "petId": {
+            "type": "integer"
+          },
+          "ownerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "petId",
+          "ownerId"
+        ]
+      },
+      "tags": [
+        "api",
+        "pets",
+        "templated"
+      ]
+    }
+  ]
+}

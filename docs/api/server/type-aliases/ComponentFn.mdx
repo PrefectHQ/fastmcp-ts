@@ -1,0 +1,27 @@
+---
+title: "ComponentFn"
+---
+
+```ts
+type ComponentFn = (route, component) => void;
+```
+
+Defined in: server/openapi/types.ts:146
+
+Component customization hook, called with each generated component before
+registration. Mutate the component in place (rename, edit description,
+adjust tags or schemas). Exceptions are swallowed with a warning.
+
+## Parameters
+
+### route
+
+[`HTTPRoute`](/api/server/interfaces/HTTPRoute)
+
+### component
+
+[`OpenAPIComponent`](/api/server/type-aliases/OpenAPIComponent)
+
+## Returns
+
+`void`

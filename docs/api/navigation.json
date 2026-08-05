@@ -696,6 +696,12 @@
             "isDeprecated": false
           },
           {
+            "title": "HTTPRoute",
+            "kind": 256,
+            "path": "server/interfaces/HTTPRoute.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "IfNode",
             "kind": 256,
             "path": "server/interfaces/IfNode.mdx",
@@ -738,6 +744,42 @@
             "isDeprecated": false
           },
           {
+            "title": "OpenAPIClientOptions",
+            "kind": 256,
+            "path": "server/interfaces/OpenAPIClientOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OpenAPIResourceComponent",
+            "kind": 256,
+            "path": "server/interfaces/OpenAPIResourceComponent.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OpenAPIResourceTemplateComponent",
+            "kind": 256,
+            "path": "server/interfaces/OpenAPIResourceTemplateComponent.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OpenAPIServerOptions",
+            "kind": 256,
+            "path": "server/interfaces/OpenAPIServerOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OpenAPIToolComponent",
+            "kind": 256,
+            "path": "server/interfaces/OpenAPIToolComponent.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "ParameterInfo",
+            "kind": 256,
+            "path": "server/interfaces/ParameterInfo.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "PromptArgument",
             "kind": 256,
             "path": "server/interfaces/PromptArgument.mdx",
@@ -759,6 +801,12 @@
             "title": "PromptView",
             "kind": 256,
             "path": "server/interfaces/PromptView.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RequestBodyInfo",
+            "kind": 256,
+            "path": "server/interfaces/RequestBodyInfo.mdx",
             "isDeprecated": false
           },
           {
@@ -786,9 +834,21 @@
             "isDeprecated": false
           },
           {
+            "title": "ResponseInfo",
+            "kind": 256,
+            "path": "server/interfaces/ResponseInfo.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "Root",
             "kind": 256,
             "path": "server/interfaces/Root.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RouteMap",
+            "kind": 256,
+            "path": "server/interfaces/RouteMap.mdx",
             "isDeprecated": false
           },
           {
@@ -881,15 +941,39 @@
             "isDeprecated": false
           },
           {
+            "title": "ComponentFn",
+            "kind": 2097152,
+            "path": "server/type-aliases/ComponentFn.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "HttpMethod",
+            "kind": 2097152,
+            "path": "server/type-aliases/HttpMethod.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "LogLevel",
             "kind": 2097152,
             "path": "server/type-aliases/LogLevel.mdx",
             "isDeprecated": false
           },
           {
+            "title": "MCPType",
+            "kind": 2097152,
+            "path": "server/type-aliases/MCPType.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "Next",
             "kind": 2097152,
             "path": "server/type-aliases/Next.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "OpenAPIComponent",
+            "kind": 2097152,
+            "path": "server/type-aliases/OpenAPIComponent.mdx",
             "isDeprecated": false
           },
           {
@@ -902,6 +986,12 @@
             "title": "ProxyTransport",
             "kind": 2097152,
             "path": "server/type-aliases/ProxyTransport.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "RouteMapFn",
+            "kind": 2097152,
+            "path": "server/type-aliases/RouteMapFn.mdx",
             "isDeprecated": false
           },
           {
@@ -949,6 +1039,12 @@
             "title": "Column",
             "kind": 64,
             "path": "server/functions/Column.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "createOpenAPIServer",
+            "kind": 64,
+            "path": "server/functions/createOpenAPIServer.mdx",
             "isDeprecated": false
           },
           {

@@ -9,10 +9,10 @@
  */
 
 import { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport } from '../dist/client.js'
-import { FastMCP, createProxy } from '../dist/server.js'
+import { FastMCP, createProxy, createOpenAPIServer } from '../dist/server.js'
 import { Readable, Writable } from 'node:stream'
 
-const required = { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport, FastMCP, createProxy }
+const required = { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport, FastMCP, createProxy, createOpenAPIServer }
 const missing = Object.entries(required).filter(([, v]) => v === undefined).map(([k]) => k)
 
 if (missing.length) {
@@ -40,5 +40,19 @@ const stdioProxy = await createProxy({
   args: ['--input-type=module', '-e', backendScript],
 })
 await stdioProxy.close()
+
+// OpenAPI generation resolves and registers from a minimal spec.
+const openapiServer = createOpenAPIServer({
+  spec: {
+    openapi: '3.1.0',
+    info: { title: 'dist-openapi-smoke', version: '1.0.0' },
+    servers: [{ url: 'https://smoke.invalid' }],
+    paths: {
+      '/ping': { get: { operationId: 'ping', responses: { 200: { description: 'ok' } } } },
+    },
+  },
+})
+await openapiServer.run({ transport: 'stdio', stdin: Readable.from([]), stdout: new Writable({ write(_chunk, _encoding, callback) { callback() } }) })
+await openapiServer.close()
 
 console.log('✓ dist exports, run transports, and proxy transports resolve')
