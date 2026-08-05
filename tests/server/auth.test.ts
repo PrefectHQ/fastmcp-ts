@@ -16,6 +16,7 @@ import {
   oauthProvider,
   oauthProxy,
   AuthorizationError,
+  CachingMiddleware,
 } from 'fastmcp-ts/server'
 import type { AccessToken, RequestVerifier } from 'fastmcp-ts/server'
 import { connectHttpClient, connectHttpClientWithHeaders, rawPost } from '../helpers/http'
@@ -1009,6 +1010,87 @@ describe('Server — Authentication', () => {
         expect(auth).toBeUndefined()
       } finally {
         await close()
+      }
+    })
+
+    it('per-tool AuthCheck and tools/list filtering work on header-derived identity', async () => {
+      const mcp = new FastMCP({ name: 'test', auth: headerVerifier() })
+      mcp.tool({ name: 'open', description: 'test' }, () => 'open-ok')
+      mcp.tool(
+        { name: 'admin-only', description: 'test', auth: requireScopes('admin') },
+        () => 'admin-ok',
+      )
+      await mcp.run({ transport: 'http', port: 0 })
+      const addr = mcp.address!
+      const host = addr.host === '0.0.0.0' ? '127.0.0.1' : addr.host
+      const url = new URL(`http://${host}:${addr.port}${addr.path}`)
+
+      const admin = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-admin',
+        'x-scopes': 'admin',
+      })
+      const plain = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-plain',
+      })
+      try {
+        const adminNames = (await admin.client.listTools()).tools.map((t) => t.name).sort()
+        expect(adminNames).toEqual(['admin-only', 'open'])
+        const plainNames = (await plain.client.listTools()).tools.map((t) => t.name)
+        expect(plainNames).toEqual(['open'])
+
+        const ok = await admin.client.callTool({ name: 'admin-only', arguments: {} })
+        expect((ok.content as Array<{ text: string }>)[0].text).toBe('admin-ok')
+        await expect(
+          plain.client.callTool({ name: 'admin-only', arguments: {} }),
+        ).rejects.toThrow()
+      } finally {
+        await admin.close()
+        await plain.close()
+        await mcp.close()
+      }
+    })
+
+    it('CachingMiddleware partitions header-derived identities by token hash', async () => {
+      let executions = 0
+      const mcp = new FastMCP({
+        name: 'test',
+        auth: headerVerifier(),
+        middleware: [new CachingMiddleware(60_000)],
+      })
+      mcp.tool({ name: 'whoami-cached', description: 'test' }, () => {
+        executions++
+        const auth = mcp.getContext().auth
+        return `sub:${(auth?.claims as { sub?: string } | undefined)?.sub ?? 'none'}`
+      })
+      await mcp.run({ transport: 'http', port: 0 })
+      const addr = mcp.address!
+      const host = addr.host === '0.0.0.0' ? '127.0.0.1' : addr.host
+      const url = new URL(`http://${host}:${addr.port}${addr.path}`)
+
+      const a = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-a',
+      })
+      const b = await connectHttpClientWithHeaders(url, {
+        'x-proxy-secret': 'proxy-shared-secret',
+        'x-user-id': 'u-b',
+      })
+      try {
+        const text = async (c: typeof a, name: string) =>
+          ((await c.client.callTool({ name, arguments: {} })).content as Array<{ text: string }>)[0]
+            .text
+
+        expect(await text(a, 'whoami-cached')).toBe('sub:u-a')
+        expect(await text(a, 'whoami-cached')).toBe('sub:u-a') // cache hit, same identity
+        expect(executions).toBe(1)
+        expect(await text(b, 'whoami-cached')).toBe('sub:u-b') // different identity: NOT served from a's cache
+        expect(executions).toBe(2)
+      } finally {
+        await a.close()
+        await b.close()
+        await mcp.close()
       }
     })
   })
