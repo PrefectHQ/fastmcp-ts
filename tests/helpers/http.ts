@@ -37,13 +37,28 @@ export async function connectHttpClient(url: URL, bearer?: string): Promise<Http
   return { client, close: () => client.close() }
 }
 
+/** Connect a full MCP client to an HTTP server with custom request headers. */
+export async function connectHttpClientWithHeaders(
+  url: URL,
+  headers: Record<string, string>,
+): Promise<HttpTestClient> {
+  const client = new Client({ name: 'test-client', version: '0.0.0' }, { capabilities: {} })
+  await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers } }))
+  return { client, close: () => client.close() }
+}
+
 /** Send a raw MCP initialize POST to a URL with an optional bearer token. */
-export async function rawPost(url: URL, bearer?: string): Promise<Response> {
+export async function rawPost(
+  url: URL,
+  bearer?: string,
+  headers?: Record<string, string>,
+): Promise<Response> {
   return fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+      ...headers,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
