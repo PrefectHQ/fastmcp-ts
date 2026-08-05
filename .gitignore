@@ -37,4 +37,4 @@ playwright-report/
 # Agent stuff
 .tmp/
 .superpowers/
-
+docs/superpowers/
