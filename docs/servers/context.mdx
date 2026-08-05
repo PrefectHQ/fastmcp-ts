@@ -29,6 +29,63 @@ Because the context belongs to a request, `getContext()` throws when there is no
 
 The context also carries two read-only fields about the request itself: `auth`, the verified `AccessToken` for the caller when [authentication](/servers/auth/overview) is configured, and `requestId`, the MCP request ID from the incoming message.
 
+## HTTP request context
+
+On HTTP transports, `ctx.http` exposes the request that carried the current MCP message. On stdio it is `undefined`.
+
+```typescript
+mcp.tool({ name: 'trace', description: 'Report the trace id' }, () => {
+  const http = mcp.getContext().http
+  if (!http) return 'not served over HTTP'
+  return http.headers.get('traceparent') ?? 'no trace header'
+})
+```
+
+`ctx.http` has four fields:
+
+- `headers`: a web-standard [`Headers`](https://developer.mozilla.org/docs/Web/API/Headers) snapshot of the request headers, minus the redacted set below. Lookups are case-insensitive.
+- `redactedHeaderNames`: the names that were present on the wire but withheld from `headers`.
+- `method`: the HTTP method, usually `POST`.
+- `url`: the origin-form request target, for example `/mcp?tenant=a`. The scheme and host are absent. Behind a proxy this server cannot know the external URL.
+
+The snapshot is per request. On a sessionful connection, each request shows its own headers, never the headers from `initialize`.
+
+### Credential redaction
+
+Tool results and logs can flow into model context. To guard against accidental leaks, credential headers are withheld from `ctx.http.headers` by default: `authorization`, `cookie`, `proxy-authorization`, and `mcp-session-id`. A withheld header is not silent: its name appears in `ctx.http.redactedHeaderNames`.
+
+Adjust the set with the `http` server option:
+
+```typescript
+const mcp = new FastMCP({
+  name: 'my-server',
+  http: {
+    // Also withhold a deployment-specific credential header:
+    redactHeaders: ['x-internal-api-key'],
+    // Explicitly expose a default-redacted header (a visible security decision):
+    exposeHeaders: ['cookie'],
+  },
+})
+```
+
+Redaction applies to `ctx.http` only. A [`RequestVerifier`](/servers/auth/trusted-proxy) always receives the full wire headers: it is the credential-handling code.
+
+Headers are untrusted input. Any caller that can reach the server can set them. Do not make authorization decisions from `ctx.http` in handlers. To authenticate from proxy-supplied headers, use a [`RequestVerifier`](/servers/auth/trusted-proxy) so the identity flows through `ctx.auth`.
+
+### Forwarding headers upstream
+
+To forward inbound headers to another service, pass them through `forwardableHeaders()` first. It strips credentials, hop-by-hop headers, message-framing headers, and `mcp-*` protocol headers:
+
+```typescript
+import { forwardableHeaders } from 'fastmcp-ts/server'
+
+const upstream = await fetch('https://api.internal/search', {
+  headers: forwardableHeaders(mcp.getContext().http!.headers),
+})
+```
+
+Headers you listed in `redactHeaders` are already absent from `ctx.http.headers`, so they can never be forwarded from it.
+
 ## Logging
 
 A handler logs to the client with `ctx.log(level, message)`, where the level is one of the RFC 5424 severities. The client decides what to do with each log — surface it, file it, or drop it below its configured level — so logging is how a handler narrates its work without deciding how that narration is presented.

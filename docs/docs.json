@@ -51,6 +51,7 @@
             "pages": [
               "servers/auth/overview",
               "servers/auth/token-verification",
+              "servers/auth/trusted-proxy",
               "servers/auth/oauth",
               "servers/auth/authorization"
             ]

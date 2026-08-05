@@ -99,3 +99,7 @@ const server = new FastMCP({
 ```
 
 Order the verifiers cheapest-first: each is only consulted when the ones before it reject, so putting the local static map ahead of a remote introspection call avoids a network round-trip for tokens the map already covers. Because every verifier yields the same `AccessToken` shape, the rest of your server — context, scope checks, per-component rules — never needs to know which one matched.
+
+## Header-established identity
+
+`TokenVerifier` covers callers that present a bearer token. When a trusted reverse proxy authenticates the caller and forwards the identity as request headers instead, use a [`RequestVerifier`](/servers/auth/trusted-proxy).
