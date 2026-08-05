@@ -110,3 +110,41 @@ export function nodeRequestToHttpContext(req: IncomingMessage): HttpRequestConte
   }
   return { headers, redactedHeaderNames: [], method: req.method ?? 'GET', url: req.url ?? '/' }
 }
+
+const UNFORWARDABLE = new Set([
+  // credentials (see also DEFAULT_SENSITIVE_HEADERS; kept here too so the
+  // helper is safe on Headers that did not come from a redacted ctx.http)
+  'authorization', 'cookie', 'proxy-authorization', 'proxy-authenticate',
+  // hop-by-hop (RFC 9110 §7.6.1) and connection management
+  'connection', 'keep-alive', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'proxy-connection',
+  // message framing / target-specific
+  'host', 'content-length', 'content-type', 'expect',
+])
+
+/**
+ * Copy of `headers` that is safe to attach to an outbound request to another
+ * service. Drops credentials (authorization, cookie, proxy-*), hop-by-hop
+ * headers, message-framing headers (host, content-length, content-type,
+ * expect), and every `mcp-*` protocol header. Deployment-specific credential
+ * headers are covered by `FastMCPOptions.http.redactHeaders`: they are already
+ * absent from `ctx.http.headers`. `include` re-admits specific names.
+ * Re-admitting 'authorization' forwards the caller's credential; the MCP spec
+ * forbids passing the inbound token to upstream APIs, so mint your own
+ * upstream credential instead.
+ */
+export function forwardableHeaders(
+  headers: Headers,
+  options?: { include?: string[] },
+): Headers {
+  const include = new Set((options?.include ?? []).map((h) => h.toLowerCase()))
+  const out = new Headers()
+  headers.forEach((value, name) => {
+    if (include.has(name)) {
+      out.append(name, value)
+      return
+    }
+    if (UNFORWARDABLE.has(name) || name.startsWith('mcp-')) return
+    out.append(name, value)
+  })
+  return out
+}

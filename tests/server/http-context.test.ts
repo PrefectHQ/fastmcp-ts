@@ -5,6 +5,7 @@ import {
   nodeRequestToHttpContext,
   resolveSensitiveHeaders,
   DEFAULT_SENSITIVE_HEADERS,
+  forwardableHeaders,
 } from '../../src/server/httpContext'
 
 describe('resolveSensitiveHeaders', () => {
@@ -102,5 +103,46 @@ describe('nodeRequestToHttpContext', () => {
     const ctx = nodeRequestToHttpContext(fake)
     expect(ctx.method).toBe('GET')
     expect(ctx.url).toBe('/')
+  })
+})
+
+describe('forwardableHeaders', () => {
+  it('drops credentials, hop-by-hop, framing, and mcp-* headers; keeps the rest', () => {
+    const h = new Headers({
+      authorization: 'Bearer secret',
+      cookie: 'sid=1',
+      host: 'internal',
+      connection: 'keep-alive',
+      'content-type': 'application/json',
+      'content-length': '42',
+      'mcp-session-id': 'abc',
+      'mcp-protocol-version': '2026-07-28',
+      'x-trace-id': 't-1',
+      accept: 'application/json',
+    })
+    const out = forwardableHeaders(h)
+    expect(out.get('x-trace-id')).toBe('t-1')
+    expect(out.get('accept')).toBe('application/json')
+    for (const name of [
+      'authorization', 'cookie', 'host', 'connection', 'content-type',
+      'content-length', 'mcp-session-id', 'mcp-protocol-version',
+    ]) {
+      expect(out.get(name)).toBeNull()
+    }
+  })
+
+  it('include re-admits a dropped name, case-insensitively', () => {
+    const out = forwardableHeaders(new Headers({ authorization: 'Bearer t' }), {
+      include: ['Authorization'],
+    })
+    expect(out.get('authorization')).toBe('Bearer t')
+  })
+
+  it('returns a fresh Headers; the input is untouched', () => {
+    const h = new Headers({ 'x-a': '1', authorization: 'Bearer t' })
+    const out = forwardableHeaders(h)
+    out.set('x-a', 'changed')
+    expect(h.get('x-a')).toBe('1')
+    expect(h.get('authorization')).toBe('Bearer t')
   })
 })
