@@ -1,6 +1,7 @@
 ---
-title: Trusted proxies
-description: Authenticate from headers set by a reverse proxy or gateway
+title: "Trusted proxies"
+description: "Authenticate from headers set by a reverse proxy or gateway"
+icon: "network-wired"
 ---
 
 Some deployments terminate authentication at a reverse proxy or gateway. The proxy verifies the caller and forwards the resolved identity as request headers. Configure a `RequestVerifier` to accept that identity. It replaces the bearer-token `TokenVerifier` in `FastMCPOptions.auth`.
@@ -50,7 +51,7 @@ const mcp = new FastMCP({
 
 The verifier runs once per HTTP request, before dispatch. The returned `AccessToken` becomes `ctx.auth`, exactly as with a bearer token. Per-tool `auth` checks, `tools/list` filtering, and `CachingMiddleware` partitioning all keep working.
 
-Throw `AuthorizationError` to reject with HTTP 403. Any other error rejects with HTTP 401.
+Throw `AuthorizationError` to reject with HTTP 403. Any other error rejects with HTTP 401. The error message is returned to the client in the response body. Do not put secrets in thrown error messages.
 
 ## Deployment checklist
 

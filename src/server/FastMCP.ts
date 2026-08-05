@@ -73,7 +73,8 @@ export interface FastMCPOptions {
    * Bearer-token verifier, or a RequestVerifier for header-based
    * (trusted-proxy) deployments. See each type's docs. A RequestVerifier
    * applies to HTTP transports only; stdio's FASTMCP_CLI_AUTH_TOKEN needs a
-   * TokenVerifier.
+   * TokenVerifier. When both `oauth` and `auth` are set, `oauth` serves the
+   * endpoint and `auth` is ignored.
    */
   auth?: TokenVerifier | RequestVerifier
   /** Full OAuth 2.1 server with Dynamic Client Registration support. */

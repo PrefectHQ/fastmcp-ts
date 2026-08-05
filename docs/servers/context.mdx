@@ -34,8 +34,8 @@ The context also carries two read-only fields about the request itself: `auth`, 
 On HTTP transports, `ctx.http` exposes the request that carried the current MCP message. On stdio it is `undefined`.
 
 ```typescript
-mcp.tool({ name: 'trace', description: 'Report the trace id' }, () => {
-  const http = mcp.getContext().http
+server.tool({ name: 'trace', description: 'Report the trace id' }, () => {
+  const http = server.getContext().http
   if (!http) return 'not served over HTTP'
   return http.headers.get('traceparent') ?? 'no trace header'
 })
@@ -57,7 +57,7 @@ Tool results and logs can flow into model context. To guard against accidental l
 Adjust the set with the `http` server option:
 
 ```typescript
-const mcp = new FastMCP({
+const server = new FastMCP({
   name: 'my-server',
   http: {
     // Also withhold a deployment-specific credential header:
@@ -80,7 +80,7 @@ To forward inbound headers to another service, pass them through `forwardableHea
 import { forwardableHeaders } from 'fastmcp-ts/server'
 
 const upstream = await fetch('https://api.internal/search', {
-  headers: forwardableHeaders(mcp.getContext().http!.headers),
+  headers: forwardableHeaders(server.getContext().http!.headers),
 })
 ```
 
