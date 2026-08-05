@@ -76,7 +76,7 @@ export interface EraConnection {
 export async function connectEra(
   mcp: FastMCP,
   combo: EraCombo,
-  opts: { capabilities?: ClientCapabilities } = {},
+  opts: { capabilities?: ClientCapabilities; httpHeaders?: Record<string, string> } = {},
 ): Promise<EraConnection> {
   const versionNegotiation =
     combo.era === 'modern'
@@ -104,7 +104,12 @@ export async function connectEra(
     const addr = mcp.address!
     const host = addr.host === '0.0.0.0' ? '127.0.0.1' : addr.host
     const url = new URL(`http://${host}:${addr.port}${addr.path}`)
-    await client.connect(new StreamableHTTPClientTransport(url))
+    await client.connect(
+      new StreamableHTTPClientTransport(
+        url,
+        opts.httpHeaders ? { requestInit: { headers: opts.httpHeaders } } : {},
+      ),
+    )
   }
 
   const negotiated = client.getProtocolEra()

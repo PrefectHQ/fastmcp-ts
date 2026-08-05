@@ -24,6 +24,7 @@ import type { AuthCheck } from './auth/authorization'
 import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
+import { resolveSensitiveHeaders } from './httpContext'
 import { envBool } from './env'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
@@ -70,6 +71,17 @@ export interface FastMCPOptions {
   auth?: TokenVerifier
   /** Full OAuth 2.1 server with Dynamic Client Registration support. */
   oauth?: OAuthConfig
+  /**
+   * HTTP request context tuning for `ctx.http`. `redactHeaders` adds names to
+   * the sensitive set withheld from `ctx.http.headers` (defaults:
+   * authorization, cookie, proxy-authorization, mcp-session-id); use it for
+   * deployment-specific credentials such as a proxy shared-secret header.
+   * `exposeHeaders` removes names from the set; it is the explicit, greppable
+   * opt-out. Withheld names are listed in `ctx.http.redactedHeaderNames`.
+   * Redaction applies to `ctx.http` only; a RequestVerifier always sees the
+   * full wire headers.
+   */
+  http?: { redactHeaders?: string[]; exposeHeaders?: string[] }
   /** Maximum number of tools returned per listTools page. Default: 50. */
   toolsPageSize?: number
   /** Maximum number of resources (or templates) returned per page. Default: 50. */
@@ -353,6 +365,7 @@ export class FastMCP {
 
   private _auth: TokenVerifier | undefined
   private _oauth: OAuthConfig | undefined
+  private _sensitiveHeaders: Set<string>
   private _toolsPageSize: number
   private _resourcesPageSize: number
   private _tools = new Map<string, RegisteredTool>()
@@ -404,6 +417,7 @@ export class FastMCP {
     this.version = options.version ?? '0.0.1'
     this._auth = options.auth
     this._oauth = options.oauth
+    this._sensitiveHeaders = resolveSensitiveHeaders(options.http)
     this._toolsPageSize = options.toolsPageSize ?? 50
     this._resourcesPageSize = options.resourcesPageSize ?? 50
     this._promptsPageSize = options.promptsPageSize ?? 50
@@ -499,7 +513,7 @@ export class FastMCP {
   ): void {
     server.setRequestHandler('tools/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
           const clientIsUiCapable = isUiCapable(server.getClientCapabilities())
@@ -607,7 +621,7 @@ export class FastMCP {
       const synthTool = synthesizedList.find((s) => s.name === requestedName)
       if (synthTool) {
         if (synthTool.auth) await runAuthCheck(synthTool.auth, token)
-        const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+        const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
         try {
           return await contextStore.run(ctx, () =>
             runMiddlewareChain(this._middleware, 'tools/call', req.params, ctx, async () => {
@@ -661,7 +675,7 @@ export class FastMCP {
 
       const resolvedTool = tool
       const rawArgs: unknown = req.params.arguments ?? {}
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       try {
         return await contextStore.run(ctx, () =>
@@ -708,7 +722,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/list', req.params, ctx, async () => {
           const allVisible = (
@@ -760,7 +774,7 @@ export class FastMCP {
 
     server.setRequestHandler('resources/templates/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/templates/list', req.params, ctx, async () => {
           const allVisible = (
@@ -823,7 +837,7 @@ export class FastMCP {
 
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
@@ -889,7 +903,7 @@ export class FastMCP {
       // caller: `{}` for a real-but-forbidden URI vs -32602 for an unknown one.
       if (resource.config.auth) await runAuthCheck(resource.config.auth, token)
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/subscribe', req.params, ctx, async () => {
@@ -908,7 +922,7 @@ export class FastMCP {
       if (opts?.stateless) throw new ProtocolError(ProtocolErrorCode.MethodNotFound, STATELESS_SUBSCRIBE_ERROR)
       const uri = req.params.uri
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/unsubscribe', req.params, ctx, async () => {
@@ -921,7 +935,7 @@ export class FastMCP {
 
     server.setRequestHandler('prompts/list', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/list', req.params, ctx, async () => {
           const allVisible = (
@@ -1009,7 +1023,7 @@ export class FastMCP {
         }
       }
 
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
 
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'prompts/get', req.params, ctx, async () => {
@@ -1046,7 +1060,7 @@ export class FastMCP {
     // observes it.
     server.setRequestHandler('completion/complete', async (req, sdkCtx) => {
       const token = await this._resolveToken(sdkCtx.http?.authInfo)
-      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless)
+      const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'completion/complete', req.params, ctx, async () => {
           const ref = req.params.ref

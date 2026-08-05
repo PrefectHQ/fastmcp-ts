@@ -7,6 +7,10 @@ import {
   DEFAULT_SENSITIVE_HEADERS,
   forwardableHeaders,
 } from '../../src/server/httpContext'
+import { FastMCP } from 'fastmcp-ts/server'
+import type { Middleware } from 'fastmcp-ts/server'
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { connectEra, describeEachEra, ERA_COMBOS } from '../helpers/eras'
 
 describe('resolveSensitiveHeaders', () => {
   it('defaults to authorization, cookie, proxy-authorization, mcp-session-id', () => {
@@ -144,5 +148,189 @@ describe('forwardableHeaders', () => {
     out.set('x-a', 'changed')
     expect(h.get('x-a')).toBe('1')
     expect(h.get('authorization')).toBe('Bearer t')
+  })
+})
+
+describeEachEra('Server — ctx.http', (combo) => {
+  it('exposes the carrying request headers on HTTP transports; undefined on stdio', async () => {
+    const mcp = new FastMCP({ name: 'test' })
+    let seen:
+      | { present: boolean; userId: string | null; method?: string; url?: string }
+      | undefined
+    mcp.tool({ name: 'probe', description: 'test' }, () => {
+      const http = mcp.getContext().http
+      seen = http
+        ? {
+            present: true,
+            userId: http.headers.get('x-user-id'),
+            method: http.method,
+            url: http.url,
+          }
+        : { present: false, userId: null }
+      return 'ok'
+    })
+    const { client, close } = await connectEra(mcp, combo, {
+      httpHeaders: { 'X-User-Id': 'u-42' },
+    })
+    try {
+      await client.callTool({ name: 'probe', arguments: {} })
+      if (combo.transport === 'http') {
+        expect(seen).toMatchObject({ present: true, userId: 'u-42', method: 'POST' })
+        expect(seen!.url!.startsWith('/')).toBe(true)
+      } else {
+        expect(seen).toEqual({ present: false, userId: null })
+      }
+    } finally {
+      await close()
+    }
+  })
+
+  it('redacts credential headers by default and lists them in redactedHeaderNames', async () => {
+    const mcp = new FastMCP({ name: 'test' })
+    let seen:
+      | { auth: string | null; cookie: string | null; custom: string | null; redacted: readonly string[] }
+      | undefined
+    mcp.tool({ name: 'probe', description: 'test' }, () => {
+      const http = mcp.getContext().http
+      if (http) {
+        seen = {
+          auth: http.headers.get('authorization'),
+          cookie: http.headers.get('cookie'),
+          custom: http.headers.get('x-user-id'),
+          redacted: http.redactedHeaderNames,
+        }
+      }
+      return 'ok'
+    })
+    const { client, close } = await connectEra(mcp, combo, {
+      httpHeaders: {
+        Authorization: 'Bearer super-secret',
+        Cookie: 'sid=1',
+        'X-User-Id': 'u-42',
+      },
+    })
+    try {
+      await client.callTool({ name: 'probe', arguments: {} })
+      if (combo.transport === 'http') {
+        expect(seen!.auth).toBeNull()
+        expect(seen!.cookie).toBeNull()
+        expect(seen!.custom).toBe('u-42')
+        expect(seen!.redacted).toEqual(expect.arrayContaining(['authorization', 'cookie']))
+        expect(seen!.redacted).not.toContain('x-user-id')
+      } else {
+        expect(seen).toBeUndefined()
+      }
+    } finally {
+      await close()
+    }
+  })
+
+  it('middleware reaches the same per-request http context via ctx.mcpContext', async () => {
+    let seenByMw: string | null | undefined
+    const recorder: Middleware = {
+      async onCallTool(ctx, next) {
+        seenByMw = ctx.mcpContext.http?.headers.get('x-user-id') ?? null
+        return next()
+      },
+    }
+    const mcp = new FastMCP({ name: 'test', middleware: [recorder] })
+    mcp.tool({ name: 'probe', description: 'test' }, () => 'ok')
+    const { client, close } = await connectEra(mcp, combo, {
+      httpHeaders: { 'X-User-Id': 'u-mw' },
+    })
+    try {
+      await client.callTool({ name: 'probe', arguments: {} })
+      expect(seenByMw).toBe(combo.transport === 'http' ? 'u-mw' : null)
+    } finally {
+      await close()
+    }
+  })
+})
+
+describe('ctx.http redaction configuration', () => {
+  it('exposeHeaders/redactHeaders adjust the sensitive set end-to-end', async () => {
+    const mcp = new FastMCP({
+      name: 'test',
+      http: { exposeHeaders: ['cookie'], redactHeaders: ['x-internal-key'] },
+    })
+    let seen:
+      | { cookie: string | null; internal: string | null; auth: string | null; redacted: readonly string[] }
+      | undefined
+    mcp.tool({ name: 'probe', description: 'test' }, () => {
+      const http = mcp.getContext().http!
+      seen = {
+        cookie: http.headers.get('cookie'),
+        internal: http.headers.get('x-internal-key'),
+        auth: http.headers.get('authorization'),
+        redacted: http.redactedHeaderNames,
+      }
+      return 'ok'
+    })
+    const combo = ERA_COMBOS.find((c) => c.name === 'http-legacy-sessionful')!
+    const { client, close } = await connectEra(mcp, combo, {
+      httpHeaders: {
+        Cookie: 'sid=1',
+        'X-Internal-Key': 'k-1',
+        Authorization: 'Bearer t',
+      },
+    })
+    try {
+      await client.callTool({ name: 'probe', arguments: {} })
+      expect(seen!.cookie).toBe('sid=1') // exposed by option
+      expect(seen!.internal).toBeNull() // redacted by option
+      expect(seen!.auth).toBeNull() // still redacted by default
+      expect(seen!.redacted).toEqual(expect.arrayContaining(['authorization', 'x-internal-key']))
+      expect(seen!.redacted).not.toContain('cookie')
+    } finally {
+      await close()
+    }
+  })
+})
+
+describe('ctx.http per-request freshness', () => {
+  it('legacy sessionful: each request in one session sees its own headers', async () => {
+    const mcp = new FastMCP({ name: 'test' })
+    const tags: Array<string | null> = []
+    mcp.tool({ name: 'probe', description: 'test' }, () => {
+      tags.push(mcp.getContext().http?.headers.get('x-request-tag') ?? null)
+      return 'ok'
+    })
+    const headers: Record<string, string> = { 'x-request-tag': 'first' }
+    const combo = ERA_COMBOS.find((c) => c.name === 'http-legacy-sessionful')!
+    const { client, close } = await connectEra(mcp, combo, { httpHeaders: headers })
+    try {
+      await client.callTool({ name: 'probe', arguments: {} })
+      headers['x-request-tag'] = 'second'
+      await client.callTool({ name: 'probe', arguments: {} })
+      expect(tags).toEqual(['first', 'second'])
+    } finally {
+      await close()
+    }
+  })
+
+  it('stateless http: ctx.http present per request', async () => {
+    const mcp = new FastMCP({ name: 'test' })
+    let userId: string | null = null
+    mcp.tool({ name: 'probe', description: 'test' }, () => {
+      userId = mcp.getContext().http?.headers.get('x-user-id') ?? null
+      return 'ok'
+    })
+    await mcp.run({ transport: 'http', port: 0, stateless: true })
+    const addr = mcp.address!
+    const host = addr.host === '0.0.0.0' ? '127.0.0.1' : addr.host
+    const url = new URL(`http://${host}:${addr.port}${addr.path}`)
+    const client = new Client({ name: 't', version: '0' }, { capabilities: {} })
+    try {
+      await client.connect(
+        new StreamableHTTPClientTransport(url, {
+          requestInit: { headers: { 'X-User-Id': 'u-stateless' } },
+        }),
+      )
+      await client.callTool({ name: 'probe', arguments: {} })
+      expect(userId).toBe('u-stateless')
+    } finally {
+      await client.close().catch(() => {})
+      await mcp.close()
+    }
   })
 })
