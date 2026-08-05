@@ -2,7 +2,7 @@
 title: "OpenAPIClientOptions"
 ---
 
-Defined in: server/openapi/execute.ts:20
+Defined in: [server/openapi/execute.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L20)
 
 HTTP client configuration for a generated OpenAPI server.
 
@@ -16,7 +16,7 @@ optional auth?: {
 };
 ```
 
-Defined in: server/openapi/execute.ts:30
+Defined in: [server/openapi/execute.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L30)
 
 Async header provider, resolved per request (e.g. a token refresher).
 
@@ -38,7 +38,7 @@ getHeaders(): Promise<Record<string, string>>;
 optional baseUrl?: string;
 ```
 
-Defined in: server/openapi/execute.ts:26
+Defined in: [server/openapi/execute.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L26)
 
 Base URL for requests. Defaults to the spec's first `servers` entry
 (with server variables filled from their defaults). Required when the
@@ -55,7 +55,7 @@ optional fetch?: {
 };
 ```
 
-Defined in: server/openapi/execute.ts:32
+Defined in: [server/openapi/execute.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L32)
 
 Custom fetch implementation. Defaults to the global fetch.
 
@@ -111,7 +111,7 @@ Custom fetch implementation. Defaults to the global fetch.
 optional headers?: Record<string, string>;
 ```
 
-Defined in: server/openapi/execute.ts:28
+Defined in: [server/openapi/execute.ts:28](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L28)
 
 Default headers sent on every request. Request-specific headers win.
 
@@ -123,6 +123,6 @@ Default headers sent on every request. Request-specific headers win.
 optional timeoutMs?: number;
 ```
 
-Defined in: server/openapi/execute.ts:34
+Defined in: [server/openapi/execute.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L34)
 
 Per-request timeout in milliseconds. Default 30 000.

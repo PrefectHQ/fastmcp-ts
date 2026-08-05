@@ -2,7 +2,7 @@
 title: "HTTPRoute"
 ---
 
-Defined in: server/openapi/types.ts:57
+Defined in: [server/openapi/types.ts:57](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L57)
 
 Intermediate representation of a single OpenAPI operation.
 
@@ -14,7 +14,7 @@ Intermediate representation of a single OpenAPI operation.
 optional description?: string;
 ```
 
-Defined in: server/openapi/types.ts:62
+Defined in: [server/openapi/types.ts:62](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L62)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: server/openapi/types.ts:62
 extensions: Record<string, unknown>;
 ```
 
-Defined in: server/openapi/types.ts:73
+Defined in: [server/openapi/types.ts:73](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L73)
 
 `x-` extension fields found on the operation.
 
@@ -36,7 +36,7 @@ Defined in: server/openapi/types.ts:73
 flatParamSchema: JsonSchema;
 ```
 
-Defined in: server/openapi/types.ts:76
+Defined in: [server/openapi/types.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L76)
 
 Pre-calculated flat input schema advertised on the MCP tool.
 
@@ -48,7 +48,7 @@ Pre-calculated flat input schema advertised on the MCP tool.
 method: HttpMethod;
 ```
 
-Defined in: server/openapi/types.ts:59
+Defined in: [server/openapi/types.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L59)
 
 ***
 
@@ -58,7 +58,7 @@ Defined in: server/openapi/types.ts:59
 optional openapiVersion?: string;
 ```
 
-Defined in: server/openapi/types.ts:74
+Defined in: [server/openapi/types.ts:74](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L74)
 
 ***
 
@@ -68,7 +68,7 @@ Defined in: server/openapi/types.ts:74
 optional operationId?: string;
 ```
 
-Defined in: server/openapi/types.ts:60
+Defined in: [server/openapi/types.ts:60](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L60)
 
 ***
 
@@ -78,7 +78,7 @@ Defined in: server/openapi/types.ts:60
 parameterMap: Record<string, ParameterMapping>;
 ```
 
-Defined in: server/openapi/types.ts:78
+Defined in: [server/openapi/types.ts:78](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L78)
 
 Maps flat argument names back to their OpenAPI locations.
 
@@ -90,7 +90,7 @@ Maps flat argument names back to their OpenAPI locations.
 parameters: ParameterInfo[];
 ```
 
-Defined in: server/openapi/types.ts:64
+Defined in: [server/openapi/types.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L64)
 
 ***
 
@@ -100,7 +100,7 @@ Defined in: server/openapi/types.ts:64
 path: string;
 ```
 
-Defined in: server/openapi/types.ts:58
+Defined in: [server/openapi/types.ts:58](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L58)
 
 ***
 
@@ -110,7 +110,7 @@ Defined in: server/openapi/types.ts:58
 optional requestBody?: RequestBodyInfo;
 ```
 
-Defined in: server/openapi/types.ts:65
+Defined in: [server/openapi/types.ts:65](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L65)
 
 ***
 
@@ -120,7 +120,7 @@ Defined in: server/openapi/types.ts:65
 requestSchemas: Record<string, JsonSchema>;
 ```
 
-Defined in: server/openapi/types.ts:69
+Defined in: [server/openapi/types.ts:69](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L69)
 
 Schema definitions needed by the input (parameters + request body).
 
@@ -132,7 +132,7 @@ Schema definitions needed by the input (parameters + request body).
 responses: Record<string, ResponseInfo>;
 ```
 
-Defined in: server/openapi/types.ts:67
+Defined in: [server/openapi/types.ts:67](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L67)
 
 Only the primary success response, keyed by its status code string.
 
@@ -144,7 +144,7 @@ Only the primary success response, keyed by its status code string.
 responseSchemas: Record<string, JsonSchema>;
 ```
 
-Defined in: server/openapi/types.ts:71
+Defined in: [server/openapi/types.ts:71](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L71)
 
 Schema definitions needed by the output (responses).
 
@@ -156,7 +156,7 @@ Schema definitions needed by the output (responses).
 optional summary?: string;
 ```
 
-Defined in: server/openapi/types.ts:61
+Defined in: [server/openapi/types.ts:61](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L61)
 
 ***
 
@@ -166,4 +166,4 @@ Defined in: server/openapi/types.ts:61
 tags: string[];
 ```
 
-Defined in: server/openapi/types.ts:63
+Defined in: [server/openapi/types.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L63)
