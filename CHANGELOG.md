@@ -1,5 +1,16 @@
 # @prefecthq/fastmcp-ts
 
+## 1.3.0
+
+### Minor Changes
+
+- 09abbc1: Expose the HTTP request carrying each MCP message as per-request context: `ctx.http` gives handlers and middleware the request's headers (web-standard `Headers`), method, and origin-form URL on HTTP transports (`undefined` on stdio). Credential headers (authorization, cookie, proxy-authorization, mcp-session-id) are withheld by default; `ctx.http.redactedHeaderNames` lists what was withheld and `FastMCPOptions.http` (`redactHeaders`/`exposeHeaders`) adjusts the set. Add `RequestVerifier` as an alternative to `TokenVerifier` in `FastMCPOptions.auth`, so trusted-proxy deployments can authenticate from verified request headers (the verifier sees the full wire) while identity keeps flowing through `ctx.auth`, per-tool auth checks, and response-cache partitioning. Add `forwardableHeaders()` for safely forwarding inbound headers to upstream services (strips credentials, hop-by-hop, framing, and `mcp-*` headers). Note: `McpContext` gained a required `http` field; if you construct `McpContext` objects by hand (for example middleware test mocks), add `http: undefined`.
+- 258bdd0: Add `createOpenAPIServer()`: generate a complete MCP server from any OpenAPI 3.0/3.1 specification (#60). Every operation becomes a tool (or resource/resource template via `routeMaps`) whose input schema merges path/query/header/cookie parameters with the request body, and whose handler calls the described HTTP endpoint. Generation is contract-compatible with Python FastMCP's `FastMCP.from_openapi`: component names, schemas, wrap markers, and route-map semantics match, pinned by Python-generated parity snapshots in the test suite. Supports YAML or JSON spec input, custom HTTP client configuration (base URL, default headers, async auth headers, custom fetch, timeout), `routeMapFn`/`componentFn` customization hooks, `names` overrides, global tags, and `validateOutput: false` for permissive output schemas. Zero new dependencies; generated servers run with `npx fastmcp run server.ts`.
+
+### Patch Changes
+
+- 992d4a3: Attach `_meta.ui` (CSP, permissions, domain, prefersBorder) to every `resources/read` content item for UI-capable clients, matching `resources/list`. SEP-1865 hosts build the sandboxed iframe's CSP from the read response, so the metadata must be present there; previously it appeared only on list entries (#61). `ResourceResult` content items now accept an optional `_meta` field; a handler-provided `_meta.ui` overrides the resource's declared `ui` config for that item.
+
 ## 1.2.1
 
 ### Patch Changes
