@@ -1,0 +1,271 @@
+{
+  "tools": [
+    {
+      "name": "listWidgets",
+      "description": "Executes GET /widgets",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "a",
+              "b",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": []
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Widget"
+            }
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "x-fastmcp-wrap-result": true,
+        "$defs": {
+          "MetaB": {
+            "type": "object",
+            "properties": {
+              "b": {
+                "type": "integer"
+              }
+            }
+          },
+          "MetaA": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            }
+          },
+          "Widget": {
+            "required": [
+              "name"
+            ],
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "secret": {
+                "type": "string"
+              },
+              "meta": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MetaA"
+                  },
+                  {
+                    "$ref": "#/$defs/MetaB"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "tags": []
+    },
+    {
+      "name": "createWidget",
+      "description": "Executes POST /widgets",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "secret": {
+            "type": "string"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MetaA"
+              },
+              {
+                "$ref": "#/$defs/MetaB"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "$defs": {
+          "MetaB": {
+            "type": "object",
+            "properties": {
+              "b": {
+                "type": "integer"
+              }
+            }
+          },
+          "MetaA": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "secret": {
+            "type": "string"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MetaA"
+              },
+              {
+                "$ref": "#/$defs/MetaB"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "x-fastmcp-top-level-schema": "Widget",
+        "$defs": {
+          "MetaB": {
+            "type": "object",
+            "properties": {
+              "b": {
+                "type": "integer"
+              }
+            }
+          },
+          "MetaA": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            }
+          },
+          "Widget": {
+            "required": [
+              "name"
+            ],
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "secret": {
+                "type": "string"
+              },
+              "meta": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/MetaA"
+                  },
+                  {
+                    "$ref": "#/$defs/MetaB"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "tags": []
+    }
+  ],
+  "resources": [],
+  "resourceTemplates": []
+}

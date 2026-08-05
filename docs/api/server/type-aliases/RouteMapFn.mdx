@@ -1,0 +1,27 @@
+---
+title: "RouteMapFn"
+---
+
+```ts
+type RouteMapFn = (route, mcpType) => MCPType | null | undefined;
+```
+
+Defined in: [server/openapi/types.ts:103](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L103)
+
+Advanced route-type hook, run after the route maps on every non-excluded
+route. Return a new MCPType to override, or null/undefined to keep the
+mapped type. Exceptions are swallowed with a warning.
+
+## Parameters
+
+### route
+
+[`HTTPRoute`](/api/server/interfaces/HTTPRoute)
+
+### mcpType
+
+[`MCPType`](/api/server/type-aliases/MCPType)
+
+## Returns
+
+[`MCPType`](/api/server/type-aliases/MCPType) \| `null` \| `undefined`

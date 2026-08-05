@@ -68,6 +68,24 @@ export { oauthProxy } from './auth/oauth/proxy'
 export type { OAuthProxyOptions } from './auth/oauth/proxy'
 export { createProxy } from './proxy'
 export type { ProxyTransport } from './proxy'
+export { createOpenAPIServer } from './openapi'
+export type {
+  OpenAPIServerOptions,
+  OpenAPIClientOptions,
+  RouteMap,
+  RouteMapFn,
+  ComponentFn,
+  MCPType,
+  HTTPRoute,
+  HttpMethod,
+  ParameterInfo,
+  RequestBodyInfo,
+  ResponseInfo,
+  OpenAPIComponent,
+  OpenAPIToolComponent,
+  OpenAPIResourceComponent,
+  OpenAPIResourceTemplateComponent,
+} from './openapi'
 
 // Apps
 export { FastMCPApp, GenerativeUI } from './apps'

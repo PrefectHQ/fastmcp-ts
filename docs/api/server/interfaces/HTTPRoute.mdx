@@ -1,0 +1,169 @@
+---
+title: "HTTPRoute"
+---
+
+Defined in: [server/openapi/types.ts:57](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L57)
+
+Intermediate representation of a single OpenAPI operation.
+
+## Properties
+
+### description?
+
+```ts
+optional description?: string;
+```
+
+Defined in: [server/openapi/types.ts:62](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L62)
+
+***
+
+### extensions
+
+```ts
+extensions: Record<string, unknown>;
+```
+
+Defined in: [server/openapi/types.ts:73](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L73)
+
+`x-` extension fields found on the operation.
+
+***
+
+### flatParamSchema
+
+```ts
+flatParamSchema: JsonSchema;
+```
+
+Defined in: [server/openapi/types.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L76)
+
+Pre-calculated flat input schema advertised on the MCP tool.
+
+***
+
+### method
+
+```ts
+method: HttpMethod;
+```
+
+Defined in: [server/openapi/types.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L59)
+
+***
+
+### openapiVersion?
+
+```ts
+optional openapiVersion?: string;
+```
+
+Defined in: [server/openapi/types.ts:74](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L74)
+
+***
+
+### operationId?
+
+```ts
+optional operationId?: string;
+```
+
+Defined in: [server/openapi/types.ts:60](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L60)
+
+***
+
+### parameterMap
+
+```ts
+parameterMap: Record<string, ParameterMapping>;
+```
+
+Defined in: [server/openapi/types.ts:78](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L78)
+
+Maps flat argument names back to their OpenAPI locations.
+
+***
+
+### parameters
+
+```ts
+parameters: ParameterInfo[];
+```
+
+Defined in: [server/openapi/types.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L64)
+
+***
+
+### path
+
+```ts
+path: string;
+```
+
+Defined in: [server/openapi/types.ts:58](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L58)
+
+***
+
+### requestBody?
+
+```ts
+optional requestBody?: RequestBodyInfo;
+```
+
+Defined in: [server/openapi/types.ts:65](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L65)
+
+***
+
+### requestSchemas
+
+```ts
+requestSchemas: Record<string, JsonSchema>;
+```
+
+Defined in: [server/openapi/types.ts:69](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L69)
+
+Schema definitions needed by the input (parameters + request body).
+
+***
+
+### responses
+
+```ts
+responses: Record<string, ResponseInfo>;
+```
+
+Defined in: [server/openapi/types.ts:67](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L67)
+
+Only the primary success response, keyed by its status code string.
+
+***
+
+### responseSchemas
+
+```ts
+responseSchemas: Record<string, JsonSchema>;
+```
+
+Defined in: [server/openapi/types.ts:71](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L71)
+
+Schema definitions needed by the output (responses).
+
+***
+
+### summary?
+
+```ts
+optional summary?: string;
+```
+
+Defined in: [server/openapi/types.ts:61](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L61)
+
+***
+
+### tags
+
+```ts
+tags: string[];
+```
+
+Defined in: [server/openapi/types.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/types.ts#L63)

@@ -1,0 +1,128 @@
+---
+title: "OpenAPIClientOptions"
+---
+
+Defined in: [server/openapi/execute.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L20)
+
+HTTP client configuration for a generated OpenAPI server.
+
+## Properties
+
+### auth?
+
+```ts
+optional auth?: {
+  getHeaders: Promise<Record<string, string>>;
+};
+```
+
+Defined in: [server/openapi/execute.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L30)
+
+Async header provider, resolved per request (e.g. a token refresher).
+
+#### getHeaders()
+
+```ts
+getHeaders(): Promise<Record<string, string>>;
+```
+
+##### Returns
+
+`Promise`&lt;`Record`&lt;`string`, `string`&gt;&gt;
+
+***
+
+### baseUrl?
+
+```ts
+optional baseUrl?: string;
+```
+
+Defined in: [server/openapi/execute.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L26)
+
+Base URL for requests. Defaults to the spec's first `servers` entry
+(with server variables filled from their defaults). Required when the
+spec has no absolute server URL.
+
+***
+
+### fetch?
+
+```ts
+optional fetch?: {
+  (input, init?): Promise<Response>;
+  (input, init?): Promise<Response>;
+};
+```
+
+Defined in: [server/openapi/execute.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L32)
+
+Custom fetch implementation. Defaults to the global fetch.
+
+#### Call Signature
+
+```ts
+(input, init?): Promise<Response>;
+```
+
+[MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/fetch)
+
+##### Parameters
+
+###### input
+
+`URL` \| `RequestInfo`
+
+###### init?
+
+`RequestInit`
+
+##### Returns
+
+`Promise`&lt;`Response`&gt;
+
+#### Call Signature
+
+```ts
+(input, init?): Promise<Response>;
+```
+
+[MDN Reference](https://developer.mozilla.org/docs/Web/API/Window/fetch)
+
+##### Parameters
+
+###### input
+
+`string` \| `URL` \| `Request`
+
+###### init?
+
+`RequestInit`
+
+##### Returns
+
+`Promise`&lt;`Response`&gt;
+
+***
+
+### headers?
+
+```ts
+optional headers?: Record<string, string>;
+```
+
+Defined in: [server/openapi/execute.ts:28](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L28)
+
+Default headers sent on every request. Request-specific headers win.
+
+***
+
+### timeoutMs?
+
+```ts
+optional timeoutMs?: number;
+```
+
+Defined in: [server/openapi/execute.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/execute.ts#L34)
+
+Per-request timeout in milliseconds. Default 30 000.
