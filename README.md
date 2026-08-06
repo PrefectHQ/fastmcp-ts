@@ -67,52 +67,6 @@ npx fastmcp inspect --file server.ts
 npx fastmcp call add --file server.ts a=1 b=2
 ```
 
-### Fetch-native HTTP
-
-Use `server.fetch()` to mount FastMCP in a framework or fetch runtime without opening a Node HTTP listener. This entrypoint serves both protocol eras and is always stateless; `run()` is not required.
-
-```typescript
-import { FastMCP } from '@prefecthq/fastmcp-ts/server'
-
-const server = new FastMCP({ name: 'worker-server' })
-server.tool({ name: 'ping', description: 'Return pong' }, () => 'pong')
-
-export default {
-  fetch(request: Request): Promise<Response> {
-    return server.fetch(request)
-  },
-}
-```
-
-With Hono, pass its raw web-standard request directly:
-
-```typescript
-import { Hono } from 'hono'
-import { FastMCP } from '@prefecthq/fastmcp-ts/server'
-
-const app = new Hono()
-const server = new FastMCP({ name: 'hono-server' })
-
-app.all('/mcp', async (c) => {
-  // Validate authentication in your framework before calling FastMCP.
-  const authInfo = {
-    token: 'framework-validated-token',
-    clientId: 'client-id',
-    scopes: ['tools:call'],
-  }
-  return server.fetch(c.req.raw, { authInfo })
-})
-
-export default app
-```
-
-`authInfo` is trusted pass-through data: `fetch()` does not parse bearer tokens or perform authentication. If middleware has already consumed the request body, provide it as `parsedBody`:
-
-```typescript
-const parsedBody = await request.json()
-return server.fetch(request, { parsedBody })
-```
-
 ### Context
 
 Handlers access logging, progress, LLM sampling, user elicitation, and per-session state through an ambient context with no prop-drilling.
