@@ -159,11 +159,14 @@ export interface FastMCPOptions {
    */
   eventBus?: ServerEventBus
   /**
-   * DNS-rebinding protection for the HTTP transport: validates the `Host` and
-   * `Origin` request headers (port-agnostic, by hostname) and rejects mismatches
-   * with `403`. Defends localhost servers against a malicious web page whose DNS
-   * rebinds to `127.0.0.1` (MCP transport security best practice). Only affects the
-   * HTTP transport — stdio is unaffected.
+   * DNS-rebinding protection for the HTTP listener started by `run()`: validates
+   * the `Host` and `Origin` request headers (port-agnostic, by hostname) and rejects
+   * mismatches with `403`. Defends localhost servers against a malicious web page
+   * whose DNS rebinds to `127.0.0.1` (MCP transport security best practice).
+   *
+   * This option does not apply to `fetch()`, which has no bind address from which
+   * to infer a trusted host. A framework embedding `fetch()` owns Host/Origin
+   * validation at its HTTP boundary. stdio is unaffected.
    *
    * Default posture (option omitted): protection auto-enables when, and only when,
    * `run()` binds the HTTP server to a loopback host (`127.0.0.1`, `::1`,
@@ -1806,6 +1809,9 @@ export class FastMCP {
    * (2026-07-28) requests share the instance's modern handler and event bus.
    * Authentication is deliberately external — `options.authInfo` is trusted and
    * passed unchanged into the protocol handler, where it is exposed as `ctx.auth`.
+   * The embedding framework also owns Host/Origin validation and should abort its
+   * carrying requests during shutdown; stateless legacy response streams follow
+   * that request lifecycle, while `close()` terminates modern exchanges and streams.
    */
   async fetch(request: Request, options?: McpHandlerRequestOptions): Promise<Response> {
     if (request.method.toUpperCase() === 'POST' && !isJsonContentType(request.headers.get('content-type'))) {
