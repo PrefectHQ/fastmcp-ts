@@ -9,6 +9,7 @@ import type {
   Prompt,
   GetPromptResult,
 } from './results.js'
+import type { CacheMode } from '@modelcontextprotocol/client'
 import type { ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import type { LoggingLevel } from "@modelcontextprotocol/server";
 
@@ -19,13 +20,18 @@ export interface RequestOptions {
   signal?: AbortSignal
 }
 
+export interface CacheableRequestOptions extends RequestOptions {
+  /** How this request uses the client response cache. Defaults to `use`. */
+  cacheMode?: CacheMode
+}
+
 export interface CallToolOptions extends RequestOptions {
   /** Per-call progress handler, overrides the client-level handler for this call. */
   onProgress?: ProgressHandler
 }
 
 export interface IToolsClient {
-  listTools(options?: RequestOptions): Promise<Tool[]>
+  listTools(options?: CacheableRequestOptions): Promise<Tool[]>
   callTool<TData = unknown>(
     name: string,
     args?: Record<string, unknown>,
@@ -34,15 +40,15 @@ export interface IToolsClient {
 }
 
 export interface IResourcesClient {
-  listResources(options?: RequestOptions): Promise<Resource[]>
-  listResourceTemplates(options?: RequestOptions): Promise<ResourceTemplate[]>
-  readResource(uri: string, options?: RequestOptions): Promise<Array<TextResourceContents | BlobResourceContents>>
+  listResources(options?: CacheableRequestOptions): Promise<Resource[]>
+  listResourceTemplates(options?: CacheableRequestOptions): Promise<ResourceTemplate[]>
+  readResource(uri: string, options?: CacheableRequestOptions): Promise<Array<TextResourceContents | BlobResourceContents>>
   subscribeResource(uri: string, handler: ResourceUpdateHandler, options?: RequestOptions): Promise<void>
   unsubscribeResource(uri: string, options?: RequestOptions): Promise<void>
 }
 
 export interface IPromptsClient {
-  listPrompts(options?: RequestOptions): Promise<Prompt[]>
+  listPrompts(options?: CacheableRequestOptions): Promise<Prompt[]>
   getPrompt(
     name: string,
     args?: Record<string, string>,
