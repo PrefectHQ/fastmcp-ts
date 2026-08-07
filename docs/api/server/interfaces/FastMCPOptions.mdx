@@ -54,13 +54,16 @@ optional dnsRebinding?: {
 };
 ```
 
-Defined in: [server/FastMCP.ts:175](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L175)
+Defined in: [server/FastMCP.ts:178](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L178)
 
-DNS-rebinding protection for the HTTP transport: validates the `Host` and
-`Origin` request headers (port-agnostic, by hostname) and rejects mismatches
-with `403`. Defends localhost servers against a malicious web page whose DNS
-rebinds to `127.0.0.1` (MCP transport security best practice). Only affects the
-HTTP transport — stdio is unaffected.
+DNS-rebinding protection for the HTTP listener started by `run()`: validates
+the `Host` and `Origin` request headers (port-agnostic, by hostname) and rejects
+mismatches with `403`. Defends localhost servers against a malicious web page
+whose DNS rebinds to `127.0.0.1` (MCP transport security best practice).
+
+This option does not apply to `fetch()`, which has no bind address from which
+to infer a trusted host. A framework embedding `fetch()` owns Host/Origin
+validation at its HTTP boundary. stdio is unaffected.
 
 Default posture (option omitted): protection auto-enables when, and only when,
 `run()` binds the HTTP server to a loopback host (`127.0.0.1`, `::1`,

@@ -159,11 +159,14 @@ export interface FastMCPOptions {
    */
   eventBus?: ServerEventBus
   /**
-   * DNS-rebinding protection for the HTTP transport: validates the `Host` and
-   * `Origin` request headers (port-agnostic, by hostname) and rejects mismatches
-   * with `403`. Defends localhost servers against a malicious web page whose DNS
-   * rebinds to `127.0.0.1` (MCP transport security best practice). Only affects the
-   * HTTP transport — stdio is unaffected.
+   * DNS-rebinding protection for the HTTP listener started by `run()`: validates
+   * the `Host` and `Origin` request headers (port-agnostic, by hostname) and rejects
+   * mismatches with `403`. Defends localhost servers against a malicious web page
+   * whose DNS rebinds to `127.0.0.1` (MCP transport security best practice).
+   *
+   * This option does not apply to `fetch()`, which has no bind address from which
+   * to infer a trusted host. A framework embedding `fetch()` owns Host/Origin
+   * validation at its HTTP boundary. stdio is unaffected.
    *
    * Default posture (option omitted): protection auto-enables when, and only when,
    * `run()` binds the HTTP server to a loopback host (`127.0.0.1`, `::1`,
@@ -1799,6 +1802,31 @@ export class FastMCP {
   }
 
   /**
+   * Serve an MCP request through a web-standard, fetch-native HTTP entrypoint.
+   *
+   * This entrypoint is always stateless and does not require `run()`: legacy
+   * (2025-era) requests use a fresh server instance per request, while modern
+   * (2026-07-28) requests share the instance's modern handler and event bus.
+   * Authentication is deliberately external — `options.authInfo` is trusted and
+   * passed unchanged into the protocol handler, where it is exposed as `ctx.auth`.
+   * The embedding framework also owns Host/Origin validation and should abort its
+   * carrying requests during shutdown; stateless legacy response streams follow
+   * that request lifecycle, while `close()` terminates modern exchanges and streams.
+   */
+  async fetch(request: Request, options?: McpHandlerRequestOptions): Promise<Response> {
+    if (request.method.toUpperCase() === 'POST' && !isJsonContentType(request.headers.get('content-type'))) {
+      return new Response(
+        JSON.stringify({ error: 'Unsupported Media Type: expected application/json' }),
+        { status: 415, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const legacy = await isLegacyRequest(request, options?.parsedBody)
+    if (legacy) return this._getStatelessLegacyHandler()(request, options)
+    return this._getModernHandler().fetch(request, options)
+  }
+
+  /**
    * Modern-era (2026-07-28) in-process fetch entrypoint — the `McpServerLike`
    * duck-type hook `fastmcp-ts/client`'s `Client` looks for when a caller pins
    * modern era for an in-process server (`versionNegotiation: { mode: { pin:
@@ -1864,9 +1892,9 @@ export class FastMCP {
   /** Lazily builds the modern (2026-07-28) HTTP handler. One per FastMCP instance;
    * builds a fresh Server (via _makeServer) per request, matching createMcpHandler's
    * per-request-factory model. Modern-only (legacy: 'reject') — legacy (2025-era)
-   * traffic is routed to the existing sessionful transport by _dispatchHttp instead
-   * of createMcpHandler's own stateless legacy fallback, so session state and the
-   * legacy server-initiated-request shim keep working for 2025-era clients. */
+   * traffic is routed separately: to the existing sessionful transport by
+   * _dispatchHttp, or to the stateless fallback by fetch(). This preserves the
+   * session state and server-initiated-request shim for run()'s default HTTP path. */
   private _getModernHandler(): McpHttpHandler {
     if (!this._modernHandler) {
       this._modernHandler = createMcpHandler(() => this._makeServer(new Map(), { modern: true }), {
@@ -1884,8 +1912,9 @@ export class FastMCP {
    * built with `sessionIdGenerator: undefined`, and answers GET and DELETE with 405
    * because both are session operations that mean nothing per request.
    *
-   * Only reachable when `_stateless` is on. The sessionful transport in
-   * _dispatchLegacyHttp is untouched and still serves every other deployment. */
+   * Used unconditionally by fetch(), and by run() only when `_stateless` is on.
+   * The sessionful transport in _dispatchLegacyHttp is untouched and remains the
+   * default for listener-based HTTP deployments. */
   private _getStatelessLegacyHandler(): LegacyHttpHandler {
     if (!this._statelessLegacyHandler) {
       this._statelessLegacyHandler = legacyStatelessFallback(

@@ -6,8 +6,12 @@ export type {
   ToolConfig,
   OAuthConfig,
 } from './FastMCP'
-// Re-exported for FastMCPOptions.eventBus implementers (multi-process deployments).
-export type { ServerEventBus } from '@modelcontextprotocol/server'
+// Re-exported for fetch-native integrations and FastMCPOptions.eventBus implementers.
+export type {
+  AuthInfo,
+  McpHandlerRequestOptions,
+  ServerEventBus,
+} from '@modelcontextprotocol/server'
 export { Image, File, ToolResult } from './tool'
 export { ResourceResult } from './resource'
 export type { ResourceConfig, ResourceAnnotations } from './resource'
