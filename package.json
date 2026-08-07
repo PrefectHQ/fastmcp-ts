@@ -1,6 +1,6 @@
 {
   "name": "@prefecthq/fastmcp-ts",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "🏎️  The official FastMCP TypeScript library - build MCP servers and clients, fast 🏎️",
   "type": "module",
   "exports": {

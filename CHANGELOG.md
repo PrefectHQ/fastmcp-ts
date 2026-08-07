@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.4.0
+
+### Minor Changes
+
+- 7e3f88d: Add a fetch-native `FastMCP.fetch()` HTTP entrypoint for stateless legacy and modern MCP requests.
+
 ## 1.3.0
 
 ### Minor Changes
