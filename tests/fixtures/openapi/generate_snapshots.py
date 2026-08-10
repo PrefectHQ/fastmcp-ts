@@ -10,10 +10,16 @@ implementations cannot drift silently.
 
 Regenerate against a fastmcp checkout (requires the `server` extra):
 
-    uv venv /tmp/parity-venv
-    uv pip install --python /tmp/parity-venv/bin/python \
+    uv venv .tmp/parity-venv
+    uv pip install --python .tmp/parity-venv/bin/python \
         '<fastmcp-checkout>/fastmcp_slim[server]'
-    /tmp/parity-venv/bin/python tests/fixtures/openapi/generate_snapshots.py
+    PYTHONHASHSEED=0 .tmp/parity-venv/bin/python tests/fixtures/openapi/generate_snapshots.py
+
+Until the Python half of the access-mode change lands, run tests/fixtures/openapi/patch_parity_venv.py in the venv before regenerating (see that script's docstring).
+
+`PYTHONHASHSEED=0` is required: the OpenAPI parser builds `$defs` by
+iterating a set, so the key order of the generated `$defs` depends on the
+hash seed.
 
 Review the diff before committing: every change here is a deliberate
 parity-contract change and needs a matching TypeScript change.
