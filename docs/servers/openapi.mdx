@@ -26,6 +26,13 @@ The generated server is a plain `FastMCP`, so everything else in this documentat
 
 Each operation's tool advertises a single flat input schema. Path, query, header, and cookie parameters merge with the request body's properties into one object, so a model calling the tool fills in plain named arguments and the generator routes each one back to its proper location in the HTTP request. When a parameter name appears in more than one location, the non-body occurrences are disambiguated with a location suffix (`id__path`, `id__query`); body properties always keep their bare names.
 
+The generator also respects OpenAPI access modes. A property marked
+`readOnly: true` belongs to responses only, so it is omitted from the tool's
+input schema and its name is removed from the input `required` list. A
+property marked `writeOnly: true` belongs to requests only, so it stays in
+the input schema but is omitted from the tool's output schema, and its name is removed from the output `required` list. The filter
+applies at every nesting level, including `$defs`.
+
 The output schema comes from the operation's success response (the first of 200, 201, 202, 204, or any other 2xx). MCP requires tool output schemas to be objects, so a response typed as an array or scalar is wrapped in `{ result: ... }` and the schema carries an `x-fastmcp-wrap-result` marker; at call time the response is wrapped to match. JSON responses become `structuredContent`, everything else is returned as text, and a non-2xx status becomes a tool error carrying the status code, reason, and response body.
 
 Tool names come from the spec, in this order: the `operationId` (trimmed at the first `__`), an override from the `names` option, the operation's summary, or `{METHOD}_{path}` as a last resort. Names are slugified, capped at 56 characters, and deduplicated with numeric suffixes (`search`, `search_2`). To rename specific operations, map their operationIds:

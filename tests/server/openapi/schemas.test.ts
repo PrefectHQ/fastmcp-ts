@@ -388,3 +388,73 @@ describe('extractOutputSchemaFromResponses', () => {
     })
   })
 })
+
+describe('readOnly/writeOnly direction filtering', () => {
+  const widget = () => ({
+    type: 'object',
+    properties: {
+      id: { type: 'integer', readOnly: true },
+      name: { type: 'string' },
+      secret: { type: 'string', writeOnly: true },
+    },
+    required: ['name', 'id', 'secret'],
+  })
+
+  it('omits readOnly properties from the input schema and prunes required', () => {
+    const route = makeRoute({
+      method: 'POST',
+      openapiVersion: '3.0.3',
+      requestBody: {
+        required: true,
+        contentSchema: { 'application/json': widget() },
+      },
+    })
+    const [schema, map] = combineSchemasAndMapParams(route)
+    expect(schema.properties).toEqual({
+      name: { type: 'string' },
+      secret: { type: 'string' },
+    })
+    expect(schema.required).toEqual(['name', 'secret'])
+    // Design decision 5: the parameter map keeps the filtered name so a
+    // caller that sends it anyway still routes it to the body.
+    expect(map.id).toEqual({ location: 'body', openapiName: 'id' })
+  })
+
+  it('omits writeOnly properties from the output schema and prunes required', () => {
+    const out = extractOutputSchemaFromResponses(
+      {
+        '200': {
+          description: 'ok',
+          contentSchema: { 'application/json': widget() },
+        },
+      },
+      undefined,
+      '3.0.3',
+    )
+    expect(out?.properties).toEqual({
+      id: { type: 'integer' },
+      name: { type: 'string' },
+    })
+    expect(out?.required).toEqual(['name', 'id'])
+  })
+
+  it('omits writeOnly properties from output $defs', () => {
+    const out = extractOutputSchemaFromResponses(
+      {
+        '200': {
+          description: 'ok',
+          contentSchema: {
+            'application/json': { $ref: '#/components/schemas/Widget' },
+          },
+        },
+      },
+      { Widget: widget() },
+      '3.0.3',
+    )
+    expect((out?.$defs as Record<string, unknown>).Widget).toEqual({
+      type: 'object',
+      properties: { id: { type: 'integer' }, name: { type: 'string' } },
+      required: ['name', 'id'],
+    })
+  })
+})

@@ -11,11 +11,13 @@
  * 3. the discriminator's tag property is forced into each variant's
  *    `required` BEFORE the keyword is removed
  * 4. OpenAPI-specific fields removed
- * 5. recurse into nested schemas
+ * 5. readOnly (input direction) / writeOnly (output direction) properties
+ *    dropped when requested, with removed names pruned from `required`
+ * 6. recurse into nested schemas
  */
 
 import type { JsonSchema } from './types'
-import { isPlainObject } from './internal'
+import { isPlainObject, truthy } from './internal'
 
 const OPENAPI_SPECIFIC_FIELDS = [
   'nullable',
@@ -31,10 +33,19 @@ const RECURSIVE_MAP_FIELDS = ['properties', '$defs', '$definitions'] as const
 const RECURSIVE_SINGLE_FIELDS = ['items', 'additionalProperties', 'not'] as const
 const RECURSIVE_LIST_FIELDS = ['allOf', 'anyOf', 'oneOf'] as const
 
+/** Direction-dependent conversion options (Python: remove_read_only / remove_write_only). */
+export interface ConvertOptions {
+  /** Drop properties marked `readOnly: true` (the spec reserves them for responses). */
+  removeReadOnly?: boolean
+  /** Drop properties marked `writeOnly: true` (the spec reserves them for requests). */
+  removeWriteOnly?: boolean
+}
+
 /** Convert an OpenAPI 3.x schema (and everything nested in it) to JSON Schema. */
 export function convertOpenAPISchemaToJsonSchema(
   schema: JsonSchema,
   openapiVersion?: string,
+  options: ConvertOptions = {},
 ): JsonSchema {
   if (!isPlainObject(schema)) return schema
 
@@ -55,13 +66,17 @@ export function convertOpenAPISchemaToJsonSchema(
     delete result[field]
   }
 
+  if (options.removeReadOnly === true || options.removeWriteOnly === true) {
+    result = filterPropertiesByAccess(result, options)
+  }
+
   for (const field of RECURSIVE_MAP_FIELDS) {
     const map = result[field]
     if (isPlainObject(map)) {
       result[field] = Object.fromEntries(
         Object.entries(map).map(([name, sub]) => [
           name,
-          isPlainObject(sub) ? convertOpenAPISchemaToJsonSchema(sub, openapiVersion) : sub,
+          isPlainObject(sub) ? convertOpenAPISchemaToJsonSchema(sub, openapiVersion, options) : sub,
         ]),
       )
     }
@@ -69,14 +84,14 @@ export function convertOpenAPISchemaToJsonSchema(
   for (const field of RECURSIVE_SINGLE_FIELDS) {
     const sub = result[field]
     if (isPlainObject(sub)) {
-      result[field] = convertOpenAPISchemaToJsonSchema(sub, openapiVersion)
+      result[field] = convertOpenAPISchemaToJsonSchema(sub, openapiVersion, options)
     }
   }
   for (const field of RECURSIVE_LIST_FIELDS) {
     const list = result[field]
     if (Array.isArray(list)) {
       result[field] = list.map((item) =>
-        isPlainObject(item) ? convertOpenAPISchemaToJsonSchema(item, openapiVersion) : item,
+        isPlainObject(item) ? convertOpenAPISchemaToJsonSchema(item, openapiVersion, options) : item,
       )
     }
   }
@@ -149,6 +164,41 @@ export function requireDiscriminatorProperty(schema: JsonSchema): JsonSchema {
     if (!Array.isArray(variants)) continue
     result[key] = variants.map((variant) =>
       isPlainObject(variant) ? requireProperty(variant, propertyName) : variant,
+    )
+  }
+  return result
+}
+
+/**
+ * Drop properties whose access mode excludes them from this direction. Only
+ * names actually removed are pruned from `required`; a schema with nothing to
+ * remove passes through untouched, so an empty `required: []` survives.
+ * Mirrors Python's `_filter_properties_by_access` (as amended by the pending
+ * Python-side change; see tests/fixtures/openapi/patch_parity_venv.py).
+ */
+function filterPropertiesByAccess(schema: JsonSchema, options: ConvertOptions): JsonSchema {
+  const properties = schema.properties
+  if (!isPlainObject(properties)) return schema
+
+  const removed = new Set<string>()
+  for (const [name, prop] of Object.entries(properties)) {
+    if (!isPlainObject(prop)) continue
+    if (
+      (options.removeReadOnly === true && truthy(prop.readOnly)) ||
+      (options.removeWriteOnly === true && truthy(prop.writeOnly))
+    ) {
+      removed.add(name)
+    }
+  }
+  if (removed.size === 0) return schema
+
+  const result: JsonSchema = { ...schema }
+  result.properties = Object.fromEntries(
+    Object.entries(properties).filter(([name]) => !removed.has(name)),
+  )
+  if (Array.isArray(result.required)) {
+    result.required = result.required.filter(
+      (name) => typeof name !== 'string' || !removed.has(name),
     )
   }
   return result

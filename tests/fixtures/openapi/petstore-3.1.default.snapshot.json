@@ -64,14 +64,6 @@
               "name"
             ]
           },
-          "PetStatus": {
-            "type": "string",
-            "enum": [
-              "available",
-              "pending",
-              "sold"
-            ]
-          },
           "Category": {
             "properties": {
               "id": {
@@ -82,6 +74,14 @@
               }
             },
             "type": "object"
+          },
+          "PetStatus": {
+            "type": "string",
+            "enum": [
+              "available",
+              "pending",
+              "sold"
+            ]
           }
         }
       },
@@ -157,17 +157,6 @@
         ],
         "x-fastmcp-top-level-schema": "Pet",
         "$defs": {
-          "Category": {
-            "properties": {
-              "id": {
-                "type": "integer"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
           "Pet": {
             "properties": {
               "id": {
@@ -188,6 +177,17 @@
               "id",
               "name"
             ]
+          },
+          "Category": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
           },
           "PetStatus": {
             "type": "string",
@@ -241,17 +241,6 @@
         ],
         "x-fastmcp-top-level-schema": "Pet",
         "$defs": {
-          "Category": {
-            "properties": {
-              "id": {
-                "type": "integer"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
           "Pet": {
             "properties": {
               "id": {
@@ -272,6 +261,17 @@
               "id",
               "name"
             ]
+          },
+          "Category": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
           },
           "PetStatus": {
             "type": "string",
@@ -333,17 +333,6 @@
         ],
         "x-fastmcp-top-level-schema": "Pet",
         "$defs": {
-          "Category": {
-            "properties": {
-              "id": {
-                "type": "integer"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
           "Pet": {
             "properties": {
               "id": {
@@ -364,6 +353,17 @@
               "id",
               "name"
             ]
+          },
+          "Category": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
           },
           "PetStatus": {
             "type": "string",
@@ -474,17 +474,6 @@
         ],
         "x-fastmcp-top-level-schema": "Pet",
         "$defs": {
-          "Category": {
-            "properties": {
-              "id": {
-                "type": "integer"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
           "Pet": {
             "properties": {
               "id": {
@@ -505,6 +494,17 @@
               "id",
               "name"
             ]
+          },
+          "Category": {
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "type": "object"
           },
           "PetStatus": {
             "type": "string",
@@ -712,20 +712,6 @@
             },
             "type": "object"
           },
-          "Shape": {
-            "properties": {
-              "kind": {
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              }
-            },
-            "type": "object",
-            "required": [
-              "kind"
-            ]
-          },
           "Square": {
             "allOf": [
               {
@@ -742,6 +728,20 @@
                 },
                 "type": "object"
               }
+            ]
+          },
+          "Shape": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "type": "object",
+            "required": [
+              "kind"
             ]
           }
         }
