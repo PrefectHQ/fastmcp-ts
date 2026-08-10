@@ -27,6 +27,8 @@ import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
 import { resolveSensitiveHeaders, nodeRequestToHttpContext } from './httpContext'
+import { CustomRouteRegistry, serveCustomRouteNode, writeMethodNotAllowed } from './customRoutes'
+import type { CustomRouteConfig, CustomRouteHandler } from './customRoutes'
 import { envBool } from './env'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
@@ -385,6 +387,7 @@ export class FastMCP {
   private _staticResources = new Map<string, RegisteredResource>()
   private _templateResources = new Map<string, RegisteredResource>()
   private _prompts = new Map<string, RegisteredPrompt>()
+  private _customRoutes = new CustomRouteRegistry()
   private _promptsPageSize: number
   private _middleware: Middleware[]
   private _transforms: Transform[]
@@ -1337,6 +1340,18 @@ export class FastMCP {
     for (const cb of this._resourceRegisteredCallbacks) cb(registered)
   }
 
+  /**
+   * Register a custom HTTP route on the listener `run()` starts — e.g. a
+   * Kubernetes liveness/readiness probe. The handler owns the whole exchange:
+   * no MCP auth, no DNS-rebinding guards, and no CORS headers run in front of
+   * it. Matching is exact-path (query string ignored); methods default to GET.
+   * Routes never serve on stdio or through `fetch()` — a framework embedding
+   * `fetch()` owns its own routing (same posture as `dnsRebinding`).
+   */
+  customRoute(config: CustomRouteConfig, handler: CustomRouteHandler): void {
+    this._customRoutes.register(config, handler)
+  }
+
   _removeTool(name: string): boolean {
     if (!this._tools.has(name)) return false
     this._tools.delete(name)
@@ -1882,10 +1897,13 @@ export class FastMCP {
         },
         { transport: stdioTransport },
       )
-    } else if (this._oauth) {
-      await this._runHttpOAuth(port, host, path)
     } else {
-      await this._runHttpSimple(port, host, path)
+      this._customRoutes.assertNoMcpCollision(path)
+      if (this._oauth) {
+        await this._runHttpOAuth(port, host, path)
+      } else {
+        await this._runHttpSimple(port, host, path)
+      }
     }
   }
 
@@ -2122,7 +2140,18 @@ export class FastMCP {
         return
       }
 
-      if (req.url?.split('?')[0] !== path) {
+      // Custom routes dispatch before the MCP path check, CORS injection, auth,
+      // and the DNS-rebinding guards: a matched handler owns the whole exchange
+      // (spec: docs/superpowers/specs/2026-08-10-health-endpoint-custom-routes-design.md).
+      const pathname = req.url?.split('?')[0] ?? ''
+      const routeMatch = this._customRoutes.match(pathname, req.method ?? '')
+      if (routeMatch) {
+        if (routeMatch.kind === 'method-mismatch') writeMethodNotAllowed(res, routeMatch.allow)
+        else await serveCustomRouteNode(routeMatch.handler, req, res)
+        return
+      }
+
+      if (pathname !== path) {
         res.writeHead(404).end()
         return
       }

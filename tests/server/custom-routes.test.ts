@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { CustomRouteRegistry, resolveHealth, serveCustomRouteNode } from '../../src/server/customRoutes.js'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import http from 'node:http'
+import { FastMCP, staticTokenVerifier } from 'fastmcp-ts/server'
 
 // ---------------------------------------------------------------------------
 // Custom HTTP routes (issue #75): registry validation, matching, and health
@@ -188,5 +190,134 @@ describe('serveCustomRouteNode', () => {
       errorLog.mockRestore()
       server.close()
     }
+  })
+})
+
+/** Raw GET with full header control (fetch forbids overriding Host). */
+function rawGet(
+  port: number,
+  path: string,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => {
+      let data = ''
+      res.setEncoding('utf8')
+      res.on('data', (c) => (data += c))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: data }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+describe('customRoute() over the simple HTTP path', () => {
+  let mcp: FastMCP | null = null
+  afterEach(async () => {
+    await mcp?.close()
+    mcp = null
+  })
+
+  it('serves a matched route with the handler-authored status, headers, and body', async () => {
+    mcp = new FastMCP({ name: 'routes' })
+    mcp.customRoute({ path: '/livez' }, () => new Response('alive', { status: 200, headers: { 'X-Custom': 'yes' } }))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port } = mcp.address!
+
+    const res = await fetch(`http://127.0.0.1:${port}/livez`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-custom')).toBe('yes')
+    expect(await res.text()).toBe('alive')
+  })
+
+  it('serves the route without a bearer token while MCP auth is configured', async () => {
+    mcp = new FastMCP({
+      name: 'routes',
+      auth: staticTokenVerifier({ 'valid-token': { scopes: ['read'] } }),
+    })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port, path } = mcp.address!
+
+    // The MCP path itself still requires auth.
+    const mcpRes = await fetch(`http://127.0.0.1:${port}${path}`)
+    expect(mcpRes.status).toBe(401)
+
+    const routeRes = await fetch(`http://127.0.0.1:${port}/livez`)
+    expect(routeRes.status).toBe(200)
+  })
+
+  it('serves the route despite a foreign Host header (kubelet probes send the pod IP)', async () => {
+    // Loopback bind auto-enables the DNS-rebinding Host guard; the route must bypass it.
+    mcp = new FastMCP({ name: 'routes' })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port, path } = mcp.address!
+
+    const evil = await rawGet(port, '/livez', { Host: '10.0.0.7:8080' })
+    expect(evil.status).toBe(200)
+    expect(evil.body).toBe('ok')
+
+    // Sanity: the guard still protects the MCP path on the same server.
+    const guarded = await rawGet(port, path, { Host: 'evil.example.com' })
+    expect(guarded.status).toBe(403)
+  })
+
+  it('answers 405 with an Allow header on a method mismatch', async () => {
+    mcp = new FastMCP({ name: 'routes' })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port } = mcp.address!
+
+    const res = await fetch(`http://127.0.0.1:${port}/livez`, { method: 'POST' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET')
+  })
+
+  it('OPTIONS on a route path still gets the global CORS preflight', async () => {
+    mcp = new FastMCP({ name: 'routes' })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port } = mcp.address!
+
+    const res = await fetch(`http://127.0.0.1:${port}/livez`, { method: 'OPTIONS' })
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
+  })
+
+  it('a throwing handler answers 500 JSON and logs', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      mcp = new FastMCP({ name: 'routes' })
+      mcp.customRoute({ path: '/boom' }, () => {
+        throw new Error('kaput')
+      })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      const { port } = mcp.address!
+
+      const res = await fetch(`http://127.0.0.1:${port}/boom`)
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: 'Internal Server Error' })
+      expect(errorSpy).toHaveBeenCalledWith('[fastmcp] custom route handler failed:', expect.any(Error))
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('a route on the MCP path aborts startup', async () => {
+    mcp = new FastMCP({ name: 'routes' })
+    mcp.customRoute({ path: '/mcp' }, () => new Response('ok'))
+    await expect(mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })).rejects.toThrow(/collides/)
+  })
+
+  it('unmatched paths still 404 and MCP traffic still serves', async () => {
+    mcp = new FastMCP({ name: 'routes' })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port, path } = mcp.address!
+
+    expect((await fetch(`http://127.0.0.1:${port}/nope`)).status).toBe(404)
+    // The MCP endpoint is reachable (405/4xx from a bare GET is fine; not 404).
+    expect((await fetch(`http://127.0.0.1:${port}${path}`)).status).not.toBe(404)
   })
 })
