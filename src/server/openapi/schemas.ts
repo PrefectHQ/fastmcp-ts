@@ -368,7 +368,9 @@ export function combineSchemasAndMapParams(
   }
 
   if (route.openapiVersion?.startsWith('3')) {
-    result = convertOpenAPISchemaToJsonSchema(result, route.openapiVersion)
+    result = convertOpenAPISchemaToJsonSchema(result, route.openapiVersion, {
+      removeReadOnly: true,
+    })
   }
 
   return [result, parameterMap]
@@ -441,7 +443,9 @@ export function extractOutputSchemaFromResponses(
   }
 
   if (openapiVersion?.startsWith('3')) {
-    outputSchema = convertOpenAPISchemaToJsonSchema(outputSchema, openapiVersion)
+    outputSchema = convertOpenAPISchemaToJsonSchema(outputSchema, openapiVersion, {
+      removeWriteOnly: true,
+    })
   }
 
   // MCP requires output schemas to be objects; wrap anything else.
@@ -463,7 +467,9 @@ export function extractOutputSchemaFromResponses(
     }
     if (openapiVersion?.startsWith('3')) {
       for (const name of Object.keys(processedDefs)) {
-        processedDefs[name] = convertOpenAPISchemaToJsonSchema(processedDefs[name], openapiVersion)
+        processedDefs[name] = convertOpenAPISchemaToJsonSchema(processedDefs[name], openapiVersion, {
+          removeWriteOnly: true,
+        })
       }
     }
     outputSchema.$defs = processedDefs
