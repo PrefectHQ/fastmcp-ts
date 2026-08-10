@@ -35,25 +35,10 @@
         ],
         "x-fastmcp-wrap-result": true,
         "$defs": {
-          "MetaB": {
-            "type": "object",
-            "properties": {
-              "b": {
-                "type": "integer"
-              }
-            }
-          },
-          "MetaA": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "string"
-              }
-            }
-          },
           "Widget": {
             "required": [
-              "name"
+              "name",
+              "id"
             ],
             "type": "object",
             "properties": {
@@ -65,9 +50,6 @@
                   "string",
                   "null"
                 ]
-              },
-              "secret": {
-                "type": "string"
               },
               "meta": {
                 "anyOf": [
@@ -90,6 +72,36 @@
                     "null"
                   ]
                 }
+              },
+              "audit": {
+                "required": [
+                  "ts"
+                ],
+                "type": "object",
+                "properties": {
+                  "ts": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "MetaB": {
+            "type": "object",
+            "properties": {
+              "b": {
+                "type": "integer"
+              }
+            }
+          },
+          "MetaA": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
               }
             }
           }
@@ -103,9 +115,6 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "integer"
-          },
           "name": {
             "type": [
               "string",
@@ -136,10 +145,16 @@
                 "null"
               ]
             }
+          },
+          "audit": {
+            "required": [],
+            "type": "object",
+            "properties": {}
           }
         },
         "required": [
-          "name"
+          "name",
+          "secret"
         ],
         "$defs": {
           "MetaB": {
@@ -162,7 +177,8 @@
       },
       "outputSchema": {
         "required": [
-          "name"
+          "name",
+          "id"
         ],
         "type": "object",
         "properties": {
@@ -174,9 +190,6 @@
               "string",
               "null"
             ]
-          },
-          "secret": {
-            "type": "string"
           },
           "meta": {
             "anyOf": [
@@ -199,6 +212,17 @@
                 "null"
               ]
             }
+          },
+          "audit": {
+            "required": [
+              "ts"
+            ],
+            "type": "object",
+            "properties": {
+              "ts": {
+                "type": "string"
+              }
+            }
           }
         },
         "x-fastmcp-top-level-schema": "Widget",
@@ -216,12 +240,16 @@
             "properties": {
               "a": {
                 "type": "string"
+              },
+              "note": {
+                "type": "string"
               }
             }
           },
           "Widget": {
             "required": [
-              "name"
+              "name",
+              "id"
             ],
             "type": "object",
             "properties": {
@@ -233,9 +261,6 @@
                   "string",
                   "null"
                 ]
-              },
-              "secret": {
-                "type": "string"
               },
               "meta": {
                 "anyOf": [
@@ -257,6 +282,17 @@
                     "string",
                     "null"
                   ]
+                }
+              },
+              "audit": {
+                "required": [
+                  "ts"
+                ],
+                "type": "object",
+                "properties": {
+                  "ts": {
+                    "type": "string"
+                  }
                 }
               }
             }
