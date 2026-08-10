@@ -141,4 +141,157 @@ describe('convertOpenAPISchemaToJsonSchema', () => {
     const schema = { type: 'object', properties: { a: { type: 'string' } } }
     expect(convertOpenAPISchemaToJsonSchema(schema, '3.1.0')).toEqual(schema)
   })
+
+  describe('readOnly/writeOnly property filtering', () => {
+    it('removes readOnly properties and prunes them from required', () => {
+      expect(
+        convertOpenAPISchemaToJsonSchema(
+          {
+            type: 'object',
+            properties: {
+              id: { type: 'integer', readOnly: true },
+              name: { type: 'string' },
+            },
+            required: ['name', 'id'],
+          },
+          '3.0.3',
+          { removeReadOnly: true },
+        ),
+      ).toEqual({
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+      })
+    })
+
+    it('removes writeOnly properties and prunes them from required', () => {
+      expect(
+        convertOpenAPISchemaToJsonSchema(
+          {
+            type: 'object',
+            properties: {
+              secret: { type: 'string', writeOnly: true },
+              name: { type: 'string' },
+            },
+            required: ['name', 'secret'],
+          },
+          '3.0.3',
+          { removeWriteOnly: true },
+        ),
+      ).toEqual({
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+      })
+    })
+
+    it('keeps an empty required list when nothing is removed', () => {
+      expect(
+        convertOpenAPISchemaToJsonSchema(
+          {
+            type: 'object',
+            properties: {
+              kind: { type: 'string' },
+              other: { type: 'string', nullable: true },
+            },
+            required: [],
+          },
+          '3.0.3',
+          { removeReadOnly: true },
+        ),
+      ).toEqual({
+        type: 'object',
+        properties: {
+          kind: { type: 'string' },
+          other: { type: ['string', 'null'] },
+        },
+        required: [],
+      })
+    })
+
+    it('keeps required names that are not declared as properties', () => {
+      expect(
+        convertOpenAPISchemaToJsonSchema(
+          {
+            type: 'object',
+            properties: { other: { type: 'string', readOnly: true } },
+            required: ['kind', 'other'],
+          },
+          '3.0.3',
+          { removeReadOnly: true },
+        ),
+      ).toEqual({ type: 'object', properties: {}, required: ['kind'] })
+    })
+
+    it('keeps empty maps when every property is removed', () => {
+      expect(
+        convertOpenAPISchemaToJsonSchema(
+          {
+            type: 'object',
+            properties: { ts: { type: 'string', readOnly: true } },
+            required: ['ts'],
+          },
+          '3.0.3',
+          { removeReadOnly: true },
+        ),
+      ).toEqual({ type: 'object', properties: {}, required: [] })
+    })
+
+    it('keeps properties and strips keywords when no options are passed', () => {
+      expect(
+        convertOpenAPISchemaToJsonSchema(
+          {
+            type: 'object',
+            properties: {
+              id: { type: 'integer', readOnly: true },
+              secret: { type: 'string', writeOnly: true },
+            },
+          },
+          '3.0.3',
+        ),
+      ).toEqual({
+        type: 'object',
+        properties: { id: { type: 'integer' }, secret: { type: 'string' } },
+      })
+    })
+
+    it('filters inside $defs and nested objects', () => {
+      expect(
+        convertOpenAPISchemaToJsonSchema(
+          {
+            type: 'object',
+            properties: {
+              child: {
+                type: 'object',
+                properties: {
+                  id: { type: 'integer', readOnly: true },
+                  name: { type: 'string' },
+                },
+                required: ['id', 'name'],
+              },
+            },
+            $defs: {
+              W: {
+                type: 'object',
+                properties: { id: { type: 'integer', readOnly: true } },
+                required: ['id'],
+              },
+            },
+          },
+          '3.0.3',
+          { removeReadOnly: true },
+        ),
+      ).toEqual({
+        type: 'object',
+        properties: {
+          child: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+        $defs: { W: { type: 'object', properties: {}, required: [] } },
+      })
+    })
+  })
 })
