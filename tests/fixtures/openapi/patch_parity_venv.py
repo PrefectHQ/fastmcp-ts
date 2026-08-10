@@ -10,7 +10,11 @@ Python main with this script applied first:
     uv pip install --python .tmp/parity-venv/bin/python \\
         '../../fastmcp/main/fastmcp_slim[server]'
     .tmp/parity-venv/bin/python tests/fixtures/openapi/patch_parity_venv.py
-    .tmp/parity-venv/bin/python tests/fixtures/openapi/generate_snapshots.py
+    PYTHONHASHSEED=0 .tmp/parity-venv/bin/python tests/fixtures/openapi/generate_snapshots.py
+
+Python main's OpenAPI parser builds `$defs` by iterating a `set`, so the key
+order of the generated `$defs` depends on `PYTHONHASHSEED`; pinning the seed
+makes regeneration reproducible across runs.
 
 The three replacements below ARE the pending Python change, byte for byte.
 When it lands in Python main, this script's asserts will fail (the old text

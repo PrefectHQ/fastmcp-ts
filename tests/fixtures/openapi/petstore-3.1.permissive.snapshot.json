@@ -369,20 +369,6 @@
             },
             "type": "object"
           },
-          "Shape": {
-            "properties": {
-              "kind": {
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              }
-            },
-            "type": "object",
-            "required": [
-              "kind"
-            ]
-          },
           "Square": {
             "allOf": [
               {
@@ -399,6 +385,20 @@
                 },
                 "type": "object"
               }
+            ]
+          },
+          "Shape": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "type": "object",
+            "required": [
+              "kind"
             ]
           }
         }
