@@ -269,4 +269,45 @@ describe('buildRequest', () => {
       'https://api.example.com/pets',
     )
   })
+
+  it('still routes an argument for a filtered readOnly property into the body', () => {
+    const spec = {
+      openapi: '3.0.3',
+      info: { title: 't', version: '1' },
+      paths: {
+        '/widgets/{wid}': {
+          put: {
+            operationId: 'updateWidget',
+            parameters: [
+              { name: 'wid', in: 'path', required: true, schema: { type: 'string' } },
+            ],
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'integer', readOnly: true },
+                      name: { type: 'string' },
+                    },
+                    required: ['name'],
+                  },
+                },
+              },
+            },
+            responses: { '200': { description: 'ok' } },
+          },
+        },
+      },
+    }
+    const [route] = parseOpenAPIToHttpRoutes(spec)
+    // The advertised schema hides the readOnly field...
+    expect(
+      (route.flatParamSchema.properties as Record<string, unknown>).id,
+    ).toBeUndefined()
+    // ...but the parameter map still routes it if a caller sends it anyway.
+    const request = buildRequest(route, { wid: 'w1', name: 'n', id: 7 }, BASE)
+    expect(JSON.parse(request.body as string)).toEqual({ name: 'n', id: 7 })
+  })
 })
