@@ -128,6 +128,42 @@ describeEachEra('Server — Tools', (combo) => {
       }
     })
 
+    it('annotations from config are forwarded verbatim in tools/list', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool(
+        {
+          name: 'delete-file',
+          description: 'Delete a file',
+          annotations: { title: 'Delete File', readOnlyHint: false, destructiveHint: true },
+        },
+        () => 'ok',
+      )
+
+      const { client, close } = await setup(combo, mcp)
+      try {
+        const result = await client.listTools()
+        expect(result.tools[0].annotations).toEqual({
+          title: 'Delete File',
+          readOnlyHint: false,
+          destructiveHint: true,
+        })
+      } finally {
+        await close()
+      }
+    })
+
+    it('a tool without annotations omits the annotations field', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'noop', description: 'no annotations' }, () => 'ok')
+      const { client, close } = await setup(combo, mcp)
+      try {
+        const result = await client.listTools()
+        expect(result.tools[0].annotations).toBeUndefined()
+      } finally {
+        await close()
+      }
+    })
+
     it('tools/list paginates when the tool count exceeds toolsPageSize', async () => {
       const mcp = new FastMCP({ name: 'test', toolsPageSize: 2 })
       mcp.tool({ name: 'alpha', description: 'test tool' }, () => 1)
