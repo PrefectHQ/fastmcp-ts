@@ -1,0 +1,70 @@
+---
+title: "ToolAnnotations"
+---
+
+Defined in: [server/FastMCP.ts:245](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L245)
+
+Behavioral hints for a tool (MCP 2025-03-26). Advisory only — clients may use
+them for UI/UX and safety decisions (e.g. auto-approving a read-only call); the
+server does not enforce them. Per the MCP spec, annotations from an untrusted
+server should not be relied upon.
+
+## Properties
+
+### destructiveHint?
+
+```ts
+optional destructiveHint?: boolean;
+```
+
+Defined in: [server/FastMCP.ts:251](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L251)
+
+The tool may perform destructive updates. Only meaningful when readOnlyHint is false. Default: true.
+
+***
+
+### idempotentHint?
+
+```ts
+optional idempotentHint?: boolean;
+```
+
+Defined in: [server/FastMCP.ts:253](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L253)
+
+Repeated calls with the same arguments have no additional effect. Only meaningful when readOnlyHint is false. Default: false.
+
+***
+
+### openWorldHint?
+
+```ts
+optional openWorldHint?: boolean;
+```
+
+Defined in: [server/FastMCP.ts:255](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L255)
+
+The tool may interact with an open world of external entities. Default: true.
+
+***
+
+### readOnlyHint?
+
+```ts
+optional readOnlyHint?: boolean;
+```
+
+Defined in: [server/FastMCP.ts:249](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L249)
+
+The tool does not modify its environment. Default: false.
+
+***
+
+### title?
+
+```ts
+optional title?: string;
+```
+
+Defined in: [server/FastMCP.ts:247](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L247)
+
+Human-readable title for display.
