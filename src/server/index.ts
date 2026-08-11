@@ -7,6 +7,7 @@ export type {
   ToolAnnotations,
   OAuthConfig,
 } from './FastMCP'
+export type { CustomRouteConfig, CustomRouteHandler, HealthOptions } from './customRoutes'
 // Re-exported for fetch-native integrations and FastMCPOptions.eventBus implementers.
 export type {
   AuthInfo,

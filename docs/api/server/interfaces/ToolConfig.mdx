@@ -2,7 +2,7 @@
 title: "ToolConfig"
 ---
 
-Defined in: [server/FastMCP.ts:244](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L244)
+Defined in: [server/FastMCP.ts:258](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L258)
 
 ## Properties
 
@@ -12,7 +12,7 @@ Defined in: [server/FastMCP.ts:244](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional annotations?: ToolAnnotations;
 ```
 
-Defined in: [server/FastMCP.ts:250](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L250)
+Defined in: [server/FastMCP.ts:264](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L264)
 
 Behavioral hints for clients (MCP 2025-03-26). Forwarded verbatim in tools/list.
 
@@ -24,7 +24,7 @@ Behavioral hints for clients (MCP 2025-03-26). Forwarded verbatim in tools/list.
 optional auth?: AuthCheck;
 ```
 
-Defined in: [server/FastMCP.ts:272](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L272)
+Defined in: [server/FastMCP.ts:286](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L286)
 
 ***
 
@@ -34,7 +34,7 @@ Defined in: [server/FastMCP.ts:272](https://github.com/PrefectHQ/fastmcp-ts/blob
 description: string;
 ```
 
-Defined in: [server/FastMCP.ts:248](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L248)
+Defined in: [server/FastMCP.ts:262](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L262)
 
 ***
 
@@ -44,7 +44,7 @@ Defined in: [server/FastMCP.ts:248](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional disabled?: boolean;
 ```
 
-Defined in: [server/FastMCP.ts:269](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L269)
+Defined in: [server/FastMCP.ts:283](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L283)
 
 When true the tool is hidden from listTools and cannot be invoked via tools/call.
 
@@ -56,7 +56,7 @@ When true the tool is hidden from listTools and cannot be invoked via tools/call
 optional input?: StandardSchemaV1<unknown, unknown>;
 ```
 
-Defined in: [server/FastMCP.ts:252](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L252)
+Defined in: [server/FastMCP.ts:266](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L266)
 
 Standard Schema validator for the tool's input arguments. Used for runtime validation.
 
@@ -68,7 +68,7 @@ Standard Schema validator for the tool's input arguments. Used for runtime valid
 optional inputSchema?: Record<string, unknown>;
 ```
 
-Defined in: [server/FastMCP.ts:258](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L258)
+Defined in: [server/FastMCP.ts:272](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L272)
 
 Explicit JSON Schema advertised to clients as `inputSchema`. Overrides auto-generation from
 `input`. Use when you need JSON Schema features beyond what your validator auto-generates
@@ -82,7 +82,7 @@ Explicit JSON Schema advertised to clients as `inputSchema`. Overrides auto-gene
 name: string;
 ```
 
-Defined in: [server/FastMCP.ts:245](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L245)
+Defined in: [server/FastMCP.ts:259](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L259)
 
 ***
 
@@ -92,7 +92,7 @@ Defined in: [server/FastMCP.ts:245](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional output?: StandardSchemaV1<unknown, unknown>;
 ```
 
-Defined in: [server/FastMCP.ts:260](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L260)
+Defined in: [server/FastMCP.ts:274](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L274)
 
 Standard Schema validator for the tool's return value. Validated before result conversion.
 
@@ -104,7 +104,7 @@ Standard Schema validator for the tool's return value. Validated before result c
 optional outputSchema?: Record<string, unknown>;
 ```
 
-Defined in: [server/FastMCP.ts:265](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L265)
+Defined in: [server/FastMCP.ts:279](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L279)
 
 Explicit JSON Schema advertised to clients as `outputSchema`. Overrides auto-generation from
 `output`. Use when you need JSON Schema features beyond what your validator auto-generates.
@@ -117,7 +117,7 @@ Explicit JSON Schema advertised to clients as `outputSchema`. Overrides auto-gen
 optional tags?: string[];
 ```
 
-Defined in: [server/FastMCP.ts:271](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L271)
+Defined in: [server/FastMCP.ts:285](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L285)
 
 Arbitrary tags for server-side filtering.
 
@@ -129,7 +129,7 @@ Arbitrary tags for server-side filtering.
 optional timeout?: number;
 ```
 
-Defined in: [server/FastMCP.ts:267](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L267)
+Defined in: [server/FastMCP.ts:281](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L281)
 
 Execution timeout in milliseconds. No timeout by default.
 
@@ -141,7 +141,7 @@ Execution timeout in milliseconds. No timeout by default.
 optional title?: string;
 ```
 
-Defined in: [server/FastMCP.ts:247](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L247)
+Defined in: [server/FastMCP.ts:261](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L261)
 
 Human-readable display name shown in UIs. Takes precedence over `name` for display purposes.
 
@@ -153,6 +153,6 @@ Human-readable display name shown in UIs. Takes precedence over `name` for displ
 optional ui?: UiToolMeta;
 ```
 
-Defined in: [server/FastMCP.ts:274](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L274)
+Defined in: [server/FastMCP.ts:288](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L288)
 
 Apps extension — links this tool to a UI resource and controls visibility.

@@ -1,0 +1,23 @@
+---
+title: "CustomRouteHandler"
+---
+
+```ts
+type CustomRouteHandler = (request) => Response | Promise<Response>;
+```
+
+Defined in: [server/customRoutes.ts:9](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L9)
+
+Handler for a custom HTTP route served by the listener `run()` starts.
+Owns the whole exchange: no MCP auth, no DNS-rebinding guards, and no CORS
+headers run in front of it, and its Response is written back verbatim.
+
+## Parameters
+
+### request
+
+`Request`
+
+## Returns
+
+`Response` \| `Promise`&lt;`Response`&gt;

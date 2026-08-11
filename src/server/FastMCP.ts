@@ -27,6 +27,8 @@ import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
 import { resolveSensitiveHeaders, nodeRequestToHttpContext } from './httpContext'
+import { CustomRouteRegistry, serveCustomRouteNode, writeMethodNotAllowed, resolveHealth } from './customRoutes'
+import type { CustomRouteConfig, CustomRouteHandler, HealthOptions } from './customRoutes'
 import { envBool } from './env'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
@@ -210,6 +212,18 @@ export interface RunOptions {
    * is already stateless and is unaffected.
    */
   stateless?: boolean
+  /**
+   * Health endpoint on the HTTP listener `run()` starts — for Kubernetes
+   * liveness/readiness probes and load-balancer checks. Off unless supplied:
+   * `true` (or any object) enables it with defaults `path: '/healthz'`,
+   * `status: 200`, `body: 'ok'` (`text/plain`); `enabled: false` (or `false`)
+   * forces it off. Served before MCP auth, CORS, and the DNS-rebinding
+   * guards, so probes need no credentials and may send a pod-IP Host header.
+   * Sugar over `customRoute()` — registering your own route on the same path
+   * is a startup error. Ignored on stdio (a malformed value still aborts
+   * startup, like `stateless`) and never served through `fetch()`.
+   */
+  health?: boolean | HealthOptions
   /** Custom stdin stream for the stdio transport. Defaults to process.stdin. */
   stdin?: Readable
   /** Custom stdout stream for the stdio transport. Defaults to process.stdout. */
@@ -406,6 +420,7 @@ export class FastMCP {
   private _staticResources = new Map<string, RegisteredResource>()
   private _templateResources = new Map<string, RegisteredResource>()
   private _prompts = new Map<string, RegisteredPrompt>()
+  private _customRoutes = new CustomRouteRegistry()
   private _promptsPageSize: number
   private _middleware: Middleware[]
   private _transforms: Transform[]
@@ -1359,6 +1374,18 @@ export class FastMCP {
     for (const cb of this._resourceRegisteredCallbacks) cb(registered)
   }
 
+  /**
+   * Register a custom HTTP route on the listener `run()` starts — e.g. a
+   * Kubernetes liveness/readiness probe. The handler owns the whole exchange:
+   * no MCP auth, no DNS-rebinding guards, and no CORS headers run in front of
+   * it. Matching is exact-path (query string ignored); methods default to GET.
+   * Routes never serve on stdio or through `fetch()` — a framework embedding
+   * `fetch()` owns its own routing (same posture as `dnsRebinding`).
+   */
+  customRoute(config: CustomRouteConfig, handler: CustomRouteHandler): void {
+    this._customRoutes.register(config, handler)
+  }
+
   _removeTool(name: string): boolean {
     if (!this._tools.has(name)) return false
     this._tools.delete(name)
@@ -1879,6 +1906,10 @@ export class FastMCP {
     // regardless of how the server is being served. Only the http path reads it.
     this._stateless = options?.stateless ?? envBool('FASTMCP_STATELESS_HTTP') ?? false
 
+    // Resolved for every transport so a malformed value fails loudly at startup
+    // (the `stateless` precedent). Only the http branch registers the route.
+    const resolvedHealth = resolveHealth(options?.health)
+
     if (transport === 'stdio') {
       const { StdioServerTransport, serveStdio } = await import('@modelcontextprotocol/server/stdio')
       const stdioTransport = new StdioServerTransport(options?.stdin, options?.stdout)
@@ -1904,10 +1935,29 @@ export class FastMCP {
         },
         { transport: stdioTransport },
       )
-    } else if (this._oauth) {
-      await this._runHttpOAuth(port, host, path)
     } else {
-      await this._runHttpSimple(port, host, path)
+      if (resolvedHealth) {
+        this._customRoutes.register(
+          { path: resolvedHealth.path },
+          () =>
+            // An empty body maps to a null Response body (no Content-Type either): the
+            // fetch spec forbids any body, even '', on 101/204/205/304, and resolveHealth
+            // already rejected a non-empty body on those statuses — so branching on the
+            // body alone is enough to keep this call from throwing.
+            resolvedHealth.body === ''
+              ? new Response(null, { status: resolvedHealth.status })
+              : new Response(resolvedHealth.body, {
+                  status: resolvedHealth.status,
+                  headers: { 'Content-Type': 'text/plain' },
+                }),
+        )
+      }
+      this._customRoutes.assertNoMcpCollision(path)
+      if (this._oauth) {
+        await this._runHttpOAuth(port, host, path)
+      } else {
+        await this._runHttpSimple(port, host, path)
+      }
     }
   }
 
@@ -2086,6 +2136,25 @@ export class FastMCP {
     const oauth = this._oauth!
     const app = express()
 
+    // One registry-driven middleware, registered ahead of the OAuth router and the
+    // bearer-gated MCP endpoint, so it dispatches custom routes first: no auth in
+    // front of a route handler. Matching goes through the registry's match(), the
+    // same exact-path lookup the simple serve path uses, not express's app.all
+    // pattern matching: app.all runs paths through path-to-regexp, which is
+    // case-insensitive, non-strict on trailing slashes, and treats characters like
+    // : and * as pattern syntax. That let a registered route answer requests it was
+    // never meant to (for example a route on /MCP shadowing POST /mcp, bypassing
+    // assertNoMcpCollision's case-sensitive check). match() returns null for OPTIONS,
+    // so it falls through via next() to express's default handling: this serve path
+    // has no global CORS preflight, so express answers with its own 404-style
+    // response, same as for the MCP endpoint here.
+    app.use((req, res, next) => {
+      const match = this._customRoutes.match(req.path, req.method ?? '')
+      if (!match) return next()
+      if (match.kind === 'method-mismatch') return writeMethodNotAllowed(res, match.allow)
+      void serveCustomRouteNode(match.handler, req, res)
+    })
+
     // Bind first so we can infer the issuerUrl from the actual bound port (handles port=0)
     const httpServer = await new Promise<HttpServer>((resolve, reject) => {
       const srv = app.listen(port, host, () => resolve(srv))
@@ -2144,7 +2213,18 @@ export class FastMCP {
         return
       }
 
-      if (req.url?.split('?')[0] !== path) {
+      // Custom routes dispatch before the MCP path check, CORS injection, auth,
+      // and the DNS-rebinding guards: a matched handler owns the whole exchange
+      // (spec: docs/superpowers/specs/2026-08-10-health-endpoint-custom-routes-design.md).
+      const pathname = req.url?.split('?')[0] ?? ''
+      const routeMatch = this._customRoutes.match(pathname, req.method ?? '')
+      if (routeMatch) {
+        if (routeMatch.kind === 'method-mismatch') writeMethodNotAllowed(res, routeMatch.allow)
+        else await serveCustomRouteNode(routeMatch.handler, req, res)
+        return
+      }
+
+      if (pathname !== path) {
         res.writeHead(404).end()
         return
       }

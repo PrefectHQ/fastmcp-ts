@@ -1,0 +1,55 @@
+---
+title: "HealthOptions"
+---
+
+Defined in: [server/customRoutes.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L24)
+
+`RunOptions.health` object form. Presence implies enabled.
+
+## Properties
+
+### body?
+
+```ts
+optional body?: string;
+```
+
+Defined in: [server/customRoutes.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L32)
+
+Response body, served as `text/plain`. Default: `'ok'`.
+
+***
+
+### enabled?
+
+```ts
+optional enabled?: boolean;
+```
+
+Defined in: [server/customRoutes.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L26)
+
+Force off with `false`; the object's presence already implies `true`.
+
+***
+
+### path?
+
+```ts
+optional path?: string;
+```
+
+Defined in: [server/customRoutes.ts:28](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L28)
+
+Request path of the endpoint. Default: `/healthz`.
+
+***
+
+### status?
+
+```ts
+optional status?: number;
+```
+
+Defined in: [server/customRoutes.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L30)
+
+Response status code. Default: `200`.
