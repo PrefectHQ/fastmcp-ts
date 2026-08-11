@@ -1,0 +1,32 @@
+---
+title: "CustomRouteConfig"
+---
+
+Defined in: [server/customRoutes.ts:11](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L11)
+
+## Properties
+
+### methods?
+
+```ts
+optional methods?: string[];
+```
+
+Defined in: [server/customRoutes.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L20)
+
+HTTP methods served, compared case-insensitively. Default: `['GET']`.
+`OPTIONS` is rejected at registration: the global CORS preflight answers
+`OPTIONS` before route dispatch, so a route on it would be unreachable.
+
+***
+
+### path
+
+```ts
+path: string;
+```
+
+Defined in: [server/customRoutes.ts:14](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L14)
+
+Exact request path to serve; the query string is ignored for matching.
+Must start with `/`. No patterns, no path parameters.

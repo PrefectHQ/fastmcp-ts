@@ -642,6 +642,12 @@
             "isDeprecated": false
           },
           {
+            "title": "CustomRouteConfig",
+            "kind": 256,
+            "path": "server/interfaces/CustomRouteConfig.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "ElicitationResult",
             "kind": 256,
             "path": "server/interfaces/ElicitationResult.mdx",
@@ -693,6 +699,12 @@
             "title": "FormInputOptions",
             "kind": 256,
             "path": "server/interfaces/FormInputOptions.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "HealthOptions",
+            "kind": 256,
+            "path": "server/interfaces/HealthOptions.mdx",
             "isDeprecated": false
           },
           {
@@ -956,6 +968,12 @@
             "title": "ComponentFn",
             "kind": 2097152,
             "path": "server/type-aliases/ComponentFn.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "CustomRouteHandler",
+            "kind": 2097152,
+            "path": "server/type-aliases/CustomRouteHandler.mdx",
             "isDeprecated": false
           },
           {

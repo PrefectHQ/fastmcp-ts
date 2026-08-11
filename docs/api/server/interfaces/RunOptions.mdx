@@ -2,9 +2,29 @@
 title: "RunOptions"
 ---
 
-Defined in: [server/FastMCP.ts:196](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L196)
+Defined in: [server/FastMCP.ts:198](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L198)
 
 ## Properties
+
+### health?
+
+```ts
+optional health?: boolean | HealthOptions;
+```
+
+Defined in: [server/FastMCP.ts:226](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L226)
+
+Health endpoint on the HTTP listener `run()` starts — for Kubernetes
+liveness/readiness probes and load-balancer checks. Off unless supplied:
+`true` (or any object) enables it with defaults `path: '/healthz'`,
+`status: 200`, `body: 'ok'` (`text/plain`); `enabled: false` (or `false`)
+forces it off. Served before MCP auth, CORS, and the DNS-rebinding
+guards, so probes need no credentials and may send a pod-IP Host header.
+Sugar over `customRoute()` — registering your own route on the same path
+is a startup error. Ignored on stdio (a malformed value still aborts
+startup, like `stateless`) and never served through `fetch()`.
+
+***
 
 ### host?
 
@@ -12,7 +32,7 @@ Defined in: [server/FastMCP.ts:196](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional host?: string;
 ```
 
-Defined in: [server/FastMCP.ts:199](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L199)
+Defined in: [server/FastMCP.ts:201](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L201)
 
 ***
 
@@ -22,7 +42,7 @@ Defined in: [server/FastMCP.ts:199](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional path?: string;
 ```
 
-Defined in: [server/FastMCP.ts:200](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L200)
+Defined in: [server/FastMCP.ts:202](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L202)
 
 ***
 
@@ -32,7 +52,7 @@ Defined in: [server/FastMCP.ts:200](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional port?: number;
 ```
 
-Defined in: [server/FastMCP.ts:198](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L198)
+Defined in: [server/FastMCP.ts:200](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L200)
 
 ***
 
@@ -42,7 +62,7 @@ Defined in: [server/FastMCP.ts:198](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional stateless?: boolean;
 ```
 
-Defined in: [server/FastMCP.ts:212](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L212)
+Defined in: [server/FastMCP.ts:214](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L214)
 
 Serve the legacy (2025-era) HTTP transport statelessly: a fresh server and
 transport per request, no session registry, incoming `mcp-session-id`
@@ -62,7 +82,7 @@ is already stateless and is unaffected.
 optional stdin?: Readable;
 ```
 
-Defined in: [server/FastMCP.ts:214](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L214)
+Defined in: [server/FastMCP.ts:228](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L228)
 
 Custom stdin stream for the stdio transport. Defaults to process.stdin.
 
@@ -74,7 +94,7 @@ Custom stdin stream for the stdio transport. Defaults to process.stdin.
 optional stdout?: Writable;
 ```
 
-Defined in: [server/FastMCP.ts:216](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L216)
+Defined in: [server/FastMCP.ts:230](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L230)
 
 Custom stdout stream for the stdio transport. Defaults to process.stdout.
 
@@ -86,4 +106,4 @@ Custom stdout stream for the stdio transport. Defaults to process.stdout.
 optional transport?: "stdio" | "http";
 ```
 
-Defined in: [server/FastMCP.ts:197](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L197)
+Defined in: [server/FastMCP.ts:199](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L199)
