@@ -27,8 +27,8 @@ import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
 import type { McpContext } from './context'
 import { resolveSensitiveHeaders, nodeRequestToHttpContext } from './httpContext'
-import { CustomRouteRegistry, serveCustomRouteNode, writeMethodNotAllowed } from './customRoutes'
-import type { CustomRouteConfig, CustomRouteHandler } from './customRoutes'
+import { CustomRouteRegistry, serveCustomRouteNode, writeMethodNotAllowed, resolveHealth } from './customRoutes'
+import type { CustomRouteConfig, CustomRouteHandler, HealthOptions } from './customRoutes'
 import { envBool } from './env'
 import { runMiddlewareChain } from './middleware'
 import type { Middleware } from './middleware'
@@ -212,6 +212,18 @@ export interface RunOptions {
    * is already stateless and is unaffected.
    */
   stateless?: boolean
+  /**
+   * Health endpoint on the HTTP listener `run()` starts — for Kubernetes
+   * liveness/readiness probes and load-balancer checks. Off unless supplied:
+   * `true` (or any object) enables it with defaults `path: '/healthz'`,
+   * `status: 200`, `body: 'ok'` (`text/plain`); `enabled: false` (or `false`)
+   * forces it off. Served before MCP auth, CORS, and the DNS-rebinding
+   * guards, so probes need no credentials and may send a pod-IP Host header.
+   * Sugar over `customRoute()` — registering your own route on the same path
+   * is a startup error. Ignored on stdio (a malformed value still aborts
+   * startup, like `stateless`) and never served through `fetch()`.
+   */
+  health?: boolean | HealthOptions
   /** Custom stdin stream for the stdio transport. Defaults to process.stdin. */
   stdin?: Readable
   /** Custom stdout stream for the stdio transport. Defaults to process.stdout. */
@@ -1872,6 +1884,10 @@ export class FastMCP {
     // regardless of how the server is being served. Only the http path reads it.
     this._stateless = options?.stateless ?? envBool('FASTMCP_STATELESS_HTTP') ?? false
 
+    // Resolved for every transport so a malformed value fails loudly at startup
+    // (the `stateless` precedent). Only the http branch registers the route.
+    const resolvedHealth = resolveHealth(options?.health)
+
     if (transport === 'stdio') {
       const { StdioServerTransport, serveStdio } = await import('@modelcontextprotocol/server/stdio')
       const stdioTransport = new StdioServerTransport(options?.stdin, options?.stdout)
@@ -1898,6 +1914,16 @@ export class FastMCP {
         { transport: stdioTransport },
       )
     } else {
+      if (resolvedHealth) {
+        this._customRoutes.register(
+          { path: resolvedHealth.path },
+          () =>
+            new Response(resolvedHealth.body, {
+              status: resolvedHealth.status,
+              headers: { 'Content-Type': 'text/plain' },
+            }),
+        )
+      }
       this._customRoutes.assertNoMcpCollision(path)
       if (this._oauth) {
         await this._runHttpOAuth(port, host, path)
