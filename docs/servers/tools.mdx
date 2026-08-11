@@ -132,6 +132,7 @@ Beyond `name`, `description`, and the schema fields, the config object accepts t
 | Field | Behavior |
 |---|---|
 | `title` | Human-readable label for UIs; takes precedence over `name` for display and is forwarded in `tools/list` |
+| `annotations` | Behavioral hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, `title`) forwarded in `tools/list`; clients use them for UX and safety decisions such as auto-approving a read-only call. They are advisory and a client should not trust them from an untrusted server |
 | `timeout` | Per-call timeout in milliseconds; a handler that exceeds it propagates as an error to the client |
 | `disabled` | When `true`, the tool is completely inaccessible — hidden from `tools/list` and rejected with `InvalidParams` on call, so clients can't distinguish it from a tool that was never registered |
 | `tags` | Free-form strings read by [transforms](/servers/transforms) such as `VersionFilter` |

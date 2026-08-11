@@ -4,6 +4,7 @@ export type {
   RunOptions,
   ServerAddress,
   ToolConfig,
+  ToolAnnotations,
   OAuthConfig,
 } from './FastMCP'
 // Re-exported for fetch-native integrations and FastMCPOptions.eventBus implementers.

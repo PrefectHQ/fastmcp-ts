@@ -222,11 +222,32 @@ export interface ServerAddress {
   path: string
 }
 
+/**
+ * Behavioral hints for a tool (MCP 2025-03-26). Advisory only — clients may use
+ * them for UI/UX and safety decisions (e.g. auto-approving a read-only call); the
+ * server does not enforce them. Per the MCP spec, annotations from an untrusted
+ * server should not be relied upon.
+ */
+export interface ToolAnnotations {
+  /** Human-readable title for display. */
+  title?: string
+  /** The tool does not modify its environment. Default: false. */
+  readOnlyHint?: boolean
+  /** The tool may perform destructive updates. Only meaningful when readOnlyHint is false. Default: true. */
+  destructiveHint?: boolean
+  /** Repeated calls with the same arguments have no additional effect. Only meaningful when readOnlyHint is false. Default: false. */
+  idempotentHint?: boolean
+  /** The tool may interact with an open world of external entities. Default: true. */
+  openWorldHint?: boolean
+}
+
 export interface ToolConfig {
   name: string
   /** Human-readable display name shown in UIs. Takes precedence over `name` for display purposes. */
   title?: string
   description: string
+  /** Behavioral hints for clients (MCP 2025-03-26). Forwarded verbatim in tools/list. */
+  annotations?: ToolAnnotations
   /** Standard Schema validator for the tool's input arguments. Used for runtime validation. */
   input?: StandardSchemaV1
   /**
@@ -610,6 +631,7 @@ export class FastMCP {
                 description: entry.description,
                 inputSchema,
                 ...(outputSchema ? { outputSchema } : {}),
+                ...(t.annotations ? { annotations: t.annotations } : {}),
                 ...(uiMeta ? { _meta: { ui: uiMeta } } : {}),
               }
             }),

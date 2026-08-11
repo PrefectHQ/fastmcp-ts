@@ -186,6 +186,7 @@
                   "api/server/interfaces/ServerAddress",
                   "api/server/interfaces/SynthesizedTool",
                   "api/server/interfaces/TokenVerifier",
+                  "api/server/interfaces/ToolAnnotations",
                   "api/server/interfaces/ToolConfig",
                   "api/server/interfaces/ToolView",
                   "api/server/interfaces/Transform",
