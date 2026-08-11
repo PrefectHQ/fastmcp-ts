@@ -63,6 +63,23 @@ describe('health endpoint', () => {
     expect((await fetch(`http://127.0.0.1:${port2}/healthz`)).status).toBe(404)
   })
 
+  it('a null-body status (the docs 204 example) serves with no body instead of a 500', async () => {
+    // Regression: new Response('', { status: 204 }) throws (fetch spec forbids any
+    // body, even '', on 101/204/205/304). The docs' exact example must actually work.
+    mcp = new FastMCP({ name: 'health' })
+    await mcp.run({
+      transport: 'http',
+      port: 0,
+      host: '127.0.0.1',
+      health: { path: '/livez', status: 204, body: '' },
+    })
+    const { port } = mcp.address!
+
+    const res = await fetch(`http://127.0.0.1:${port}/livez`)
+    expect(res.status).toBe(204)
+    expect(await res.text()).toBe('')
+  })
+
   it('only answers GET: other methods get 405, like any custom route', async () => {
     mcp = new FastMCP({ name: 'health' })
     await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1', health: true })

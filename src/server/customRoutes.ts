@@ -100,6 +100,10 @@ export class CustomRouteRegistry {
   }
 }
 
+/** Statuses the fetch spec forbids a body on. `new Response(body, { status })`
+ * throws for these when `body` is anything but `null`/`undefined` — including `''`. */
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304])
+
 /**
  * Resolve `RunOptions.health` to a concrete endpoint config, or null when the
  * endpoint is off. Throws on malformed values so a JS caller fails at startup,
@@ -123,6 +127,12 @@ export function resolveHealth(health: boolean | HealthOptions | undefined): Reso
   const body = health.body ?? 'ok'
   if (typeof body !== 'string') {
     throw new Error(`Invalid health.body: must be a string, got: ${typeof health.body}`)
+  }
+  if (body !== '' && NULL_BODY_STATUSES.has(status)) {
+    throw new Error(
+      `Invalid health config: status ${status} cannot carry a response body (the fetch spec forbids one on ` +
+        `101/204/205/304); set body: '' or choose a different status`,
+    )
   }
   return { path, status, body }
 }

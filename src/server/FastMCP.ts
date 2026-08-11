@@ -1940,10 +1940,16 @@ export class FastMCP {
         this._customRoutes.register(
           { path: resolvedHealth.path },
           () =>
-            new Response(resolvedHealth.body, {
-              status: resolvedHealth.status,
-              headers: { 'Content-Type': 'text/plain' },
-            }),
+            // An empty body maps to a null Response body (no Content-Type either): the
+            // fetch spec forbids any body, even '', on 101/204/205/304, and resolveHealth
+            // already rejected a non-empty body on those statuses — so branching on the
+            // body alone is enough to keep this call from throwing.
+            resolvedHealth.body === ''
+              ? new Response(null, { status: resolvedHealth.status })
+              : new Response(resolvedHealth.body, {
+                  status: resolvedHealth.status,
+                  headers: { 'Content-Type': 'text/plain' },
+                }),
         )
       }
       this._customRoutes.assertNoMcpCollision(path)
@@ -2130,19 +2136,24 @@ export class FastMCP {
     const oauth = this._oauth!
     const app = express()
 
-    // Custom routes register ahead of the OAuth router and the bearer-gated MCP
-    // endpoint, so express dispatches them first: no auth in front of a route
-    // handler. OPTIONS falls through (next()) — this serve path has no global
-    // CORS preflight, so express's default handling answers it, same as for the
-    // MCP endpoint here.
-    for (const routePath of this._customRoutes.paths()) {
-      app.all(routePath, (req, res, next) => {
-        const match = this._customRoutes.match(routePath, req.method ?? '')
-        if (!match) return next()
-        if (match.kind === 'method-mismatch') return writeMethodNotAllowed(res, match.allow)
-        void serveCustomRouteNode(match.handler, req, res)
-      })
-    }
+    // One registry-driven middleware, registered ahead of the OAuth router and the
+    // bearer-gated MCP endpoint, so it dispatches custom routes first: no auth in
+    // front of a route handler. Matching goes through the registry's match(), the
+    // same exact-path lookup the simple serve path uses, not express's app.all
+    // pattern matching: app.all runs paths through path-to-regexp, which is
+    // case-insensitive, non-strict on trailing slashes, and treats characters like
+    // : and * as pattern syntax. That let a registered route answer requests it was
+    // never meant to (for example a route on /MCP shadowing POST /mcp, bypassing
+    // assertNoMcpCollision's case-sensitive check). match() returns null for OPTIONS,
+    // so it falls through via next() to express's default handling: this serve path
+    // has no global CORS preflight, so express answers with its own 404-style
+    // response, same as for the MCP endpoint here.
+    app.use((req, res, next) => {
+      const match = this._customRoutes.match(req.path, req.method ?? '')
+      if (!match) return next()
+      if (match.kind === 'method-mismatch') return writeMethodNotAllowed(res, match.allow)
+      void serveCustomRouteNode(match.handler, req, res)
+    })
 
     // Bind first so we can infer the issuerUrl from the actual bound port (handles port=0)
     const httpServer = await new Promise<HttpServer>((resolve, reject) => {

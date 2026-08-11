@@ -119,6 +119,15 @@ describe('resolveHealth', () => {
     expect(() => resolveHealth({ status: 3.14 })).toThrow(/status/)
     expect(() => resolveHealth({ body: 42 as unknown as string })).toThrow(/body/)
   })
+
+  it('throws when a non-empty body is combined with a null-body status', () => {
+    // 101, 204, 205, 304 forbid any response body per the fetch spec; new Response
+    // throws for those unless the body is empty. resolveHealth must catch it at
+    // startup instead of letting every request 500.
+    expect(resolveHealth({ status: 204, body: '' })).toEqual({ path: '/healthz', status: 204, body: '' })
+    expect(() => resolveHealth({ status: 204 })).toThrow(/204/) // default body 'ok' is non-empty
+    expect(() => resolveHealth({ status: 304, body: 'x' })).toThrow(/304/)
+  })
 })
 
 describe('serveCustomRouteNode', () => {
@@ -274,6 +283,29 @@ describe('customRoute() over the simple HTTP path', () => {
     expect(res.headers.get('allow')).toBe('GET')
   })
 
+  it('serves a matched route when the request carries a query string', async () => {
+    mcp = new FastMCP({ name: 'routes' })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port } = mcp.address!
+
+    const res = await fetch(`http://127.0.0.1:${port}/livez?probe=1`)
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('ok')
+  })
+
+  it('answers 405 with an Allow header for a method outside the declared list, even HEAD', async () => {
+    // methods is exact by design: HEAD is not synthesized from a GET-only route.
+    mcp = new FastMCP({ name: 'routes' })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port } = mcp.address!
+
+    const res = await fetch(`http://127.0.0.1:${port}/livez`, { method: 'HEAD' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET')
+  })
+
   it('OPTIONS on a route path still gets the global CORS preflight', async () => {
     mcp = new FastMCP({ name: 'routes' })
     mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
@@ -363,6 +395,21 @@ describe('customRoute() over the OAuth (express) path', () => {
 
     const res = await fetch(`http://127.0.0.1:${port}/livez`, { method: 'OPTIONS' })
     expect(res.status).toBe(404)
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('matching is exact-path, case-sensitive, and does not treat the request path as a pattern', async () => {
+    // Regression: app.all(routePath, ...) fed paths into express's path-to-regexp,
+    // which is case-insensitive and non-strict on trailing slashes. A registry-driven
+    // exact match must reject both instead of serving the route registered at /livez.
+    const handler = vi.fn(() => new Response('ok'))
+    mcp = new FastMCP({ name: 'routes', oauth: { provider: oauthProvider() } })
+    mcp.customRoute({ path: '/livez' }, handler)
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port } = mcp.address!
+
+    expect((await fetch(`http://127.0.0.1:${port}/LIVEZ`)).status).toBe(404)
+    expect((await fetch(`http://127.0.0.1:${port}/livez/`)).status).toBe(404)
     expect(handler).not.toHaveBeenCalled()
   })
 })
