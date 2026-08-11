@@ -1,5 +1,13 @@
 # @prefecthq/fastmcp-ts
 
+## 1.5.0
+
+### Minor Changes
+
+- 6edacfe: `run()` can now serve a configurable health endpoint on the HTTP transport (`health: true` or `health: { path, status, body }`, default `GET /healthz` returning `200 ok`), and the new `customRoute()` method registers arbitrary HTTP routes (for example Kubernetes probe or metrics endpoints) on the listener `run()` starts. Route handlers receive a web-standard `Request`, return a `Response`, and own the whole exchange: no MCP auth, no DNS-rebinding guards, and no CORS headers run in front of them.
+- 344dcf6: `createOpenAPIServer` now omits `readOnly` properties from tool input schemas and `writeOnly` properties from tool output schemas, following OpenAPI access-mode semantics. Removed names are also pruned from the corresponding `required` lists.
+- 50d6111: `ToolConfig` now accepts an optional `annotations` field (`ToolAnnotations`: `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`, MCP 2025-03-26). Annotations are forwarded verbatim in `tools/list`, mirroring how resource annotations are already handled. Closes #76.
+
 ## 1.4.0
 
 ### Minor Changes
