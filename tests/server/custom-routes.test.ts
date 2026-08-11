@@ -353,4 +353,16 @@ describe('customRoute() over the OAuth (express) path', () => {
     expect(res.status).toBe(405)
     expect(res.headers.get('allow')).toBe('GET')
   })
+
+  it('OPTIONS on a route path never invokes the handler and falls through to the express default 404', async () => {
+    const handler = vi.fn(() => new Response('ok'))
+    mcp = new FastMCP({ name: 'routes', oauth: { provider: oauthProvider() } })
+    mcp.customRoute({ path: '/livez' }, handler)
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port } = mcp.address!
+
+    const res = await fetch(`http://127.0.0.1:${port}/livez`, { method: 'OPTIONS' })
+    expect(res.status).toBe(404)
+    expect(handler).not.toHaveBeenCalled()
+  })
 })

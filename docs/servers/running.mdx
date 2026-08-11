@@ -101,6 +101,40 @@ await server.run({ transport: 'http', host: '127.0.0.1', port: 0 }) // OS picks 
 console.log(server.address)                                          // e.g. http://127.0.0.1:54123/mcp
 ```
 
+## Health endpoint
+
+Container platforms probe a lightweight HTTP endpoint to decide whether a server is alive. Kubernetes liveness and readiness probes are the canonical case: they need a path outside the MCP endpoint, they send no credentials, and the kubelet sends the pod IP as the `Host` header. The `health` run option serves exactly that. It is off unless you supply it, so an upgrade never adds an endpoint you did not ask for.
+
+```typescript server.ts
+await server.run({ transport: 'http', host: '0.0.0.0', port: 8080, health: true })
+```
+
+`health: true` answers `GET /healthz` with `200` and a `text/plain` body of `ok`. Supply an object to change the path, status code, or body; the object's presence already implies the endpoint is on, and `enabled: false` forces it off.
+
+```typescript server.ts
+await server.run({
+  transport: 'http',
+  host: '0.0.0.0',
+  port: 8080,
+  health: { path: '/livez', status: 204, body: '' },
+})
+```
+
+No MCP auth, no CORS handling, and no [DNS-rebinding guards](#dns-rebinding-protection) run in front of the endpoint, so probes work with no extra configuration. It serves `GET` only; other methods get `405`. The option applies to the listener `run()` starts. It is ignored on stdio, and `fetch()` never serves it, because a framework embedding `fetch()` owns its own routing.
+
+## Custom routes
+
+The health option is sugar over a general mechanism. `customRoute()` registers any HTTP route on the listener `run()` starts, for needs the static health response cannot cover: a readiness check that pings a database, a metrics endpoint, a version endpoint.
+
+```typescript server.ts
+server.customRoute({ path: '/readyz' }, async () => {
+  const dbOk = await database.ping()
+  return dbOk ? new Response('ready') : new Response('not ready', { status: 503 })
+})
+```
+
+The handler receives a web-standard `Request` and returns a web-standard `Response`, which is written back verbatim. Nothing runs in front of the handler: no MCP auth, no [DNS-rebinding guards](#dns-rebinding-protection), no CORS headers. If a route needs protection, the handler implements it from the request it receives. Matching is exact on the path with the query string ignored, and `methods` defaults to `['GET']`; a request that matches the path with another method gets `405`. Registering a route on the MCP path, or two routes on one path, fails at startup. `OPTIONS` never reaches a custom route handler: the default serve path answers it with the global CORS preflight; the OAuth serve path has no CORS handling and falls through to express's default 404-style response.
+
 ## DNS-rebinding protection
 
 An HTTP server that binds a loopback address is a target for DNS rebinding: a malicious web page can rebind its own hostname to `127.0.0.1` and reach a server meant only for the local machine. FastMCP's `dnsRebinding` option defends against this by validating the `Host` and `Origin` headers of each HTTP request — by hostname, port-agnostic — and rejecting a mismatch with `403`. It affects the HTTP transport only; stdio has no headers to check.
