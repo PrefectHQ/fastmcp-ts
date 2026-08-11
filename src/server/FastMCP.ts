@@ -2082,6 +2082,20 @@ export class FastMCP {
     const oauth = this._oauth!
     const app = express()
 
+    // Custom routes register ahead of the OAuth router and the bearer-gated MCP
+    // endpoint, so express dispatches them first: no auth in front of a route
+    // handler. OPTIONS falls through (next()) — this serve path has no global
+    // CORS preflight, so express's default handling answers it, same as for the
+    // MCP endpoint here.
+    for (const routePath of this._customRoutes.paths()) {
+      app.all(routePath, (req, res, next) => {
+        const match = this._customRoutes.match(routePath, req.method ?? '')
+        if (!match) return next()
+        if (match.kind === 'method-mismatch') return writeMethodNotAllowed(res, match.allow)
+        void serveCustomRouteNode(match.handler, req, res)
+      })
+    }
+
     // Bind first so we can infer the issuerUrl from the actual bound port (handles port=0)
     const httpServer = await new Promise<HttpServer>((resolve, reject) => {
       const srv = app.listen(port, host, () => resolve(srv))

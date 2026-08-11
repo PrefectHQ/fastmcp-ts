@@ -3,7 +3,7 @@ import { CustomRouteRegistry, resolveHealth, serveCustomRouteNode } from '../../
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import http from 'node:http'
-import { FastMCP, staticTokenVerifier } from 'fastmcp-ts/server'
+import { FastMCP, staticTokenVerifier, oauthProvider } from 'fastmcp-ts/server'
 
 // ---------------------------------------------------------------------------
 // Custom HTTP routes (issue #75): registry validation, matching, and health
@@ -319,5 +319,38 @@ describe('customRoute() over the simple HTTP path', () => {
     expect((await fetch(`http://127.0.0.1:${port}/nope`)).status).toBe(404)
     // The MCP endpoint is reachable (405/4xx from a bare GET is fine; not 404).
     expect((await fetch(`http://127.0.0.1:${port}${path}`)).status).not.toBe(404)
+  })
+})
+
+describe('customRoute() over the OAuth (express) path', () => {
+  let mcp: FastMCP | null = null
+  afterEach(async () => {
+    await mcp?.close()
+    mcp = null
+  })
+
+  it('serves the route with no token while the MCP path requires OAuth', async () => {
+    mcp = new FastMCP({ name: 'routes', oauth: { provider: oauthProvider() } })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port, path } = mcp.address!
+
+    const routeRes = await fetch(`http://127.0.0.1:${port}/livez`)
+    expect(routeRes.status).toBe(200)
+    expect(await routeRes.text()).toBe('ok')
+
+    const mcpRes = await fetch(`http://127.0.0.1:${port}${path}`, { method: 'POST' })
+    expect(mcpRes.status).toBe(401)
+  })
+
+  it('answers 405 with Allow on a method mismatch', async () => {
+    mcp = new FastMCP({ name: 'routes', oauth: { provider: oauthProvider() } })
+    mcp.customRoute({ path: '/livez' }, () => new Response('ok'))
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const { port } = mcp.address!
+
+    const res = await fetch(`http://127.0.0.1:${port}/livez`, { method: 'DELETE' })
+    expect(res.status).toBe(405)
+    expect(res.headers.get('allow')).toBe('GET')
   })
 })
