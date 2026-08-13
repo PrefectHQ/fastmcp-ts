@@ -44,6 +44,9 @@ export interface ConvertOptions {
    * enforce format assertions on structured results, but response data comes
    * from the upstream API and routinely deviates (issue #84). JSON Schema
    * 2020-12 treats `format` as an annotation by default anyway.
+   * Only schemas the converter recurses into are stripped; formats under
+   * keywords the Python-parity walk does not visit (patternProperties,
+   * prefixItems, if/then/else, dependentSchemas) survive.
    */
   stripFormats?: boolean
 }

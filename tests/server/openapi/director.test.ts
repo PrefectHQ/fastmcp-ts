@@ -348,6 +348,42 @@ describe('buildRequest', () => {
     expect(request.body).toBe(JSON.stringify({ body: 'Test' }))
   })
 
+  it('still sends an allOf-wrapped primitive body as the raw value', () => {
+    const spec = {
+      openapi: '3.1.0',
+      info: { title: 't', version: '1' },
+      paths: {
+        '/notes': {
+          post: {
+            operationId: 'notes_create',
+            requestBody: {
+              required: true,
+              content: {
+                'text/plain': {
+                  schema: {
+                    allOf: [{ $ref: '#/components/schemas/note_text' }],
+                    description: 'The note text.',
+                  },
+                },
+              },
+            },
+            responses: { '201': { description: 'created' } },
+          },
+        },
+      },
+      components: {
+        schemas: { note_text: { type: 'string', title: 'Note Text' } },
+      },
+    }
+    const [route] = parseOpenAPIToHttpRoutes(spec)
+    // The merge finds no properties, so the flattener names the single body
+    // argument 'body' (schema has no title at the top level) and the director
+    // must keep sending the raw value with the declared content type.
+    const request = buildRequest(route, { body: 'hello' }, BASE)
+    expect(request.body).toBe('hello')
+    expect(request.headers['content-type']).toBe('text/plain')
+  })
+
   it('treats a body schema with properties but no explicit type as an object body', () => {
     const route = makeRoute({
       method: 'POST',
