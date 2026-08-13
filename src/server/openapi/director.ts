@@ -98,8 +98,9 @@ function unflattenArguments(route: HTTPRoute, flatArgs: Record<string, unknown>)
     }
   }
 
-  // Body construction: an object-typed body schema keeps the property map; a
-  // non-object schema with exactly one property sends the value directly.
+  // Body construction: an object-typed OR object-like (has properties, e.g.
+  // allOf-merged) body schema keeps the property map; a genuine non-object
+  // schema with exactly one property sends the value directly.
   let body: unknown
   if (Object.keys(bodyProps).length > 0) {
     const contentSchema = route.requestBody?.contentSchema
@@ -107,7 +108,10 @@ function unflattenArguments(route: HTTPRoute, flatArgs: Record<string, unknown>)
       const contentType = Object.keys(contentSchema)[0]
       const bodySchema = contentSchema[contentType]
 
-      if (isPlainObject(bodySchema) && bodySchema.type === 'object') {
+      if (
+        isPlainObject(bodySchema) &&
+        (bodySchema.type === 'object' || isPlainObject(bodySchema.properties))
+      ) {
         body = bodyProps
       } else if (Object.keys(bodyProps).length === 1) {
         body = Object.values(bodyProps)[0]
