@@ -278,7 +278,7 @@ describe('combineSchemasAndMapParams', () => {
     expect(schema.$defs).toEqual({ D: { anyOf: [{ type: 'string' }] } })
   })
 
-  it('does not require body properties when the body itself is optional', () => {
+  it('does not require body when the body itself is optional but respects body-schema required fields', () => {
     const route = makeRoute({
       requestBody: {
         required: false,
@@ -292,7 +292,49 @@ describe('combineSchemasAndMapParams', () => {
       },
     })
     const [schema] = combineSchemasAndMapParams(route)
-    expect(schema.required).toEqual([])
+    expect(schema.required).toEqual(['a'])
+  })
+
+  it('honors body-schema required fields when the requestBody itself is optional (issue #82)', () => {
+    const route = makeRoute({
+      method: 'POST',
+      requestBody: {
+        required: false,
+        contentSchema: {
+          'application/json': {
+            allOf: [{ $ref: '#/$defs/notification' }],
+            required: ['body'],
+          },
+        },
+      },
+      requestSchemas: {
+        notification: {
+          type: 'object',
+          properties: { title: { type: 'string' }, body: { type: 'string' } },
+        },
+      },
+    })
+    const [schema] = combineSchemasAndMapParams(route)
+    expect(schema.required).toEqual(['body'])
+    expect(Object.keys(schema.properties as Record<string, unknown>)).toEqual(['title', 'body'])
+  })
+
+  it('honors required on a plain object body schema with an optional requestBody', () => {
+    const route = makeRoute({
+      method: 'POST',
+      requestBody: {
+        required: false,
+        contentSchema: {
+          'application/json': {
+            type: 'object',
+            properties: { name: { type: 'string' }, note: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+    })
+    const [schema] = combineSchemasAndMapParams(route)
+    expect(schema.required).toEqual(['name'])
   })
 })
 

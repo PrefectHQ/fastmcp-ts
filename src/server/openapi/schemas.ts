@@ -345,9 +345,10 @@ export function combineSchemasAndMapParams(
         properties[propName] = propSchema
         parameterMap[propName] = { location: 'body', openapiName: propName }
       }
-      if (requestBody.required) {
-        required.push(...((bodySchema.required as string[] | undefined) ?? []))
-      }
+      // The body schema's own required list describes the body's internal
+      // structure, so it is honored even when the requestBody itself is
+      // optional (issue #82; Python drops it — deliberate divergence).
+      required.push(...((bodySchema.required as string[] | undefined) ?? []))
     } else {
       // Direct array/primitive body: name the parameter from the schema title.
       let paramName = String(
