@@ -499,4 +499,29 @@ describe('readOnly/writeOnly direction filtering', () => {
       required: ['name', 'id'],
     })
   })
+
+  it('strips format assertions from output schemas and their $defs (issue #84)', () => {
+    const responses = {
+      '200': {
+        contentSchema: {
+          'application/json': {
+            type: 'array',
+            items: { $ref: '#/$defs/notification' },
+          },
+        },
+      },
+    }
+    const defs = {
+      notification: {
+        type: 'object',
+        properties: { badge_url: { type: ['string', 'null'], format: 'uri' } },
+      },
+    }
+    const schema = extractOutputSchemaFromResponses(responses, defs, '3.1.0')
+    expect(JSON.stringify(schema)).not.toContain('"format"')
+    const notification = (schema!.$defs as Record<string, Record<string, unknown>>).notification
+    expect((notification.properties as Record<string, unknown>).badge_url).toEqual({
+      type: ['string', 'null'],
+    })
+  })
 })

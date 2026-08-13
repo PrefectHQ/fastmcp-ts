@@ -446,6 +446,7 @@ export function extractOutputSchemaFromResponses(
   if (openapiVersion?.startsWith('3')) {
     outputSchema = convertOpenAPISchemaToJsonSchema(outputSchema, openapiVersion, {
       removeWriteOnly: true,
+      stripFormats: true,
     })
   }
 
@@ -470,6 +471,7 @@ export function extractOutputSchemaFromResponses(
       for (const name of Object.keys(processedDefs)) {
         processedDefs[name] = convertOpenAPISchemaToJsonSchema(processedDefs[name], openapiVersion, {
           removeWriteOnly: true,
+          stripFormats: true,
         })
       }
     }
