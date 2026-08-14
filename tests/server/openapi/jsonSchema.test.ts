@@ -294,4 +294,32 @@ describe('convertOpenAPISchemaToJsonSchema', () => {
       })
     })
   })
+
+  describe('format stripping (output direction)', () => {
+    it('removes format keywords recursively when stripFormats is set', () => {
+      const schema = {
+        type: 'object',
+        properties: {
+          badge_url: { type: ['string', 'null'], format: 'uri' },
+          stamps: { type: 'array', items: { type: 'string', format: 'date-time' } },
+        },
+        $defs: {
+          thing: { anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }] },
+        },
+      }
+      const result = convertOpenAPISchemaToJsonSchema(schema, '3.1.0', { stripFormats: true })
+      expect(JSON.stringify(result)).not.toContain('"format"')
+      expect((result.properties as Record<string, unknown>).badge_url).toEqual({
+        type: ['string', 'null'],
+      })
+    })
+
+    it('keeps format keywords when stripFormats is not set', () => {
+      const schema = { type: 'string', format: 'uri' }
+      expect(convertOpenAPISchemaToJsonSchema(schema, '3.1.0', {})).toEqual({
+        type: 'string',
+        format: 'uri',
+      })
+    })
+  })
 })

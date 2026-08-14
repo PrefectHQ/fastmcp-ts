@@ -39,6 +39,16 @@ export interface ConvertOptions {
   removeReadOnly?: boolean
   /** Drop properties marked `writeOnly: true` (the spec reserves them for requests). */
   removeWriteOnly?: boolean
+  /**
+   * Remove `format` keywords. Used for output schemas: MCP SDK validators
+   * enforce format assertions on structured results, but response data comes
+   * from the upstream API and routinely deviates (issue #84). JSON Schema
+   * 2020-12 treats `format` as an annotation by default anyway.
+   * Only schemas the converter recurses into are stripped; formats under
+   * keywords the Python-parity walk does not visit (patternProperties,
+   * prefixItems, if/then/else, dependentSchemas) survive.
+   */
+  stripFormats?: boolean
 }
 
 /** Convert an OpenAPI 3.x schema (and everything nested in it) to JSON Schema. */
@@ -64,6 +74,10 @@ export function convertOpenAPISchemaToJsonSchema(
 
   for (const field of OPENAPI_SPECIFIC_FIELDS) {
     delete result[field]
+  }
+
+  if (options.stripFormats === true) {
+    delete result.format
   }
 
   if (options.removeReadOnly === true || options.removeWriteOnly === true) {

@@ -310,4 +310,97 @@ describe('buildRequest', () => {
     const request = buildRequest(route, { wid: 'w1', name: 'n', id: 7 }, BASE)
     expect(JSON.parse(request.body as string)).toEqual({ name: 'n', id: 7 })
   })
+
+  it('JSON-wraps a single body field when the body schema is an allOf-merged object (issue #83)', () => {
+    const spec = {
+      openapi: '3.1.0',
+      info: { title: 't', version: '1' },
+      paths: {
+        '/notifications': {
+          post: {
+            operationId: 'notifications_create',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    allOf: [{ $ref: '#/components/schemas/notification' }],
+                    required: ['body'],
+                  },
+                },
+              },
+            },
+            responses: { '201': { description: 'created' } },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          notification: {
+            type: 'object',
+            properties: { title: { type: 'string' }, body: { type: 'string' } },
+          },
+        },
+      },
+    }
+    const [route] = parseOpenAPIToHttpRoutes(spec)
+    const request = buildRequest(route, { body: 'Test' }, BASE)
+    expect(request.headers['content-type']).toBe('application/json')
+    expect(request.body).toBe(JSON.stringify({ body: 'Test' }))
+  })
+
+  it('still sends an allOf-wrapped primitive body as the raw value', () => {
+    const spec = {
+      openapi: '3.1.0',
+      info: { title: 't', version: '1' },
+      paths: {
+        '/notes': {
+          post: {
+            operationId: 'notes_create',
+            requestBody: {
+              required: true,
+              content: {
+                'text/plain': {
+                  schema: {
+                    allOf: [{ $ref: '#/components/schemas/note_text' }],
+                    description: 'The note text.',
+                  },
+                },
+              },
+            },
+            responses: { '201': { description: 'created' } },
+          },
+        },
+      },
+      components: {
+        schemas: { note_text: { type: 'string', title: 'Note Text' } },
+      },
+    }
+    const [route] = parseOpenAPIToHttpRoutes(spec)
+    // The merge finds no properties, so the flattener names the single body
+    // argument 'body' (schema has no title at the top level) and the director
+    // must keep sending the raw value with the declared content type.
+    const request = buildRequest(route, { body: 'hello' }, BASE)
+    expect(request.body).toBe('hello')
+    expect(request.headers['content-type']).toBe('text/plain')
+  })
+
+  it('treats a body schema with properties but no explicit type as an object body', () => {
+    const route = makeRoute({
+      method: 'POST',
+      requestBody: {
+        required: true,
+        contentSchema: {
+          'application/json': {
+            properties: { title: { type: 'string' }, body: { type: 'string' } },
+          },
+        },
+      },
+      parameterMap: {
+        title: { location: 'body', openapiName: 'title' },
+        body: { location: 'body', openapiName: 'body' },
+      },
+    })
+    const request = buildRequest(route, { title: 'Example' }, BASE)
+    expect(request.body).toBe(JSON.stringify({ title: 'Example' }))
+  })
 })
