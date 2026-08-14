@@ -35,15 +35,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Action v2 pairs with @changesets/cli v3. The v1 line detects
+      # published packages by parsing `New tag:` publish output, which the
+      # v3 CLI no longer prints; npm publishes but the git tag and GitHub
+      # Release are silently skipped.
       - name: Create Release PR or publish to npm
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: npx changeset version
-          publish: npx changeset publish
-          title: "Version Packages"
-          commit: "chore: version packages"
-          createGithubReleases: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          # No NPM_CONFIG_PROVENANCE: trusted publishing attaches provenance
-          # automatically; forcing the flag uses the legacy client-side path.
+          version-script: npx changeset version
+          publish-script: npx changeset publish
+          pr-title: "Version Packages"
+          commit-message: "chore: version packages"
+          create-github-releases: true
+        # No github-token input: it defaults to the GitHub-provided token.
+        # (v2 ignores a GITHUB_TOKEN env var; only the input configures it.)
+        # No NPM_CONFIG_PROVENANCE: trusted publishing attaches provenance
+        # automatically; forcing the flag uses the legacy client-side path.
