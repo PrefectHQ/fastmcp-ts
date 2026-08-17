@@ -27,7 +27,7 @@
  * surface the client scenarios exercise (initialize handshake on connect, plus
  * tools/list + tools/call).
  *
- * Two context-driven behaviors extend the base fixture:
+ * Three scenario-driven behaviors extend the base fixture:
  *   - SEP-2243 header scenarios (`http-custom-headers`) hand the client an
  *     explicit `toolCalls` script (exact arguments, including base64-unsafe
  *     values). When present, the fixture drives those exact calls so the SDK
@@ -49,6 +49,11 @@
  *     auth method from the context: `client_secret_post` (default),
  *     `client_secret_basic` (the `-basic` scenario), or `private_key_jwt` (the
  *     `-jwt` scenario, whose context hands the client a `private_key_pem`).
+ *   - `json-schema-2020-12-preservation` (keyed on the scenario NAME — it
+ *     passes no context) lists tools, then echoes the focal tool's
+ *     inputSchema verbatim through `json_schema_echo` so the harness can
+ *     verify which JSON Schema 2020-12 keywords the client preserved
+ *     (SEP-1613, SEP-2106).
  */
 import {
   Client,
@@ -355,6 +360,19 @@ async function main(): Promise<void> {
         process.stderr.write(`[everything-client] scripted tool '${call.name}' failed: ${String(err)}\n`)
       }
     }
+  } else if (scenario === 'json-schema-2020-12-preservation') {
+    // SEP-1613 / SEP-2106: the scenario advertises a focal tool carrying a
+    // rich JSON Schema 2020-12 inputSchema plus a permissive `json_schema_echo`
+    // tool, and requires the client to round-trip the focal inputSchema
+    // VERBATIM as the echo tool's `schema` argument so the harness can diff
+    // which keywords the client preserved. The generic fallback below would
+    // synthesize `schema: 'test'` (a string) — the harness only records an
+    // object argument, so the echo check fails and every preservation check
+    // skips. No context is passed for this scenario; it is keyed by name.
+    const tools = await client.listTools()
+    const focal = tools.find((t) => t.name === 'json_schema_2020_12_tool')
+    if (!focal) throw new Error("focal tool 'json_schema_2020_12_tool' not advertised")
+    await client.callToolRaw('json_schema_echo', { schema: focal.inputSchema })
   } else {
     // Exercise the tool surface: list, then call each tool with synthesized
     // arguments. This drives `tools_call` (add_numbers), the elicitation- and
