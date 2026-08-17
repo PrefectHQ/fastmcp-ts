@@ -449,6 +449,9 @@ export class FastMCP {
   // Holds this connection's resource-subscription set; read by the resource-updated
   // fan-out. Null unless serving stdio.
   private _stdioState: Map<string, unknown> | null = null
+  // Whether the current stdio connection negotiated the modern (2026-07-28) era.
+  // Set by run()'s stdio factory; drives notifyResourceUpdated's stdio branch.
+  private _stdioModern = false
   private _stdioHandle: { close(): Promise<void> } | null = null
   // Modern (2026-07-28) HTTP handler — one per FastMCP instance, lazily created.
   // Builds a fresh Server (via _makeServer) per request; see createMcpHandler.
@@ -498,36 +501,32 @@ export class FastMCP {
   /**
    * Create a new Server instance with all request handlers wired up.
    *
-   * `modern` forks the advertised `resources.subscribe` capability. The legacy
-   * `resources/subscribe`/`unsubscribe` RPCs are physically absent from the
-   * 2026-07-28 wire registry (a modern client uses `subscriptions/listen`
-   * instead), so a modern-only factory (the createMcpHandler path) must NOT
-   * advertise `subscribe` — the modern `server/discover` document is pinned to
-   * `resources: { listChanged: true }`. The primary in-process server and
-   * legacy HTTP sessions are always legacy, so they always advertise it.
-   * stdio forks it per-connection too: `run()`'s stdio branch reads the
-   * `ctx.era` the SDK's `McpServerFactory` hook hands it (serveStdio only
-   * calls the factory once the opening exchange has classified the era, so
-   * the modern-vs-legacy choice is already known at construction time) and
-   * passes it straight through as `opts.modern`.
+   * `resources.subscribe` is advertised on both eras. On legacy it gates the
+   * `resources/subscribe`/`unsubscribe` RPCs. On modern (2026-07-28) the same
+   * capability gates the `subscriptions/listen` `resourceSubscriptions`
+   * filter: the SDK's listen routers silently prune the filter from the
+   * honored subset when the serving entry's capabilities omit `subscribe`,
+   * so a modern server that supports per-resource updates MUST advertise it
+   * (issue #88). The legacy RPCs are still physically absent from the modern
+   * wire registry, so advertising the capability leaks no legacy-only
+   * surface to a modern client.
    *
-   * The `completions` capability is NOT era-forked: `completion/complete` is in
-   * BOTH era wire registries (the legacy 2025-11-25 registry and the modern
-   * 2026-07-28 `dispatchRequestSchemas`), and `completions` is a valid key in
-   * both eras' ServerCapabilities schemas. So it is declared unconditionally —
-   * unlike `subscribe`, there is no legacy-only surface to hide from a modern
-   * client here, so nothing needs the era fork the way `subscribe` does. The
-   * SDK also requires this capability to be present to register the
-   * `completion/complete` handler (`assertRequestHandlerCapability`).
+   * The `completions` capability follows the same shape: `completion/complete`
+   * is in BOTH era wire registries (the legacy 2025-11-25 registry and the
+   * modern 2026-07-28 `dispatchRequestSchemas`), and `completions` is a valid
+   * key in both eras' ServerCapabilities schemas, so it is declared
+   * unconditionally. The SDK also requires this capability to be present to
+   * register the `completion/complete` handler
+   * (`assertRequestHandlerCapability`).
    *
-   * `stateless` withdraws the same capability for a different reason. A
-   * stateless server has no session for a subscription to live in and no
-   * channel to deliver `notifications/resources/updated` on, so it must not
-   * claim the capability.
+   * `stateless` withdraws the `resources.subscribe` capability. A stateless
+   * server has no session for a subscription to live in and no channel to
+   * deliver `notifications/resources/updated` on, so it must not claim the
+   * capability.
    */
   private _makeServer(
     sessionState?: Map<string, unknown>,
-    opts?: { modern?: boolean; stateless?: boolean },
+    opts?: { stateless?: boolean },
   ): Server {
     const state = sessionState ?? this._primaryState
     // mimeTypes announces what fastmcp can serve, symmetric with the mimeTypes the
@@ -538,7 +537,7 @@ export class FastMCP {
     const server = new Server(
       { name: this.name, version: this.version },
       {
-        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.modern || opts?.stateless ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
+        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.stateless ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
         ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
         ...(this._requestStateCodec
           ? { requestState: { verify: this._requestStateCodec.verify.bind(this._requestStateCodec) } }
@@ -919,8 +918,9 @@ export class FastMCP {
     // The 2026-07-28 wire registry omits both methods, so a modern connection
     // never reaches these handlers — the SDK rejects the method at the era seam
     // (-32601) before dispatch, and a modern client's own era guard rejects even
-    // earlier. On legacy the handshake advertises `resources.subscribe: true`
-    // (see _makeServer), so the client may call them here.
+    // earlier. Both handshakes advertise `resources.subscribe: true` (see
+    // _makeServer) — on legacy it licenses these RPCs; on modern it gates the
+    // subscriptions/listen resourceSubscriptions filter instead.
     //
     // The subscription set lives in the connection's per-session state Map (the
     // same Map SESSION_CLOSE_CALLBACKS_KEY uses), so it is discarded when the
@@ -1264,6 +1264,9 @@ export class FastMCP {
    *   per-stream filtering, delivering only to `subscriptions/listen` streams that
    *   opted in to this URI. Optional chaining keeps it a no-op until the first
    *   modern HTTP request has actually built the handler.
+   * - A modern stdio connection is sent the notification unconditionally; the
+   *   SDK's stdio listen router intercepts it and fans out per honored
+   *   subscription (or drops it when no stream opted in to the URI).
    *
    * Unsubscribed sessions (and the modern streams that never opted in) receive
    * nothing, so calling this for a URI with no subscribers is safe and cheap.
@@ -1274,7 +1277,14 @@ export class FastMCP {
       if (subs?.has(uri)) server.sendResourceUpdated({ uri }).catch(() => {})
     }
     pushIfSubscribed(this._primaryServer, this._primaryState)
-    if (this._stdioServer) pushIfSubscribed(this._stdioServer, this._stdioState)
+    if (this._stdioServer) {
+      // Modern stdio has no per-session subscription set: the SDK's stdio listen
+      // router intercepts this outbound notification and delivers one stamped copy
+      // per subscriptions/listen stream whose honored filter contains the URI
+      // (dropping it when none match). Send unconditionally and let it filter.
+      if (this._stdioModern) this._stdioServer.sendResourceUpdated({ uri }).catch(() => {})
+      else pushIfSubscribed(this._stdioServer, this._stdioState)
+    }
     for (const { server, state } of this._sessions.values()) pushIfSubscribed(server, state)
     this._modernHandler?.notify.resourceUpdated(uri)
   }
@@ -1920,17 +1930,18 @@ export class FastMCP {
       // then the real pinned one); _stdioServer always ends up holding the latter.
       // The factory receives `ctx.era` because serveStdio always classifies the
       // opening exchange's era before constructing an instance for it (including
-      // the discarded probe instance, which is itself a modern-era construction) —
-      // so `ctx.era` is used to fork `_makeServer`'s `modern` option the same way
-      // `_getModernHandler` does, and a modern connection no longer advertises the
-      // legacy-only `resources.subscribe` capability.
+      // the discarded probe instance, which is itself a modern-era construction).
+      // `_stdioModern` records that decision for notifyResourceUpdated's fan-out:
+      // a modern stdio connection delivers through the SDK's listen router (which
+      // filters by the honored subscription set), not the legacy per-session push.
       this._stdioHandle = serveStdio(
         (ctx) => {
           // Capture the state Map so the resource-updated fan-out can reach this
           // connection's per-session subscription set (see _notifyResourceUpdated).
           const stdioState = new Map<string, unknown>()
           this._stdioState = stdioState
-          this._stdioServer = this._makeServer(stdioState, { modern: ctx.era === 'modern' })
+          this._stdioModern = ctx.era === 'modern'
+          this._stdioServer = this._makeServer(stdioState)
           return this._stdioServer
         },
         { transport: stdioTransport },
@@ -1969,7 +1980,7 @@ export class FastMCP {
    * session state and server-initiated-request shim for run()'s default HTTP path. */
   private _getModernHandler(): McpHttpHandler {
     if (!this._modernHandler) {
-      this._modernHandler = createMcpHandler(() => this._makeServer(new Map(), { modern: true }), {
+      this._modernHandler = createMcpHandler(() => this._makeServer(new Map()), {
         legacy: 'reject',
         ...(this._eventBus ? { bus: this._eventBus } : {}),
       })
@@ -2344,6 +2355,7 @@ export class FastMCP {
       this._stdioHandle = null
       this._stdioServer = null
       this._stdioState = null
+      this._stdioModern = false
     }
 
     if (this._httpServer) {

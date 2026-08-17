@@ -125,7 +125,7 @@ describe('Server', () => {
       expect(msg.result.capabilities.resources.subscribe).toBe(true)
     })
 
-    it('stdio-modern discover does NOT advertise resources.subscribe (the legacy-only RPCs do not exist on this era)', async () => {
+    it('stdio-modern discover advertises resources.subscribe (gates the subscriptions/listen resourceSubscriptions filter)', async () => {
       const mcp = new FastMCP({ name: 'test-server' })
       const stdin = new PassThrough()
       const stdout = new PassThrough()
@@ -154,10 +154,12 @@ describe('Server', () => {
       )
 
       const msg = JSON.parse(await responsePromise)
-      // Mirrors the modern HTTP path (_getModernHandler): `resources.subscribe` is
-      // omitted entirely, matching the modern `server/discover` document's pinned
-      // `resources: { listChanged: true }` shape — no legacy-only surface leaks in.
-      expect(msg.result.capabilities.resources.subscribe).toBeUndefined()
+      // Modern advertises `resources.subscribe` like legacy does: the SDK's listen
+      // router honors a `resourceSubscriptions` filter only when the serving
+      // instance's capabilities include it (issue #88). The legacy-only
+      // `resources/subscribe` RPCs are still absent from the modern wire registry,
+      // so no legacy-only surface leaks in.
+      expect(msg.result.capabilities.resources.subscribe).toBe(true)
       expect(msg.result.capabilities.resources.listChanged).toBe(true)
     })
 

@@ -160,7 +160,7 @@ complete(
    options?): Promise<CompletionResult>;
 ```
 
-Defined in: [client/client.ts:576](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L576)
+Defined in: [client/client.ts:595](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L595)
 
 #### Parameters
 
@@ -253,7 +253,7 @@ getPrompt(
 }>;
 ```
 
-Defined in: [client/client.ts:558](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L558)
+Defined in: [client/client.ts:577](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L577)
 
 #### Parameters
 
@@ -374,7 +374,7 @@ listPrompts(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/client.ts:548](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L548)
+Defined in: [client/client.ts:567](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L567)
 
 #### Parameters
 
@@ -477,7 +477,7 @@ Defined in: [client/client.ts:375](https://github.com/PrefectHQ/fastmcp-ts/blob/
 notifyRootsChanged(): Promise<void>;
 ```
 
-Defined in: [client/client.ts:847](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L847)
+Defined in: [client/client.ts:866](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L866)
 
 Notify the connected server that the client's roots list has changed.
 The server should re-issue a roots/list request to get the updated list.
@@ -593,7 +593,7 @@ Returns the raw SDK ReadResourceResult without unwrapping.
 setLogLevel(level, options?): Promise<void>;
 ```
 
-Defined in: [client/client.ts:605](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L605)
+Defined in: [client/client.ts:624](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L624)
 
 Sets the minimum severity level for log messages sent by the server. On a
 legacy-era connection this sends the `logging/setLevel` RPC, unchanged. On
@@ -633,7 +633,7 @@ subscribeResource(
    options?): Promise<void>;
 ```
 
-Defined in: [client/client.ts:475](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L475)
+Defined in: [client/client.ts:480](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L480)
 
 Subscribes to change notifications for a resource URI. `handler` fires whenever
 the server sends a matching update, on either protocol era: on a legacy
@@ -642,6 +642,11 @@ the server sends a matching update, on either protocol era: on a legacy
 via a `subscriptions/listen` stream opted into `resourceSubscriptions` — both
 dispatch to the same `notifications/resources/updated` handler registered in
 `_registerHandlers`, so this method is the only era-aware part.
+
+On a modern connection this rejects when the server's acknowledged filter does
+not include the URI — that is how a server without the `resources.subscribe`
+capability declines per-resource subscriptions, and registering a handler that
+can never fire would fail silently instead.
 
 #### Parameters
 
@@ -673,7 +678,7 @@ dispatch to the same `notifications/resources/updated` handler registered in
 unsubscribeResource(uri, options?): Promise<void>;
 ```
 
-Defined in: [client/client.ts:493](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L493)
+Defined in: [client/client.ts:512](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L512)
 
 #### Parameters
 

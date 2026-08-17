@@ -545,6 +545,38 @@ describeEachEra('Server — Resources', (combo) => {
       }
     })
 
+    it('modern: a subscriptions/listen resourceSubscriptions filter is honored and updates are delivered', async () => {
+      if (combo.era !== 'modern') return // legacy delivery is covered by the RPC tests above
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.resource({ uri: 'watch://res', name: 'res' }, () => 'v1')
+      const { client, close } = await connectEra(mcp, combo)
+      try {
+        const updates: string[] = []
+        client.setNotificationHandler('notifications/resources/updated', (n: unknown) => {
+          updates.push(((n as { params: { uri: string } }).params).uri)
+        })
+        const sub = await client.listen({ resourceSubscriptions: ['watch://res'] })
+        // The #88 regression: the server must honor the filter, not silently prune
+        // it (the SDK drops resourceSubscriptions from the acknowledged subset when
+        // the serving entry's capabilities omit resources.subscribe).
+        expect(sub.honoredFilter.resourceSubscriptions).toEqual(['watch://res'])
+
+        mcp.notifyResourceUpdated('watch://res')
+        await waitFor(() => updates.length >= 1)
+        expect(updates).toEqual(['watch://res'])
+
+        // A non-subscribed URI is not delivered (bounded negative window, same
+        // rationale as the legacy negative test above).
+        mcp.notifyResourceUpdated('watch://other')
+        await waitFor(() => updates.length >= 2, 200)
+        expect(updates).toEqual(['watch://res'])
+
+        await sub.close()
+      } finally {
+        await close()
+      }
+    })
+
     it('the server advertises the subscribe and listChanged capabilities when enabled', async () => {
       const mcp = new FastMCP({ name: 'test' })
       mcp.resource({ uri: 'watch://res', name: 'res' }, () => 'v1')
@@ -552,11 +584,10 @@ describeEachEra('Server — Resources', (combo) => {
       try {
         const caps = client.getServerCapabilities()
         expect(caps?.resources?.listChanged).toBe(true)
-        if (combo.era === 'legacy') {
-          // subscribe is the legacy handshake capability the resources/subscribe RPC
-          // is gated on (and the same flag the modern listen router consults).
-          expect(caps?.resources?.subscribe).toBe(true)
-        }
+        // subscribe is advertised on both eras: on legacy it gates the
+        // resources/subscribe RPC; on modern it gates the subscriptions/listen
+        // resourceSubscriptions filter (#88).
+        expect(caps?.resources?.subscribe).toBe(true)
       } finally {
         await close()
       }

@@ -471,6 +471,11 @@ export class Client implements IClient {
    * via a `subscriptions/listen` stream opted into `resourceSubscriptions` — both
    * dispatch to the same `notifications/resources/updated` handler registered in
    * `_registerHandlers`, so this method is the only era-aware part.
+   *
+   * On a modern connection this rejects when the server's acknowledged filter does
+   * not include the URI — that is how a server without the `resources.subscribe`
+   * capability declines per-resource subscriptions, and registering a handler that
+   * can never fire would fail silently instead.
    */
   async subscribeResource(
     uri: string,
@@ -480,6 +485,20 @@ export class Client implements IClient {
     this._resourceSubscriptions.set(uri, handler)
     if (this._sdk().getProtocolEra() === 'modern') {
       await this._refreshResourceListenSubscription()
+      // The listen ack reports the honored subset of the requested filter. A server
+      // that does not advertise `resources.subscribe` prunes `resourceSubscriptions`
+      // from it entirely, and updates for this URI would never be delivered — fail
+      // loudly instead of registering a dead handler (#88).
+      const honored = this._resourceListenSubscription?.honoredFilter.resourceSubscriptions ?? []
+      if (!honored.includes(uri)) {
+        this._resourceSubscriptions.delete(uri)
+        await this._refreshResourceListenSubscription()
+        throw new Error(
+          `subscribeResource(${JSON.stringify(uri)}): the server did not honor the subscription — ` +
+            `its subscriptions/acknowledged filter omits the URI, which means it does not advertise ` +
+            `the resources.subscribe capability.`,
+        )
+      }
     } else {
       await this._reauthRetry(() =>
         this._sdk().subscribeResource(
