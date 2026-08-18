@@ -26,6 +26,23 @@ const server = new FastMCP({
 
 An operation you omit keeps the conservative defaults: `ttlMs: 0` and `cacheScope: 'private'`, which tells the client to store the result but never serve it from cache without revalidating. Raise `ttlMs` only for operations whose results you are comfortable serving stale for that window.
 
+### Client cache modes
+
+FastMCP clients reuse a fresh cached result by default for `listTools()`, `listPrompts()`, `listResources()`, `listResourceTemplates()`, and `readResource()`. Pass `cacheMode: 'refresh'` when you need a current result and want it to replace the cached entry. Pass `cacheMode: 'bypass'` for a one-off request that must neither read nor update the cache.
+
+```typescript
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('http://localhost:3000/mcp')
+
+const tools = await client.listTools({ cacheMode: 'refresh' })
+const contents = await client.readResource('data:///report', {
+  cacheMode: 'bypass',
+})
+
+await client.close()
+```
+
 Cache hints apply per operation, not per item. Every `resources/read` result gets the same hint; a hint per individual resource is not supported, because that override lives only on the SDK's high-level server registration, which FastMCP does not use. When one TTL cannot fit every resource, choose the shortest safe value for the operation.
 
 ## The caching middleware
