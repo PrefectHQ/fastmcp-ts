@@ -168,7 +168,9 @@ describe('FastMCP.fetch', () => {
       resources?: Record<string, unknown>
     }
     expect(capabilities.tools).toBeDefined()
-    expect(capabilities.resources?.subscribe).toBeUndefined()
+    // Modern advertises resources.subscribe: it gates the subscriptions/listen
+    // resourceSubscriptions filter (#88).
+    expect(capabilities.resources?.subscribe).toBe(true)
   })
 
   it('returns the SDK stateless legacy 405 response for GET and DELETE', async () => {

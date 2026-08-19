@@ -319,9 +319,11 @@ describe.sequential('CLI — inspect --format fastmcp', () => {
     const autoData = JSON.parse(auto.stdout)
     const legacyData = JSON.parse(legacy.stdout)
 
-    // The one era-dependent field, asserted exactly.
+    // resources.subscribe is advertised on both eras (#88): on legacy it gates
+    // the resources/subscribe RPC, on modern the subscriptions/listen filter —
+    // so the manifest is now era-invariant here too. Asserted exactly.
     expect(legacyData.server.capabilities.resources).toEqual({ listChanged: true, subscribe: true })
-    expect(autoData.server.capabilities.resources).toEqual({ listChanged: true })
+    expect(autoData.server.capabilities.resources).toEqual({ listChanged: true, subscribe: true })
 
     // Field-for-field equality everywhere else.
     delete autoData.server.capabilities.resources

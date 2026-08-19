@@ -4,6 +4,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Client } from 'fastmcp-ts/client'
+import { FastMCP } from 'fastmcp-ts/server'
 
 /** Build a minimal SDK Server that advertises resource subscription support. */
 function makeSubscriptionServer() {
@@ -102,10 +103,11 @@ describe('Client — Resource Subscriptions', () => {
 // subscribeResource()/unsubscribeResource() must route through a
 // subscriptions/listen stream instead. InMemoryTransport pairs (used above) are
 // 2025-era only, so this needs a real HTTP server built directly on
-// createMcpHandler (FastMCP does not implement server-side resource
-// subscriptions at all — see tests/server/resources.test.ts's it.todo markers —
-// so this exercises the client against a hand-built modern-only server, the
-// same way the legacy tests above exercise it against a hand-built Server).
+// createMcpHandler. The hand-built modern-only server isolates the CLIENT's
+// listen leg (the same way the legacy tests above isolate it against a
+// hand-built Server); FastMCP-backed end-to-end coverage lives in
+// tests/server/resources.test.ts (era combos) and the in-process #88
+// regression at the end of this describe.
 // ---------------------------------------------------------------------------
 
 describe('Client — Resource Subscriptions (modern era, 2026-07-28)', () => {
@@ -118,6 +120,7 @@ describe('Client — Resource Subscriptions (modern era, 2026-07-28)', () => {
 
   async function withModernSubscriptionServer(
     fn: (client: Client, notifyResourceUpdated: (uri: string) => void) => Promise<void>,
+    opts?: { capabilities?: NonNullable<ConstructorParameters<typeof Server>[1]>['capabilities'] },
   ): Promise<void> {
     const handler = createMcpHandler(
       () =>
@@ -128,7 +131,7 @@ describe('Client — Resource Subscriptions (modern era, 2026-07-28)', () => {
           // resourceSubscriptions is silently dropped from the honored filter
           // otherwise) — the same capability flag the legacy resources/subscribe RPC
           // path is gated on, just consulted by a different mechanism now.
-          { capabilities: { resources: { subscribe: true } } },
+          { capabilities: opts?.capabilities ?? { resources: { subscribe: true } } },
         ),
       { legacy: 'reject' },
     )
@@ -204,5 +207,42 @@ describe('Client — Resource Subscriptions (modern era, 2026-07-28)', () => {
       await tick()
       expect(updates).toHaveLength(1)
     })
+  })
+
+  it('rejects subscribeResource when the server does not advertise resources.subscribe', async () => {
+    // A server without the capability prunes resourceSubscriptions from the
+    // acknowledged filter — the subscription can never deliver. The client must
+    // fail loudly instead of registering a dead handler (#88's silent mode).
+    await withModernSubscriptionServer(
+      async (client) => {
+        await expect(client.subscribeResource('res://x', () => {})).rejects.toThrow(
+          /resources\.subscribe/,
+        )
+      },
+      { capabilities: { resources: {} } },
+    )
+  })
+
+  it('receives updates from a FastMCP server over an in-process pinned-modern connection (#88)', async () => {
+    // The exact issue #88 repro: an in-process FastMCP server pinned to modern
+    // routes through FastMCP._modernFetch → createMcpHandler — the path where the
+    // omitted resources.subscribe capability silently pruned the listen filter.
+    const uri = 'example://resource'
+    const server = new FastMCP({ name: 'repro', version: '1.0.0' })
+    server.resource({ uri, name: 'example' }, () => 'current value')
+    const client = await Client.connect(server, {
+      versionNegotiation: { mode: { pin: '2026-07-28' } },
+    })
+    try {
+      expect(client.getProtocolEra()).toBe('modern')
+      const updates: string[] = []
+      await client.subscribeResource(uri, (updated) => { updates.push(updated) })
+      server.notifyResourceUpdated(uri)
+      await tick()
+      expect(updates).toEqual([uri])
+    } finally {
+      await client.close()
+      await server.close()
+    }
   })
 })

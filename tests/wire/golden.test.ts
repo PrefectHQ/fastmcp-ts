@@ -181,10 +181,10 @@ describe('wire golden — server/discover response shape', () => {
         // FastMCP advertises listChanged on all three registries + logging +
         // completions. `completion/complete` is in the modern 2026-07-28 wire
         // registry, so `completions` surfaces in the modern discovery document
-        // (Task 12). `resources.subscribe` stays absent on modern — it is
-        // legacy-only.
+        // (Task 12). `resources.subscribe` is advertised on modern too — it
+        // gates the subscriptions/listen resourceSubscriptions filter (#88).
         tools: { listChanged: true },
-        resources: { listChanged: true },
+        resources: { listChanged: true, subscribe: true },
         prompts: { listChanged: true },
         logging: {},
         completions: {},
