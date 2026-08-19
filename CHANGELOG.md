@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.6.0
+
+### Minor Changes
+
+- 7e37ebc: Allow embedded applications to customize the MCP client identity with `ClientOptions.clientInfo` and `MultiServerOptions.clientInfo`. The default identity now reports the installed FastMCP package version instead of a hard-coded version.
+
 ## 1.5.2
 
 ### Patch Changes
