@@ -1,6 +1,12 @@
 import type { LoggingLevel, RequestOptions as SdkRequestOptions } from "@modelcontextprotocol/server";
 import { Client as SdkClient, LOG_LEVEL_META_KEY } from '@modelcontextprotocol/client'
-import type { ClientCapabilities, McpSubscription, VersionNegotiationOptions, ProtocolEra } from '@modelcontextprotocol/client'
+import type {
+  ClientCapabilities,
+  Implementation,
+  McpSubscription,
+  ProtocolEra,
+  VersionNegotiationOptions,
+} from '@modelcontextprotocol/client'
 import type { BearerAuth, OAuth, ClientCredentials } from './auth.js'
 import { buildClientCapabilities } from './capabilities.js'
 import type { ClientHandlers, LogHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
@@ -20,13 +26,18 @@ import type {
 import { normalizeCallToolResult } from './results.js'
 import type { McpConfig, McpServerValue } from './transports.js'
 import { resolveEntryTransport } from './transports.js'
-import type { ClientDefaultOptions } from './options.js'
+import { DEFAULT_CLIENT_INFO, type ClientDefaultOptions } from './options.js'
 import { ToolCallError } from './client.js'
 // ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
 
 export interface MultiServerOptions {
+  /**
+   * Identity to advertise to every MCP server. Defaults to FastMCP's own
+   * client identity. Set this when FastMCP is embedded in another application.
+   */
+  clientInfo?: Implementation
   handlers?: ClientHandlers
   /**
    * Additional capabilities to advertise to every server. FastMCP combines
@@ -62,6 +73,7 @@ export class MultiServerClient implements IClient {
   private _uriMap: Map<string, string> = new Map()
 
   private readonly _config: McpConfig
+  private readonly _clientInfo: Implementation
   private readonly _handlers: {
     log: LogHandler
     progress: ProgressHandler
@@ -86,6 +98,7 @@ export class MultiServerClient implements IClient {
 
   constructor(config: McpConfig, options?: MultiServerOptions) {
     this._config = config
+    this._clientInfo = options?.clientInfo ?? DEFAULT_CLIENT_INFO
     this._handlers = {
       log: options?.handlers?.log ?? defaultLogHandler,
       progress: options?.handlers?.progress ?? defaultProgressHandler,
@@ -597,7 +610,7 @@ export class MultiServerClient implements IClient {
 
   private _buildSdkClient(): SdkClient {
     return new SdkClient(
-      { name: 'fastmcp-ts', version: '1.0.0' },
+      this._clientInfo,
       {
         capabilities: this._capabilities,
         versionNegotiation: this._versionNegotiation,

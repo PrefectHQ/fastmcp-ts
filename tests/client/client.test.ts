@@ -3,6 +3,7 @@ import { z } from 'zod/v4'
 import { FastMCP } from 'fastmcp-ts/server'
 import { Client } from 'fastmcp-ts/client'
 import { Server, createMcpHandler } from '@modelcontextprotocol/server'
+import { InMemoryTransport } from '@modelcontextprotocol/client'
 import { toNodeHandler } from '@modelcontextprotocol/node'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -67,6 +68,30 @@ describe('Client', () => {
       expect(client.isConnected()).toBe(true)
       const tools = await client.listTools()
       expect(tools).toBeInstanceOf(Array)
+    })
+
+    it('advertises the configured client identity', async () => {
+      const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
+      const server = new Server({ name: 'server', version: '1.0.0' })
+      await server.connect(serverTransport)
+
+      const clientInfo = {
+        name: 'embedded-client',
+        title: 'Embedded Client',
+        version: '2.0.0',
+        websiteUrl: 'https://example.com',
+      }
+      const client = await Client.connect(clientTransport, {
+        clientInfo,
+        versionNegotiation: { mode: 'legacy' },
+      })
+
+      try {
+        expect(server.getClientVersion()).toEqual(clientInfo)
+      } finally {
+        await client.close()
+        await server.close()
+      }
     })
 
     it('supports `await using` for automatic cleanup', async () => {

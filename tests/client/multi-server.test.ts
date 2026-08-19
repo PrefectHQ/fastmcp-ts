@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { z } from 'zod/v4'
 import { FastMCP, ToolResult } from 'fastmcp-ts/server'
 import { Client, MultiServerClient } from 'fastmcp-ts/client'
+import { Server } from '@modelcontextprotocol/server'
 import type { TextResourceContents } from "@modelcontextprotocol/server";
 
 // ---------------------------------------------------------------------------
@@ -64,6 +65,29 @@ describe('Client — Multi-server', () => {
       const client = await MultiServerClient.connect({ mcpServers: { a, b } })
       await using _ = client
       expect(client.isConnected()).toBe(true)
+    })
+
+    it('advertises the configured client identity to every server', async () => {
+      const a = new Server({ name: 'server-a', version: '1.0.0' })
+      const b = new Server({ name: 'server-b', version: '1.0.0' })
+      const clientInfo = {
+        name: 'embedded-client',
+        title: 'Embedded Client',
+        version: '2.0.0',
+        websiteUrl: 'https://example.com',
+      }
+      const client = await MultiServerClient.connect(
+        { mcpServers: { a, b } },
+        { clientInfo, versionNegotiation: { mode: 'legacy' } },
+      )
+
+      try {
+        expect(a.getClientVersion()).toEqual(clientInfo)
+        expect(b.getClientVersion()).toEqual(clientInfo)
+      } finally {
+        await client.close()
+        await Promise.all([a.close(), b.close()])
+      }
     })
 
     it('isConnected() returns false before connect', () => {

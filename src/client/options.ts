@@ -1,5 +1,6 @@
 import type {
   ClientCapabilities,
+  Implementation,
   InputRequiredOptions,
   PriorDiscovery,
   ResponseCacheStore,
@@ -8,6 +9,11 @@ import type {
 import type { AsyncHeaderAuth, BearerAuth, OAuth } from './auth.js'
 import type { ClientHandlers } from './handlers.js'
 import type { Root } from './results.js'
+
+export const DEFAULT_CLIENT_INFO: Implementation = {
+  name: 'fastmcp-ts',
+  version: '1.0.0',
+}
 
 export interface ClientDefaultOptions {
   /** Global fallback timeout in seconds for all requests. */
@@ -33,6 +39,11 @@ export interface ClientOptions {
    * A plain string is treated as a Bearer token.
    */
   auth?: BearerAuth | OAuth | AsyncHeaderAuth | string
+  /**
+   * Identity to advertise to the MCP server. Defaults to FastMCP's own client
+   * identity. Set this when FastMCP is embedded in another application.
+   */
+  clientInfo?: Implementation
   handlers?: ClientHandlers
   /**
    * Additional capabilities to advertise to the server. FastMCP preserves
