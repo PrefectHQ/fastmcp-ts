@@ -2,7 +2,7 @@
 title: "MultiServerOptions"
 ---
 
-Defined in: [client/multi-server.ts:29](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L29)
+Defined in: [client/multi-server.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L35)
 
 ## Properties
 
@@ -13,10 +13,25 @@ optional capabilities?: {
 };
 ```
 
-Defined in: [client/multi-server.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L35)
+Defined in: [client/multi-server.ts:47](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L47)
 
 Additional capabilities to advertise to every server. FastMCP combines
 them with capabilities inferred from handlers and roots.
+
+***
+
+### clientInfo?
+
+```ts
+optional clientInfo?: {
+};
+```
+
+Defined in: [client/multi-server.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L41)
+
+Identity to advertise to every MCP server. Defaults to `fastmcp-ts` at the
+installed package version. Set this when FastMCP is embedded in another
+application.
 
 ***
 
@@ -26,7 +41,7 @@ them with capabilities inferred from handlers and roots.
 optional defaultOptions?: ClientDefaultOptions;
 ```
 
-Defined in: [client/multi-server.ts:38](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L38)
+Defined in: [client/multi-server.ts:50](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L50)
 
 ***
 
@@ -36,7 +51,7 @@ Defined in: [client/multi-server.ts:38](https://github.com/PrefectHQ/fastmcp-ts/
 optional handlers?: ClientHandlers;
 ```
 
-Defined in: [client/multi-server.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L30)
+Defined in: [client/multi-server.ts:42](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L42)
 
 ***
 
@@ -46,7 +61,7 @@ Defined in: [client/multi-server.ts:30](https://github.com/PrefectHQ/fastmcp-ts/
 optional roots?: string[];
 ```
 
-Defined in: [client/multi-server.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L37)
+Defined in: [client/multi-server.ts:49](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L49)
 
 file:// URIs to advertise to all servers as accessible roots.
 
@@ -58,7 +73,7 @@ file:// URIs to advertise to all servers as accessible roots.
 optional versionNegotiation?: VersionNegotiationOptions;
 ```
 
-Defined in: [client/multi-server.ts:49](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L49)
+Defined in: [client/multi-server.ts:61](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/multi-server.ts#L61)
 
 Protocol version negotiation, applied identically to every server in the
 config (protocol revision 2026-07-28 and later). See

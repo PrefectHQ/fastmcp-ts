@@ -18,12 +18,8 @@ import type { AsyncHeaderAuth } from './auth.js'
 import type { ClientHandlers, ListChangedHandler, ProgressHandler, ResourceUpdateHandler } from './handlers.js'
 import { defaultLogHandler, defaultProgressHandler } from './handlers.js'
 import type { CallToolOptions, IClient, RequestOptions } from './interfaces.js'
-import type {
-  ClientDefaultOptions,
-  ClientOptions,
-  RootInput,
-  RootsValue,
-} from './options.js'
+import { DEFAULT_CLIENT_INFO } from './options.js'
+import type { ClientDefaultOptions, ClientOptions, RootInput, RootsValue } from './options.js'
 import type {
   CallToolResult,
   CompletionResult,
@@ -95,6 +91,7 @@ export class Client implements IClient {
 
   private readonly _input: ClientTransportInput
   private readonly _auth: BearerAuth | OAuth | AsyncHeaderAuth | undefined
+  private readonly _clientInfo: Implementation
   private readonly _handlers: Required<Omit<ClientHandlers, OptionalHandlerKeys>> &
     Pick<ClientHandlers, OptionalHandlerKeys>
   private readonly _roots: (() => Promise<Root[]>) | undefined
@@ -117,6 +114,7 @@ export class Client implements IClient {
   constructor(input: ClientTransportInput, options?: ClientOptions) {
     this._input = input
     this._auth = resolveAuth(options?.auth)
+    this._clientInfo = options?.clientInfo ?? DEFAULT_CLIENT_INFO
     this._handlers = {
       log: options?.handlers?.log ?? defaultLogHandler,
       progress: options?.handlers?.progress ?? defaultProgressHandler,
@@ -173,7 +171,7 @@ export class Client implements IClient {
 
   private async _doConnect(): Promise<void> {
     const sdkClient = new SdkClient(
-      { name: 'fastmcp-ts', version: '1.0.0' },
+      this._clientInfo,
       {
         capabilities: this._capabilities,
         listChanged: this._buildListChangedConfig(),

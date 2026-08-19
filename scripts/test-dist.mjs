@@ -10,6 +10,9 @@
 
 import { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport } from '../dist/client.js'
 import { FastMCP, createProxy, createOpenAPIServer, forwardableHeaders } from '../dist/server.js'
+import { InMemoryTransport } from '@modelcontextprotocol/client'
+import { Server } from '@modelcontextprotocol/server'
+import { readFileSync } from 'node:fs'
 import { Readable, Writable } from 'node:stream'
 
 const required = { Client, MultiServerClient, BearerAuth, OAuth, StdioTransport, FastMCP, createProxy, createOpenAPIServer, forwardableHeaders }
@@ -18,6 +21,27 @@ const missing = Object.entries(required).filter(([, v]) => v === undefined).map(
 if (missing.length) {
   console.error(`✗ Missing exports: ${missing.join(', ')}`)
   process.exit(1)
+}
+
+const { version: packageVersion } = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+)
+const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair()
+const identityServer = new Server({ name: 'identity-smoke', version: '1.0.0' })
+await identityServer.connect(serverTransport)
+const identityClient = await Client.connect(clientTransport, {
+  versionNegotiation: { mode: 'legacy' },
+})
+try {
+  const clientInfo = identityServer.getClientVersion()
+  if (clientInfo?.name !== 'fastmcp-ts' || clientInfo.version !== packageVersion) {
+    throw new Error(
+      `Default client identity does not match package version: ${JSON.stringify(clientInfo)}`,
+    )
+  }
+} finally {
+  await identityClient.close()
+  await identityServer.close()
 }
 
 const stdioServer = new FastMCP({ name: 'dist-stdio-smoke', version: '1.0.0' })
