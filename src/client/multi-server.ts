@@ -34,8 +34,9 @@ import { ToolCallError } from './client.js'
 
 export interface MultiServerOptions {
   /**
-   * Identity to advertise to every MCP server. Defaults to FastMCP's own
-   * client identity. Set this when FastMCP is embedded in another application.
+   * Identity to advertise to every MCP server. Defaults to `fastmcp-ts` at the
+   * installed package version. Set this when FastMCP is embedded in another
+   * application.
    */
   clientInfo?: Implementation
   handlers?: ClientHandlers

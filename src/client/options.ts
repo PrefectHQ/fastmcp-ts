@@ -10,9 +10,11 @@ import type { AsyncHeaderAuth, BearerAuth, OAuth } from './auth.js'
 import type { ClientHandlers } from './handlers.js'
 import type { Root } from './results.js'
 
+declare const __FASTMCP_VERSION__: string
+
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'fastmcp-ts',
-  version: '1.0.0',
+  version: __FASTMCP_VERSION__,
 }
 
 export interface ClientDefaultOptions {
@@ -40,8 +42,9 @@ export interface ClientOptions {
    */
   auth?: BearerAuth | OAuth | AsyncHeaderAuth | string
   /**
-   * Identity to advertise to the MCP server. Defaults to FastMCP's own client
-   * identity. Set this when FastMCP is embedded in another application.
+   * Identity to advertise to the MCP server. Defaults to `fastmcp-ts` at the
+   * installed package version. Set this when FastMCP is embedded in another
+   * application.
    */
   clientInfo?: Implementation
   handlers?: ClientHandlers
