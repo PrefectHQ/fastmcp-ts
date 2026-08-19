@@ -23,7 +23,6 @@ function resolveSdkVersion(): string {
   }
 }
 const sdkVersion = resolveSdkVersion()
-const fastmcpVersion = pkg.version
 
 // v2 packages ship well-formed package.json "exports" maps (explicit
 // import/require conditions, fully-extensioned files) for every public
@@ -40,9 +39,6 @@ export default defineConfig([
     dts: true,
     clean: true,
     sourcemap: true,
-    define: {
-      __FASTMCP_VERSION__: JSON.stringify(fastmcpVersion),
-    },
   },
   {
     entry: { 'cli/index': 'src/cli/index.ts' },
@@ -56,7 +52,7 @@ export default defineConfig([
     noExternal: [/.*/],
     outExtension: () => ({ js: '.cjs' }),
     define: {
-      __FASTMCP_VERSION__: JSON.stringify(fastmcpVersion),
+      __FASTMCP_VERSION__: JSON.stringify(pkg.version),
       __MCP_SDK_VERSION__: JSON.stringify(sdkVersion),
     },
   },

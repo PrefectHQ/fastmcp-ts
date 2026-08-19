@@ -6,15 +6,14 @@ import type {
   ResponseCacheStore,
   VersionNegotiationOptions,
 } from '@modelcontextprotocol/client'
+import packageJson from '../../package.json' with { type: 'json' }
 import type { AsyncHeaderAuth, BearerAuth, OAuth } from './auth.js'
 import type { ClientHandlers } from './handlers.js'
 import type { Root } from './results.js'
 
-declare const __FASTMCP_VERSION__: string
-
 export const DEFAULT_CLIENT_INFO: Implementation = {
   name: 'fastmcp-ts',
-  version: __FASTMCP_VERSION__,
+  version: packageJson.version,
 }
 
 export interface ClientDefaultOptions {
