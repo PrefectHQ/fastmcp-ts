@@ -12,11 +12,12 @@ Defined in: [server/customRoutes.ts:11](https://github.com/PrefectHQ/fastmcp-ts/
 optional methods?: string[];
 ```
 
-Defined in: [server/customRoutes.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L20)
+Defined in: [server/customRoutes.ts:21](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/customRoutes.ts#L21)
 
 HTTP methods served, compared case-insensitively. Default: `['GET']`.
-`OPTIONS` is rejected at registration: the global CORS preflight answers
-`OPTIONS` before route dispatch, so a route on it would be unreachable.
+`OPTIONS` is rejected at registration: it is reserved for the global
+CORS preflight, and never dispatches to a route even when CORS is
+disabled (`http.cors: false`).
 
 ***
 

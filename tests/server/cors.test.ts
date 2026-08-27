@@ -63,6 +63,22 @@ describe('resolveCors', () => {
     expect(() => resolveCors({ allowedHeaders: 'X-Custom' as never })).toThrow(/cors\.allowedHeaders/)
     expect(() => resolveCors({ exposedHeaders: 'X-Trace' as never })).toThrow(/cors\.exposedHeaders/)
   })
+
+  it("rejects '*' inside an origin array", () => {
+    expect(() => resolveCors({ origin: ['*'] })).toThrow(/origin array/)
+  })
+
+  it('rejects a non-boolean credentials value', () => {
+    expect(() => resolveCors({ origin: 'https://a.example', credentials: 'true' as never })).toThrow(/cors\.credentials/)
+  })
+
+  it('rejects allowedHeaders entries containing whitespace or control characters', () => {
+    expect(() => resolveCors({ allowedHeaders: ['X-Bad\r\nEvil: x'] })).toThrow(/whitespace or control/)
+  })
+
+  it('rejects methods entries containing whitespace or control characters', () => {
+    expect(() => resolveCors({ methods: ['GE T'] })).toThrow(/whitespace or control/)
+  })
 })
 
 describe('corsPreflightHeaders / corsResponseHeaders', () => {
@@ -97,6 +113,16 @@ describe('corsPreflightHeaders / corsResponseHeaders', () => {
       'https://app.example.com',
     )
     expect(corsResponseHeaders(cors, 'https://app.example.org')['Access-Control-Allow-Origin']).toBeUndefined()
+  })
+
+  it('a throwing predicate denies the origin without throwing', () => {
+    const cors = resolveCors({ origin: () => { throw new Error('boom') } })!
+    const preflight = corsPreflightHeaders(cors, 'null')
+    expect(preflight['Access-Control-Allow-Origin']).toBeUndefined()
+    expect(preflight['Vary']).toBe('Origin')
+    const response = corsResponseHeaders(cors, 'null')
+    expect(response['Access-Control-Allow-Origin']).toBeUndefined()
+    expect(response['Vary']).toBe('Origin')
   })
 
   it('credentials and maxAge appear only when configured, on the right response kind', () => {

@@ -2338,6 +2338,9 @@ export class FastMCP {
         }
       }
 
+      // NOTE: toNodeHandler-style dispatch writes SDK headers via res.writeHead, which
+      // takes precedence over the CORS setHeader calls above if a future SDK release
+      // ever emits its own CORS headers on MCP responses. Today it emits none here.
       await this._dispatchHttp(req, res)
     })
 

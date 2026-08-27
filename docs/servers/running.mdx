@@ -133,7 +133,35 @@ server.customRoute({ path: '/readyz' }, async () => {
 })
 ```
 
-The handler receives a web-standard `Request` and returns a web-standard `Response`, which is written back verbatim. Nothing runs in front of the handler: no MCP auth, no [DNS-rebinding guards](#dns-rebinding-protection), no CORS headers. If a route needs protection, the handler implements it from the request it receives. Matching is exact on the path with the query string ignored, and `methods` defaults to `['GET']`; a request that matches the path with another method gets `405`. Registering a route on the MCP path, or two routes on one path, fails at startup. `OPTIONS` never reaches a custom route handler: the default serve path answers it with the global CORS preflight; the OAuth serve path has no CORS handling and falls through to express's default 404-style response.
+The handler receives a web-standard `Request` and returns a web-standard `Response`, which is written back verbatim. Nothing runs in front of the handler: no MCP auth, no [DNS-rebinding guards](#dns-rebinding-protection), no CORS headers. If a route needs protection, the handler implements it from the request it receives. Matching is exact on the path with the query string ignored, and `methods` defaults to `['GET']`; a request that matches the path with another method gets `405`. Registering a route on the MCP path, or two routes on one path, fails at startup. `OPTIONS` never reaches a custom route handler: both serve paths answer it with the global CORS preflight, and with `cors: false` it flows to normal dispatch instead — never to a route.
+
+## CORS
+
+The listener `run()` starts serves permissive CORS by default: every origin is allowed (`Access-Control-Allow-Origin: *`), a global preflight answers `OPTIONS` with `204` on every path, and MCP responses expose `Mcp-Session-Id` so a browser client can read its session id. Most servers need no configuration.
+
+The `http.cors` option narrows or disables that posture:
+
+```typescript server.ts
+const server = new FastMCP({
+  name: 'my-server',
+  http: {
+    cors: {
+      origin: ['https://app.example.com'],
+      credentials: true,
+      maxAge: 600,
+      allowedHeaders: ['X-Request-Id'],
+    },
+  },
+})
+```
+
+`origin` accepts `'*'` (the default), one origin, an array of origins, or a function over the request's `Origin` header. With any non-`*` value the server echoes an allowed origin back (with `Vary: Origin`) and omits the header for others, which is how a browser blocks the request. A function that throws denies the origin instead of failing the request. `credentials: true` sends `Access-Control-Allow-Credentials` and requires an explicit origin; the combination with `'*'` fails at construction because browsers reject it. `allowedHeaders` and `exposedHeaders` extend the defaults — the MCP protocol headers are always advertised, so a narrow list cannot break protocol traffic. `methods` replaces the default `GET, POST, DELETE, OPTIONS`. `maxAge` caches preflights, in seconds.
+
+The permissive default suits local development and server-to-server deployments, where CORS never gates anything. For a production server that browser JavaScript calls directly, set `origin` to your site's origin(s) instead of relying on the wildcard.
+
+`cors: false` turns CORS handling off entirely: no global preflight, no headers, on both serve paths. `OPTIONS` requests then flow through normal dispatch, though they still never reach a custom route. A malformed `cors` value throws at construction, for every transport, like `health` and `stateless`.
+
+`fetch()` is unaffected either way: a framework embedding `fetch()` owns CORS at its HTTP boundary, exactly as it owns Host and Origin validation. On the OAuth serve path the MCP endpoint gets this same CORS handling, and the global preflight answers `OPTIONS` for every path — the OAuth endpoints (`/authorize`, `/token`, `/register`, metadata) included, so narrowing `origin` gates them at preflight too. Their non-preflight response headers still come from the MCP SDK's own permissive CORS wrapping.
 
 ## DNS-rebinding protection
 

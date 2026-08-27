@@ -465,6 +465,33 @@ describe('Server', () => {
         /credentials: true requires an explicit origin/,
       )
     })
+
+    it('a throwing origin predicate denies the request instead of crashing the server', async () => {
+      const mcp = new FastMCP({
+        name: 'cors-test',
+        http: { cors: { origin: (o) => new URL(o).hostname.endsWith('.example.com') } },
+        dnsRebinding: { enabled: false },
+      })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      close = () => mcp.close()
+      const { port } = mcp.address!
+
+      // Browsers send the literal string "null" for sandboxed/redirected contexts; new URL('null') throws.
+      const preflight = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'null', 'Access-Control-Request-Method': 'POST' },
+      })
+      expect(preflight.status).toBe(204)
+      expect(preflight.headers.get('access-control-allow-origin')).toBeNull()
+
+      // The server is still alive and still answers an allowed origin.
+      const ok = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://app.example.com', 'Access-Control-Request-Method': 'POST' },
+      })
+      expect(ok.status).toBe(204)
+      expect(ok.headers.get('access-control-allow-origin')).toBe('https://app.example.com')
+    })
   })
 
   describe('auth — clientId round-trip', () => {

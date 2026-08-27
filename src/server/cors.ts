@@ -18,7 +18,7 @@ export interface CorsOptions {
    * against the request's `Origin` header. `'*'` (the default) allows every
    * origin. A string or array allows exactly those `scheme://host[:port]`
    * origins. A function receives the `Origin` value and returns whether it
-   * is allowed.
+   * is allowed. A function that throws denies the origin.
    */
   origin?: string | string[] | ((origin: string) => boolean)
   /** `Access-Control-Allow-Methods` value; replaces the default
@@ -75,6 +75,13 @@ export const DEFAULT_CORS_ALLOWED_HEADERS = [
 
 export const DEFAULT_CORS_EXPOSED_HEADERS = ['Mcp-Session-Id']
 
+// Whitespace or an ASCII control character (below 0x20, or DEL 0x7F) makes a
+// value illegal header/method material — it could split or inject headers.
+// Other printable characters, hyphens included, are fine.
+function hasInvalidHeaderChar(value: string): boolean {
+  return /\s/.test(value) || [...value].some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)
+}
+
 function mergedHeaderList(defaults: readonly string[], extra: string[] | undefined, option: string): string {
   if (extra !== undefined && !Array.isArray(extra)) {
     throw new Error(`Invalid cors.${option}: must be an array of header names, got: ${JSON.stringify(extra)}`)
@@ -84,6 +91,11 @@ function mergedHeaderList(defaults: readonly string[], extra: string[] | undefin
   for (const header of extra ?? []) {
     if (typeof header !== 'string' || header.trim() === '') {
       throw new Error(`Invalid cors.${option}: entries must be non-empty strings, got: ${JSON.stringify(header)}`)
+    }
+    if (hasInvalidHeaderChar(header)) {
+      throw new Error(
+        `Invalid cors.${option}: entries must not contain whitespace or control characters, got: ${JSON.stringify(header)}`,
+      )
     }
     if (!seen.has(header.toLowerCase())) {
       seen.add(header.toLowerCase())
@@ -106,6 +118,11 @@ function resolveOriginMode(origin: CorsOptions['origin']): OriginMode {
     if (typeof entry !== 'string' || entry === '') {
       throw new Error(`Invalid cors.origin: entries must be non-empty strings, got: ${JSON.stringify(entry)}`)
     }
+    if (entry === '*') {
+      throw new Error(
+        "Invalid cors.origin: '*' inside an origin array never matches (browsers never send it as a literal Origin); use origin: '*' (the string) for wildcard",
+      )
+    }
     if (entry.endsWith('/')) {
       throw new Error(
         `Invalid cors.origin "${entry}": an Origin header never carries a trailing slash, so this entry can never match; drop the trailing slash`,
@@ -124,6 +141,9 @@ export function resolveCors(cors: boolean | CorsOptions | undefined): ResolvedCo
     throw new Error(`Invalid cors option: expected boolean or object, got ${typeof cors}`)
   }
   const originMode = resolveOriginMode(opts.origin)
+  if (opts.credentials !== undefined && typeof opts.credentials !== 'boolean') {
+    throw new Error(`Invalid cors.credentials: must be a boolean, got: ${JSON.stringify(opts.credentials)}`)
+  }
   if (opts.credentials === true && originMode.kind === 'any') {
     throw new Error(
       "Invalid cors config: credentials: true requires an explicit origin — browsers reject 'Access-Control-Allow-Origin: *' on credentialed requests; set cors.origin to your site origin(s)",
@@ -139,6 +159,11 @@ export function resolveCors(cors: boolean | CorsOptions | undefined): ResolvedCo
         opts.methods.map((m) => {
           if (typeof m !== 'string' || m.trim() === '') {
             throw new Error(`Invalid cors.methods: entries must be non-empty strings, got: ${JSON.stringify(m)}`)
+          }
+          if (hasInvalidHeaderChar(m)) {
+            throw new Error(
+              `Invalid cors.methods: entries must not contain whitespace or control characters, got: ${JSON.stringify(m)}`,
+            )
           }
           return m.toUpperCase()
         }),
@@ -167,8 +192,15 @@ function allowOriginValue(cors: ResolvedCors, requestOrigin: string | undefined)
       return '*'
     case 'list':
       return requestOrigin !== undefined && cors.originMode.origins.has(requestOrigin) ? requestOrigin : null
-    case 'predicate':
-      return requestOrigin !== undefined && cors.originMode.test(requestOrigin) ? requestOrigin : null
+    case 'predicate': {
+      if (requestOrigin === undefined) return null
+      try {
+        return cors.originMode.test(requestOrigin) ? requestOrigin : null
+      } catch (err) {
+        console.error('[fastmcp] cors.origin predicate threw; denying origin:', err)
+        return null
+      }
+    }
   }
 }
 

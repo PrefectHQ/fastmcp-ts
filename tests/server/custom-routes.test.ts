@@ -386,7 +386,7 @@ describe('customRoute() over the OAuth (express) path', () => {
     expect(res.headers.get('allow')).toBe('GET')
   })
 
-  it('OPTIONS on a route path never invokes the handler and falls through to the express default 404', async () => {
+  it('OPTIONS on a route path never invokes the handler — the global CORS preflight answers it', async () => {
     const handler = vi.fn(() => new Response('ok'))
     mcp = new FastMCP({ name: 'routes', oauth: { provider: oauthProvider() } })
     mcp.customRoute({ path: '/livez' }, handler)
@@ -394,7 +394,8 @@ describe('customRoute() over the OAuth (express) path', () => {
     const { port } = mcp.address!
 
     const res = await fetch(`http://127.0.0.1:${port}/livez`, { method: 'OPTIONS' })
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(204)
+    expect(res.headers.get('access-control-allow-origin')).toBe('*')
     expect(handler).not.toHaveBeenCalled()
   })
 

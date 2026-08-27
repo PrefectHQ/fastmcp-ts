@@ -141,6 +141,7 @@
                   "api/server/interfaces/CompletionContext",
                   "api/server/interfaces/CompletionResult",
                   "api/server/interfaces/Component",
+                  "api/server/interfaces/CorsOptions",
                   "api/server/interfaces/CspPolicy",
                   "api/server/interfaces/CustomRouteConfig",
                   "api/server/interfaces/ElicitationResult",
