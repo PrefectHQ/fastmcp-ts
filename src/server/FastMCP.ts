@@ -49,6 +49,8 @@ import type { UiToolMeta } from './apps/types'
 import { convertPromptResult, PromptResult } from './prompt'
 import type { PromptConfig } from './prompt'
 import { normalizeCompletion, EMPTY_COMPLETION } from './completion'
+import { corsPreflightHeaders, corsResponseHeaders, resolveCors } from './cors'
+import type { CorsOptions, ResolvedCors } from './cors'
 
 function prefixResourceUri(uri: string, prefix: string): string {
   const idx = uri.indexOf('://')
@@ -90,8 +92,15 @@ export interface FastMCPOptions {
    * opt-out. Withheld names are listed in `ctx.http.redactedHeaderNames`.
    * Redaction applies to `ctx.http` only; a RequestVerifier always sees the
    * full wire headers.
+   *
+   * `cors` configures the CORS posture of the HTTP listener `run()` starts
+   * (both serve paths): omitted or `true` serves the permissive defaults
+   * (`Access-Control-Allow-Origin: *`), `false` disables CORS handling
+   * entirely, and an object narrows it — see `CorsOptions`. Malformed
+   * values throw here, at construction, for every transport. `fetch()` is
+   * unaffected: the embedding framework owns CORS at its HTTP boundary.
    */
-  http?: { redactHeaders?: string[]; exposeHeaders?: string[] }
+  http?: { redactHeaders?: string[]; exposeHeaders?: string[]; cors?: boolean | CorsOptions }
   /** Maximum number of tools returned per listTools page. Default: 50. */
   toolsPageSize?: number
   /** Maximum number of resources (or templates) returned per page. Default: 50. */
@@ -412,6 +421,7 @@ export class FastMCP {
   readonly version: string
 
   private _auth: TokenVerifier | RequestVerifier | undefined
+  private _cors: ResolvedCors | null
   private _oauth: OAuthConfig | undefined
   private _sensitiveHeaders: Set<string>
   private _toolsPageSize: number
@@ -468,6 +478,7 @@ export class FastMCP {
     this.name = options.name
     this.version = options.version ?? '0.0.1'
     this._auth = options.auth
+    this._cors = resolveCors(options.http?.cors)
     this._oauth = options.oauth
     this._sensitiveHeaders = resolveSensitiveHeaders(options.http)
     this._toolsPageSize = options.toolsPageSize ?? 50
@@ -2203,24 +2214,14 @@ export class FastMCP {
     const { createServer } = await import('node:http')
 
     const auth = this._auth
-
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-      // Mcp-Session-Id: legacy (2025-era) session routing, still served alongside
-      // modern traffic. MCP-Protocol-Version/Mcp-Method/Mcp-Name: required standard
-      // headers for 2026-07-28 requests (SEP-2243). Mcp-Param-* (tool-argument
-      // mirroring) is deliberately not listed: browser clients skip that mirroring
-      // entirely (dynamically named headers cannot be statically allow-listed for
-      // credentialed CORS), so no browser ever needs to send it.
-      'Access-Control-Allow-Headers':
-        'Content-Type, Authorization, Mcp-Session-Id, MCP-Protocol-Version, Mcp-Method, Mcp-Name',
-    }
+    const cors = this._cors
 
     const httpServer = createServer(async (req, res) => {
-      // CORS preflight
-      if (req.method === 'OPTIONS') {
-        res.writeHead(204, corsHeaders).end()
+      // CORS preflight — answered before custom routes, auth, and the
+      // DNS-rebinding guards, exactly as before. Skipped entirely when
+      // `http.cors` is `false`; OPTIONS then falls through like any method.
+      if (req.method === 'OPTIONS' && cors) {
+        res.writeHead(204, corsPreflightHeaders(cors, req.headers.origin)).end()
         return
       }
 
@@ -2240,8 +2241,11 @@ export class FastMCP {
         return
       }
 
-      // Attach CORS headers to all responses
-      for (const [k, v] of Object.entries(corsHeaders)) res.setHeader(k, v)
+      // Attach CORS headers to all MCP-path responses, before auth runs, so
+      // a browser can read 401/403 challenges cross-origin.
+      if (cors) {
+        for (const [k, v] of Object.entries(corsResponseHeaders(cors, req.headers.origin))) res.setHeader(k, v)
+      }
 
       // Auth middleware
       if (auth) {

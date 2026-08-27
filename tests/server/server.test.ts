@@ -364,6 +364,107 @@ describe('Server', () => {
       })
       expect(res.headers.get('access-control-allow-origin')).toBeTruthy()
     })
+
+    it('echoes a configured origin with Vary and omits ACAO for others', async () => {
+      const mcp = new FastMCP({
+        name: 'cors-test',
+        http: { cors: { origin: 'https://app.example.com' } },
+        dnsRebinding: { enabled: false },
+      })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      close = () => mcp.close()
+      const { port } = mcp.address!
+
+      const allowed = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://app.example.com', 'Access-Control-Request-Method': 'POST' },
+      })
+      expect(allowed.status).toBe(204)
+      expect(allowed.headers.get('access-control-allow-origin')).toBe('https://app.example.com')
+      expect(allowed.headers.get('vary')).toBe('Origin')
+
+      const denied = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://evil.example.com', 'Access-Control-Request-Method': 'POST' },
+      })
+      expect(denied.status).toBe(204)
+      expect(denied.headers.get('access-control-allow-origin')).toBeNull()
+      expect(denied.headers.get('vary')).toBe('Origin')
+    })
+
+    it('credentialed CORS echoes the origin and the credentials header', async () => {
+      const mcp = new FastMCP({
+        name: 'cors-test',
+        http: { cors: { origin: ['https://app.example.com'], credentials: true, maxAge: 600 } },
+        dnsRebinding: { enabled: false },
+      })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      close = () => mcp.close()
+      const { port } = mcp.address!
+
+      const preflight = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://app.example.com', 'Access-Control-Request-Method': 'POST' },
+      })
+      expect(preflight.headers.get('access-control-allow-credentials')).toBe('true')
+      expect(preflight.headers.get('access-control-max-age')).toBe('600')
+    })
+
+    it('custom allowedHeaders extend the defaults instead of replacing them', async () => {
+      const mcp = new FastMCP({ name: 'cors-test', http: { cors: { allowedHeaders: ['X-Custom-Header'] } } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      close = () => mcp.close()
+      const { port } = mcp.address!
+
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'http://localhost:3000', 'Access-Control-Request-Method': 'POST' },
+      })
+      const allowHeaders = res.headers.get('access-control-allow-headers')!
+      expect(allowHeaders).toContain('Mcp-Session-Id')
+      expect(allowHeaders).toContain('X-Custom-Header')
+    })
+
+    it('responses expose Mcp-Session-Id to browser JS by default', async () => {
+      const mcp = new FastMCP({ name: 'cors-test' })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      close = () => mcp.close()
+      const { port } = mcp.address!
+
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: LEGACY_INITIALIZE_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'test', version: '1' } } }),
+      })
+      expect(res.headers.get('access-control-expose-headers')).toContain('Mcp-Session-Id')
+    })
+
+    it('cors: false serves no preflight and attaches no CORS headers', async () => {
+      const mcp = new FastMCP({ name: 'cors-test', http: { cors: false } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      close = () => mcp.close()
+      const { port } = mcp.address!
+
+      const preflight = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'http://localhost:3000', 'Access-Control-Request-Method': 'POST' },
+      })
+      expect(preflight.status).not.toBe(204)
+      expect(preflight.headers.get('access-control-allow-origin')).toBeNull()
+
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: LEGACY_INITIALIZE_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'test', version: '1' } } }),
+      })
+      expect(res.headers.get('access-control-allow-origin')).toBeNull()
+    })
+
+    it('rejects credentials with the default wildcard origin at construction', () => {
+      expect(() => new FastMCP({ name: 'cors-test', http: { cors: { credentials: true } } })).toThrow(
+        /credentials: true requires an explicit origin/,
+      )
+    })
   })
 
   describe('auth — clientId round-trip', () => {
