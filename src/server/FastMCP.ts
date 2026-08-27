@@ -2158,6 +2158,25 @@ export class FastMCP {
     const oauth = this._oauth!
     const app = express()
 
+    // Global CORS preflight + MCP-endpoint headers, mirroring _runHttpSimple:
+    // preflight answers before custom routes and auth; response headers attach
+    // before requireBearerAuth so a browser can read the 401 challenge.
+    // mcpAuthRouter's own endpoints (authorize/token/register/metadata) manage
+    // their own headers and are left untouched.
+    if (this._cors) {
+      const cors = this._cors
+      app.use((req, res, next) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, corsPreflightHeaders(cors, req.headers.origin)).end()
+          return
+        }
+        if (req.path === path) {
+          for (const [k, v] of Object.entries(corsResponseHeaders(cors, req.headers.origin))) res.setHeader(k, v)
+        }
+        next()
+      })
+    }
+
     // One registry-driven middleware, registered ahead of the OAuth router and the
     // bearer-gated MCP endpoint, so it dispatches custom routes first: no auth in
     // front of a route handler. Matching goes through the registry's match(), the
@@ -2167,9 +2186,9 @@ export class FastMCP {
     // : and * as pattern syntax. That let a registered route answer requests it was
     // never meant to (for example a route on /MCP shadowing POST /mcp, bypassing
     // assertNoMcpCollision's case-sensitive check). match() returns null for OPTIONS,
-    // so it falls through via next() to express's default handling: this serve path
-    // has no global CORS preflight, so express answers with its own 404-style
-    // response, same as for the MCP endpoint here.
+    // so it falls through via next(): with CORS enabled the preflight middleware
+    // above already answered OPTIONS 204; with `http.cors: false` express answers
+    // with its own 404-style response, same as for the MCP endpoint here.
     app.use((req, res, next) => {
       const match = this._customRoutes.match(req.path, req.method ?? '')
       if (!match) return next()
