@@ -51,6 +51,8 @@ import type { PromptConfig } from './prompt'
 import { normalizeCompletion, EMPTY_COMPLETION } from './completion'
 import { corsPreflightHeaders, corsResponseHeaders, resolveCors } from './cors'
 import type { CorsOptions, ResolvedCors } from './cors'
+import { resolveLogger } from './logger'
+import type { Logger, FrameworkLogLevel, ResolvedLogger } from './logger'
 
 function prefixResourceUri(uri: string, prefix: string): string {
   const idx = uri.indexOf('://')
@@ -101,6 +103,21 @@ export interface FastMCPOptions {
    * unaffected: the embedding framework owns CORS at its HTTP boundary.
    */
   http?: { redactHeaders?: string[]; exposeHeaders?: string[]; cors?: boolean | CorsOptions }
+  /**
+   * Sink for the framework's own diagnostic logs (lifecycle, warnings,
+   * errors). `console` and Winston loggers satisfy the shape directly; see
+   * the logging docs for a Pino adapter. Default: a built-in stderr logger
+   * (styled on a TTY, plain single-line format otherwise). Client-facing MCP
+   * logging (`ctx.log`) is a separate channel and is not affected.
+   */
+  logger?: Logger
+  /**
+   * Minimum level for framework logs, applied before any logger (injected or
+   * default) is called. Precedence: this option, then the FASTMCP_LOG_LEVEL
+   * environment variable, then 'info'. 'silent' disables framework logging.
+   * Malformed values throw here, at construction, for every transport.
+   */
+  logLevel?: FrameworkLogLevel
   /** Maximum number of tools returned per listTools page. Default: 50. */
   toolsPageSize?: number
   /** Maximum number of resources (or templates) returned per page. Default: 50. */
@@ -421,6 +438,8 @@ export class FastMCP {
   readonly version: string
 
   private _auth: TokenVerifier | RequestVerifier | undefined
+  /** @internal Framework logger; used by same-package modules (proxy, openapi). Not public API. */
+  readonly _logger: ResolvedLogger
   private _cors: ResolvedCors | null
   private _oauth: OAuthConfig | undefined
   private _sensitiveHeaders: Set<string>
@@ -477,6 +496,7 @@ export class FastMCP {
   constructor(options: FastMCPOptions) {
     this.name = options.name
     this.version = options.version ?? '0.0.1'
+    this._logger = resolveLogger(options.logger, options.logLevel)
     this._auth = options.auth
     this._cors = resolveCors(options.http?.cors)
     this._oauth = options.oauth

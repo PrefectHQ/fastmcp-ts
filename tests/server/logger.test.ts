@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest'
 import { DefaultSink, ResolvedLogger, resolveLogger } from '../../src/server/logger'
 import { theme, symbols } from '../../src/shared/terminal'
 import { theme as cliTheme } from '../../src/cli/ui/theme.js'
+import { FastMCP } from '../../src/server/FastMCP'
 
 describe('shared terminal module', () => {
   it('CLI re-export is the same object', () => {
@@ -153,5 +154,20 @@ describe('ResolvedLogger banner dispatch', () => {
     const sink = { debug: () => {}, info: (m: string) => seen.push(m), warn: () => {}, error: () => {} }
     new ResolvedLogger(sink, 'info').startupBanner({ name: 'n', version: '1.0.0', transport: 'stdio' })
     expect(seen).toEqual(['starting n v1.0.0 (stdio)'])
+  })
+})
+
+describe('FastMCP logger option', () => {
+  it('throws at construction on a malformed logLevel', () => {
+    expect(() => new FastMCP({ name: 't', logLevel: 'loud' as never })).toThrow(/logLevel/)
+  })
+
+  it('resolves an injected logger with the gate applied', () => {
+    const calls: string[] = []
+    const sink = { debug: () => calls.push('debug'), info: () => calls.push('info'), warn: () => calls.push('warn'), error: () => calls.push('error') }
+    const mcp = new FastMCP({ name: 't', logger: sink, logLevel: 'warn' })
+    mcp._logger.info('x')
+    mcp._logger.warn('y')
+    expect(calls).toEqual(['warn'])
   })
 })
