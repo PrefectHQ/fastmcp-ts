@@ -116,7 +116,8 @@ export async function toJsonSchema(
       if (result !== null && typeof result === 'object') {
         return result as Record<string, unknown>
       }
-    } catch {
+    } catch (err) {
+      logger?.debug('toJsonSchema strategy failed', { component: 'tool', strategy: 'native', error: String(err) })
       // fall through
     }
   }
@@ -127,7 +128,8 @@ export async function toJsonSchema(
     return (z as unknown as { toJSONSchema: (s: unknown) => Record<string, unknown> }).toJSONSchema(
       schema,
     )
-  } catch {
+  } catch (err) {
+    logger?.debug('toJsonSchema strategy failed', { component: 'tool', strategy: 'zod-v4', error: String(err) })
     // fall through
   }
 

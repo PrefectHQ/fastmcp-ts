@@ -194,9 +194,24 @@ describe('threading', () => {
     const { logger, calls } = collectingLogger()
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      const result = await toJsonSchema({ '~standard': { validate: () => ({ value: {} }) } } as never, 'tool myTool', logger)
+      const result = await toJsonSchema(
+        {
+          '~standard': { validate: () => ({ value: {} }) },
+          toJsonSchema: () => { throw new Error('native failed') },
+        } as never,
+        'tool myTool',
+        logger,
+      )
       expect(result).toEqual({ type: 'object' })
-      expect(calls.some((c) => c.level === 'warn' && c.message.includes('Could not auto-generate'))).toBe(true)
+      const debugIndex = calls.findIndex(
+        (c) => c.level === 'debug' && c.message.includes('toJsonSchema strategy'),
+      )
+      const warnIndex = calls.findIndex(
+        (c) => c.level === 'warn' && c.message.includes('Could not auto-generate'),
+      )
+      expect(debugIndex).toBeGreaterThanOrEqual(0)
+      expect(warnIndex).toBeGreaterThanOrEqual(0)
+      expect(debugIndex).toBeLessThan(warnIndex)
       expect(consoleSpy).not.toHaveBeenCalled()
     } finally { consoleSpy.mockRestore() }
   })

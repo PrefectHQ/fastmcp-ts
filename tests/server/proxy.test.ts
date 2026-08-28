@@ -3,6 +3,24 @@ import { FastMCP } from '../../src/server/FastMCP'
 import { buildProxyFromClient } from '../../src/server/proxy'
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { z } from 'zod'
+import type { Logger } from '../../src/server/logger'
+
+/** Local collecting sink — mirrors logger.test.ts's collectingLogger but returns
+ * the plain Logger (not a ResolvedLogger), since buildProxyFromClient's options
+ * accept a raw Logger and build the ResolvedLogger internally via FastMCP. */
+function collectingSink(): {
+  logger: Logger
+  calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }>
+} {
+  const calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = []
+  const logger: Logger = {
+    debug: (message, meta) => calls.push({ level: 'debug', message, meta }),
+    info: (message, meta) => calls.push({ level: 'info', message, meta }),
+    warn: (message, meta) => calls.push({ level: 'warn', message, meta }),
+    error: (message, meta) => calls.push({ level: 'error', message, meta }),
+  }
+  return { logger, calls }
+}
 
 /** Connect a FastMCP backend to a proxy Client via an in-memory transport pair. */
 async function connectBackendToClient(backend: FastMCP): Promise<Client> {
@@ -281,5 +299,40 @@ describe('Proxy — buildProxyFromClient', () => {
     const { tools } = await consumer.listTools()
     const tool = tools.find((t) => t.name === 'versioned')
     expect(tool?.description).toBe('v2')
+  })
+
+  // ─── probe-failure logging ───────────────────────────────────────────────
+
+  it('logs a warn when the resources probe fails with a non-capability error', async () => {
+    const backend = trackFastMCP(new FastMCP({ name: 'backend' }))
+    const proxyClient = trackClient(await connectBackendToClient(backend))
+    vi.spyOn(proxyClient, 'listResources').mockRejectedValue(
+      Object.assign(new Error('boom'), { code: -32000 }),
+    )
+
+    const { logger, calls } = collectingSink()
+    trackFastMCP(await buildProxyFromClient(proxyClient, { cacheTtl: 0, logger, logLevel: 'debug' }))
+
+    expect(
+      calls.some((c) => c.level === 'warn' && c.meta?.['component'] === 'proxy'),
+    ).toBe(true)
+  })
+
+  it('logs a debug, not a warn, when the resources probe fails with method-not-found', async () => {
+    const backend = trackFastMCP(new FastMCP({ name: 'backend' }))
+    const proxyClient = trackClient(await connectBackendToClient(backend))
+    vi.spyOn(proxyClient, 'listResources').mockRejectedValue(
+      Object.assign(new Error('not supported'), { code: -32601 }),
+    )
+
+    const { logger, calls } = collectingSink()
+    trackFastMCP(await buildProxyFromClient(proxyClient, { cacheTtl: 0, logger, logLevel: 'debug' }))
+
+    expect(
+      calls.some((c) => c.level === 'debug' && c.meta?.['component'] === 'proxy'),
+    ).toBe(true)
+    expect(
+      calls.some((c) => c.level === 'warn' && c.meta?.['component'] === 'proxy'),
+    ).toBe(false)
   })
 })

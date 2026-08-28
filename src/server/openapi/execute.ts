@@ -168,6 +168,7 @@ export async function runToolRequest(
   try {
     result = JSON.parse(text)
   } catch {
+    logger?.debug('openapi response was not JSON; returning raw text', { component: 'openapi' })
     // Not JSON: return the raw text.
     return new ToolResult({ content: [{ type: 'text', text }] })
   }

@@ -6,6 +6,7 @@ import { ToolResult } from './tool'
 import { ResourceResult } from './resource'
 import { PromptResult } from './prompt'
 import type { PromptMessage } from './prompt'
+import type { Logger, ResolvedLogger, FrameworkLogLevel } from './logger'
 
 type StdioTransport = {
   type: 'stdio'
@@ -15,6 +16,10 @@ type StdioTransport = {
   cwd?: string
   /** How long (ms) before the proxy re-fetches component lists. Default 30 000. Set 0 for notifications-only. */
   cacheTtl?: number
+  /** Framework logger for the proxy's own FastMCP instance. Defaults to the stderr sink. */
+  logger?: Logger
+  /** Framework log level for the proxy's own FastMCP instance. */
+  logLevel?: FrameworkLogLevel
 }
 
 type HttpTransport = {
@@ -23,9 +28,25 @@ type HttpTransport = {
   requestInit?: RequestInit
   /** How long (ms) before the proxy re-fetches component lists. Default 30 000. Set 0 for notifications-only. */
   cacheTtl?: number
+  /** Framework logger for the proxy's own FastMCP instance. Defaults to the stderr sink. */
+  logger?: Logger
+  /** Framework log level for the proxy's own FastMCP instance. */
+  logLevel?: FrameworkLogLevel
 }
 
 export type ProxyTransport = StdioTransport | HttpTransport
+
+/** Log a swallowed probe failure at the right severity: a missing capability
+ * (method not found) is normal and logged at debug; anything else is a real
+ * failure worth a warn, since the proxy silently serves none for that type. */
+function logProbeFailure(logger: ResolvedLogger, what: string, err: unknown): void {
+  const code = (err as { code?: number } | null)?.code
+  if (code === -32601) {
+    logger.debug(`proxied server does not support ${what}`, { component: 'proxy' })
+  } else {
+    logger.warn(`proxied server ${what} probe failed; serving none`, { component: 'proxy', error: String(err) })
+  }
+}
 
 /**
  * Build a FastMCP proxy around an already-connected MCP Client.
@@ -33,7 +54,7 @@ export type ProxyTransport = StdioTransport | HttpTransport
  */
 export async function buildProxyFromClient(
   client: Client,
-  options?: { cacheTtl?: number; name?: string },
+  options?: { cacheTtl?: number; name?: string; logger?: Logger; logLevel?: FrameworkLogLevel },
 ): Promise<FastMCP> {
   const cacheTtl = options?.cacheTtl ?? 30_000
 
@@ -41,7 +62,13 @@ export async function buildProxyFromClient(
   const proxyName = options?.name ?? serverInfo?.name ?? 'proxy'
   const proxyVersion = serverInfo?.version ?? '0.0.1'
 
-  const proxy = new FastMCP({ name: proxyName, version: proxyVersion })
+  const proxy = new FastMCP({
+    name: proxyName,
+    version: proxyVersion,
+    ...(options?.logger !== undefined ? { logger: options.logger } : {}),
+    ...(options?.logLevel !== undefined ? { logLevel: options.logLevel } : {}),
+  })
+  const logger = proxy._logger
 
   // Track which component identifiers were registered by this proxy so we can diff on resync.
   const proxiedTools = new Set<string>()
@@ -125,8 +152,8 @@ export async function buildProxyFromClient(
           proxiedResources.add(resource.uri)
         }
       }
-    } catch {
-      // server may not support resources
+    } catch (err) {
+      logProbeFailure(logger, 'resources', err)
     }
 
     try {
@@ -163,8 +190,8 @@ export async function buildProxyFromClient(
           proxiedResources.add(uriTemplate)
         }
       }
-    } catch {
-      // server may not support resource templates
+    } catch (err) {
+      logProbeFailure(logger, 'resource templates', err)
     }
 
     for (const uri of proxiedResources) {
@@ -292,5 +319,10 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
 
   await client.connect(transport)
 
-  return buildProxyFromClient(client, { cacheTtl: config.cacheTtl, name })
+  return buildProxyFromClient(client, {
+    cacheTtl: config.cacheTtl,
+    name,
+    logger: config.logger,
+    logLevel: config.logLevel,
+  })
 }

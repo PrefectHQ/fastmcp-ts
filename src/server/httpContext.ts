@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http'
+import type { ResolvedLogger } from './logger'
 
 /**
  * Header names whose VALUES are credentials for this hop. Withheld from
@@ -71,6 +72,7 @@ export interface HttpRequestContext {
 export function buildHttpRequestContext(
   req: Request,
   sensitiveHeaders: ReadonlySet<string>,
+  logger?: ResolvedLogger,
 ): HttpRequestContext {
   const headers = new Headers()
   const redacted: string[] = []
@@ -87,7 +89,8 @@ export function buildHttpRequestContext(
   try {
     const u = new URL(req.url)
     url = u.pathname + u.search
-  } catch {
+  } catch (err) {
+    logger?.debug('request URL parse failed; using origin-form as-is', { component: 'http', error: String(err) })
     url = req.url // already origin-form
   }
   return { headers, redactedHeaderNames: redacted, method: req.method, url }

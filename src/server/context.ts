@@ -387,7 +387,7 @@ export function createContext(
     auth,
     requestId,
 
-    http: httpReq ? buildHttpRequestContext(httpReq, sensitive) : undefined,
+    http: httpReq ? buildHttpRequestContext(httpReq, sensitive, logger) : undefined,
 
     log,
     debug: (msg, logger) => log('debug', msg, logger),
