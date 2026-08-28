@@ -14,8 +14,9 @@ export interface CustomRouteConfig {
   path: string
   /**
    * HTTP methods served, compared case-insensitively. Default: `['GET']`.
-   * `OPTIONS` is rejected at registration: the global CORS preflight answers
-   * `OPTIONS` before route dispatch, so a route on it would be unreachable.
+   * `OPTIONS` is rejected at registration: it is reserved for the global
+   * CORS preflight, and never dispatches to a route even when CORS is
+   * disabled (`http.cors: false`).
    */
   methods?: string[]
 }
@@ -63,7 +64,7 @@ export class CustomRouteRegistry {
     }
     if (methods.includes('OPTIONS')) {
       throw new Error(
-        `customRoute ${path}: OPTIONS cannot be routed — the CORS preflight handler answers OPTIONS before route dispatch`,
+        `customRoute ${path}: OPTIONS cannot be routed — it is reserved for the CORS preflight and never dispatches to routes`,
       )
     }
     if (this._routes.has(path)) {

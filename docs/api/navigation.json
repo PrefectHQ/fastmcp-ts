@@ -636,6 +636,12 @@
             "isDeprecated": false
           },
           {
+            "title": "CorsOptions",
+            "kind": 256,
+            "path": "server/interfaces/CorsOptions.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "CspPolicy",
             "kind": 256,
             "path": "server/interfaces/CspPolicy.mdx",

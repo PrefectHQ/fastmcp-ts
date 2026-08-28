@@ -558,6 +558,54 @@ describe('Server — Authentication', () => {
     })
   })
 
+  describe('OAuth serve path CORS', () => {
+    const cleanup: Array<() => Promise<void>> = []
+    afterEach(async () => {
+      await Promise.all(cleanup.map((c) => c()))
+      cleanup.length = 0
+    })
+
+    it('answers the global preflight and attaches CORS headers to MCP endpoint responses', async () => {
+      const provider = oauthProvider()
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      const preflight = await fetch(`${baseUrl}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'http://localhost:3000', 'Access-Control-Request-Method': 'POST' },
+      })
+      expect(preflight.status).toBe(204)
+      expect(preflight.headers.get('access-control-allow-origin')).toBe('*')
+      expect(preflight.headers.get('access-control-allow-headers')).toContain('Mcp-Session-Id')
+
+      // A browser must be able to read the 401 challenge cross-origin.
+      const unauthorized = await fetch(`${baseUrl}/mcp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }),
+      })
+      expect(unauthorized.status).toBe(401)
+      expect(unauthorized.headers.get('access-control-allow-origin')).toBe('*')
+    })
+
+    it('cors: false leaves the OAuth serve path CORS-less', async () => {
+      const provider = oauthProvider()
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider }, http: { cors: false } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+      const baseUrl = `http://127.0.0.1:${mcp.address!.port}`
+
+      const preflight = await fetch(`${baseUrl}/mcp`, {
+        method: 'OPTIONS',
+        headers: { Origin: 'http://localhost:3000', 'Access-Control-Request-Method': 'POST' },
+      })
+      expect(preflight.status).not.toBe(204)
+      expect(preflight.headers.get('access-control-allow-origin')).toBeNull()
+    })
+  })
+
   describe('OAuth proxy', () => {
     const cleanup: Array<() => Promise<void>> = []
     afterEach(async () => {

@@ -1,0 +1,93 @@
+---
+title: "CorsOptions"
+---
+
+Defined in: [server/cors.ts:15](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L15)
+
+`FastMCPOptions.http.cors` object form. `true` and omitted mean the
+permissive defaults; `false` disables CORS handling entirely (no global
+preflight, no headers).
+
+## Properties
+
+### allowedHeaders?
+
+```ts
+optional allowedHeaders?: string[];
+```
+
+Defined in: [server/cors.ts:31](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L31)
+
+Extra request headers for `Access-Control-Allow-Headers`, added to the
+defaults. The MCP protocol headers are never removed: silently dropping
+one would break browser clients in ways that only surface in
+production.
+
+***
+
+### credentials?
+
+```ts
+optional credentials?: boolean;
+```
+
+Defined in: [server/cors.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L39)
+
+Send `Access-Control-Allow-Credentials: true`. Requires an explicit
+non-`'*'` `origin`: browsers reject `*` on credentialed requests, so
+that combination is a construction-time error.
+
+***
+
+### exposedHeaders?
+
+```ts
+optional exposedHeaders?: string[];
+```
+
+Defined in: [server/cors.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L35)
+
+Extra response headers for `Access-Control-Expose-Headers`, added to
+the default `Mcp-Session-Id` (legacy sessionful browser clients must
+read it from the initialize response).
+
+***
+
+### maxAge?
+
+```ts
+optional maxAge?: number;
+```
+
+Defined in: [server/cors.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L41)
+
+`Access-Control-Max-Age` for preflight caching, in seconds.
+
+***
+
+### methods?
+
+```ts
+optional methods?: string[];
+```
+
+Defined in: [server/cors.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L26)
+
+`Access-Control-Allow-Methods` value; replaces the default
+`GET, POST, DELETE, OPTIONS` list verbatim.
+
+***
+
+### origin?
+
+```ts
+optional origin?: string | string[] | ((origin) => boolean);
+```
+
+Defined in: [server/cors.ts:23](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L23)
+
+Origins allowed to call the MCP endpoint from a browser, compared
+against the request's `Origin` header. `'*'` (the default) allows every
+origin. A string or array allows exactly those `scheme://host[:port]`
+origins. A function receives the `Origin` value and returns whether it
+is allowed. A function that throws denies the origin.
