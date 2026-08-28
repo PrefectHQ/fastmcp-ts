@@ -30,7 +30,7 @@ import { resolveSensitiveHeaders, nodeRequestToHttpContext } from './httpContext
 import { CustomRouteRegistry, serveCustomRouteNode, writeMethodNotAllowed, resolveHealth } from './customRoutes'
 import type { CustomRouteConfig, CustomRouteHandler, HealthOptions } from './customRoutes'
 import { envBool } from './env'
-import { runMiddlewareChain } from './middleware'
+import { runMiddlewareChain, LoggingMiddleware } from './middleware'
 import type { Middleware } from './middleware'
 import { applyTransformChain } from './transform'
 import type { Transform, ToolView, ResourceView, PromptView, SynthesizedTool } from './transform'
@@ -507,6 +507,7 @@ export class FastMCP {
     this._resourcesPageSize = options.resourcesPageSize ?? 50
     this._promptsPageSize = options.promptsPageSize ?? 50
     this._middleware = options.middleware ? [...options.middleware] : []
+    for (const mw of this._middleware) if (mw instanceof LoggingMiddleware) mw._bindLogger(this._logger)
     this._transforms = options.transforms ? [...options.transforms] : []
     this._cacheHints = options.cacheHints
     this._requestStateCodec = options.requestState
@@ -1862,6 +1863,7 @@ export class FastMCP {
    */
   use(mw: Middleware): this {
     this._middleware.push(mw)
+    if (mw instanceof LoggingMiddleware) mw._bindLogger(this._logger)
     mw.setup?.(this._primaryServer)
     return this
   }

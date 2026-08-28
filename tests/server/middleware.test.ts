@@ -171,6 +171,85 @@ describe('Server — Middleware', () => {
       }
     })
 
+    it('LoggingMiddleware with no emit never writes to stdout', async () => {
+      // Regression: the pre-fix default emit was console.log, which writes to stdout —
+      // the stdio transport's protocol channel. A no-argument LoggingMiddleware must
+      // never touch stdout, on any transport.
+      //
+      // Note: in this project's vitest setup, console.log's internal write does not
+      // route through a live process.stdout.write lookup, so spying on
+      // process.stdout.write alone does not observe a console.log call (verified: a
+      // process.stdout.write spy stays uncalled even while console.log genuinely
+      // writes to the real stdout). console.log itself is spied directly so the
+      // assertion actually distinguishes the buggy default from the fix; the
+      // process.stdout.write spy is kept for defense in depth.
+      const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      try {
+        const mcp = new FastMCP({ name: 'test' })
+        mcp.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+        mcp.use(new LoggingMiddleware())
+
+        const { client, close } = await createTestClient(mcp)
+        try {
+          await client.callTool({ name: 'ping', arguments: {} })
+        } finally {
+          await close()
+        }
+        expect(stdoutSpy).not.toHaveBeenCalled()
+        expect(consoleLogSpy).not.toHaveBeenCalled()
+      } finally {
+        stdoutSpy.mockRestore()
+        consoleLogSpy.mockRestore()
+        stderrSpy.mockRestore()
+      }
+    })
+
+    it('LoggingMiddleware adopts the server logger when bound', async () => {
+      const calls: Array<{ level: string; message: string }> = []
+      const sink = {
+        debug: (message: string) => calls.push({ level: 'debug', message }),
+        info: (message: string) => calls.push({ level: 'info', message }),
+        warn: (message: string) => calls.push({ level: 'warn', message }),
+        error: (message: string) => calls.push({ level: 'error', message }),
+      }
+
+      const mcp = new FastMCP({
+        name: 'test',
+        logger: sink,
+        logLevel: 'debug',
+        middleware: [new LoggingMiddleware()],
+      })
+      mcp.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await client.callTool({ name: 'ping', arguments: {} })
+        expect(calls.some((c) => c.level === 'info' && c.message.startsWith('→ '))).toBe(true)
+        expect(calls.some((c) => c.level === 'info' && c.message.startsWith('← '))).toBe(true)
+      } finally {
+        await close()
+      }
+    })
+
+    it('LoggingMiddleware with an explicit emit is byte-for-byte unchanged', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+
+      const logs: string[] = []
+      mcp.use(new LoggingMiddleware((msg) => logs.push(msg)))
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await client.callTool({ name: 'ping', arguments: {} })
+        expect(logs.some((l) => l.startsWith('[fastmcp] → tools/call'))).toBe(true)
+        expect(logs.some((l) => /^\[fastmcp\] ← tools\/call \(\d+ms\)$/.test(l))).toBe(true)
+      } finally {
+        await close()
+      }
+    })
+
     it('caching middleware returns a stored response for repeated identical requests', async () => {
       const mcp = new FastMCP({ name: 'test' })
       let callCount = 0

@@ -1,6 +1,7 @@
 import { ProtocolError, ProtocolErrorCode, Server } from "@modelcontextprotocol/server";
 import { createHash } from 'node:crypto'
 import type { McpContext } from './context'
+import type { ResolvedLogger } from './logger'
 
 // ---------------------------------------------------------------------------
 // Core types
@@ -91,21 +92,37 @@ export function runMiddlewareChain<R>(
 // Built-in middleware
 // ---------------------------------------------------------------------------
 
-/** Logs every request with method, outcome, and elapsed time. */
+/** Logs every request with method, outcome, and elapsed time.
+ *
+ * Output resolution, in order: an explicit `emit` (unchanged legacy behavior,
+ * `[fastmcp]`-prefixed strings); the server's framework logger when attached
+ * via FastMCPOptions.middleware or `use()`; a plain stderr write. The default
+ * was `console.log` before v-next, which corrupted the stdio protocol stream. */
 export class LoggingMiddleware implements Middleware {
-  constructor(private readonly emit: (msg: string) => void = console.log) {}
+  private logger: ResolvedLogger | undefined
+
+  constructor(private readonly emit?: (msg: string) => void) {}
+
+  /** @internal Called by FastMCP when this middleware is attached. */
+  _bindLogger(logger: ResolvedLogger): void {
+    if (!this.emit) this.logger = logger
+  }
+
+  private out(level: 'info' | 'warn', text: string): void {
+    if (this.emit) { this.emit(`[fastmcp] ${text}`) ; return }
+    if (this.logger) { this.logger[level](text) ; return }
+    process.stderr.write(`[fastmcp] ${text}\n`)
+  }
 
   async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     const t0 = Date.now()
-    this.emit(`[fastmcp] → ${ctx.method}`)
+    this.out('info', `→ ${ctx.method}`)
     try {
       const result = await next()
-      this.emit(`[fastmcp] ← ${ctx.method} (${Date.now() - t0}ms)`)
+      this.out('info', `← ${ctx.method} (${Date.now() - t0}ms)`)
       return result
     } catch (err) {
-      this.emit(
-        `[fastmcp] ✗ ${ctx.method} (${Date.now() - t0}ms): ${err instanceof Error ? err.message : String(err)}`,
-      )
+      this.out('warn', `✗ ${ctx.method} (${Date.now() - t0}ms): ${err instanceof Error ? err.message : String(err)}`)
       throw err
     }
   }
