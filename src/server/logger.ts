@@ -56,11 +56,25 @@ export interface BannerFields {
 function formatMetaValue(value: unknown): string {
   if (value instanceof Error) return value.stack ?? String(value)
   if (typeof value === 'string') return value
-  return JSON.stringify(value)
+  // A circular or BigInt-bearing meta value must not throw from inside a log
+  // call: that would surface as a failure in whatever unrelated code path
+  // logged it (for example a custom route's error handler, killing its own
+  // 500 response). Fall back to String() rather than let the log call itself
+  // become the failure.
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
 }
 
 function jsonMeta(meta: Record<string, unknown>): string {
-  return JSON.stringify(Object.fromEntries(Object.entries(meta).map(([k, v]) => [k, v instanceof Error ? String(v) : v])))
+  const plain = Object.fromEntries(Object.entries(meta).map(([k, v]) => [k, v instanceof Error ? String(v) : v]))
+  try {
+    return JSON.stringify(plain)
+  } catch {
+    return String(plain)
+  }
 }
 
 /** Built-in sink. Pretty mode on a TTY (unless NO_COLOR), plain single-line
@@ -139,10 +153,33 @@ export class ResolvedLogger {
     return LEVEL_ORDER[level] >= LEVEL_ORDER[this.level]
   }
 
-  debug(message: string, meta?: Record<string, unknown>): void { if (this.enabled('debug')) this.sink.debug(message, meta) }
-  info(message: string, meta?: Record<string, unknown>): void { if (this.enabled('info')) this.sink.info(message, meta) }
-  warn(message: string, meta?: Record<string, unknown>): void { if (this.enabled('warn')) this.sink.warn(message, meta) }
-  error(message: string, meta?: Record<string, unknown>): void { if (this.enabled('error')) this.sink.error(message, meta) }
+  // meta stays an omitted argument (not `undefined` passed explicitly) when the
+  // caller left it out: a sink like `console` prints a literal "undefined" for a
+  // second argument that is present but empty, and console.info/console.debug
+  // write to stdout, so a stray argument there is a stdio protocol-safety bug too.
+  debug(message: string, meta?: Record<string, unknown>): void {
+    if (!this.enabled('debug')) return
+    if (meta === undefined) this.sink.debug(message)
+    else this.sink.debug(message, meta)
+  }
+
+  info(message: string, meta?: Record<string, unknown>): void {
+    if (!this.enabled('info')) return
+    if (meta === undefined) this.sink.info(message)
+    else this.sink.info(message, meta)
+  }
+
+  warn(message: string, meta?: Record<string, unknown>): void {
+    if (!this.enabled('warn')) return
+    if (meta === undefined) this.sink.warn(message)
+    else this.sink.warn(message, meta)
+  }
+
+  error(message: string, meta?: Record<string, unknown>): void {
+    if (!this.enabled('error')) return
+    if (meta === undefined) this.sink.error(message)
+    else this.sink.error(message, meta)
+  }
 
   /** Server-start card. Pretty DefaultSink renders a banner block;
    * every other sink gets one plain info line. Gated as info. */

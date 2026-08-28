@@ -108,21 +108,41 @@ export class LoggingMiddleware implements Middleware {
     if (!this.emit) this.logger = logger
   }
 
-  private out(level: 'info' | 'warn', text: string): void {
-    if (this.emit) { this.emit(`[fastmcp] ${text}`) ; return }
-    if (this.logger) { this.logger[level](text) ; return }
-    process.stderr.write(`[fastmcp] ${text}\n`)
+  // Three output paths, each shaped for its audience:
+  // - explicit `emit`: byte-identical to the pre-logger-injection format
+  //   (arrows and the ✗ glyph), since callers may already parse it.
+  // - `this.logger` (the LOGGER branch): the spec invariant that injected
+  //   loggers receive no symbols — plain text plus structured meta.
+  // - stderr fallback (detached from a server): presentation output, like
+  //   DefaultSink, so it keeps the arrow/glyph format too.
+  private emitRequest(method: string): void {
+    if (this.emit) { this.emit(`[fastmcp] → ${method}`) ; return }
+    if (this.logger) { this.logger.info(`request ${method}`) ; return }
+    process.stderr.write(`[fastmcp] → ${method}\n`)
+  }
+
+  private emitResponse(method: string, ms: number): void {
+    if (this.emit) { this.emit(`[fastmcp] ← ${method} (${ms}ms)`) ; return }
+    if (this.logger) { this.logger.info(`response ${method}`, { ms }) ; return }
+    process.stderr.write(`[fastmcp] ← ${method} (${ms}ms)\n`)
+  }
+
+  private emitFailure(method: string, ms: number, err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err)
+    if (this.emit) { this.emit(`[fastmcp] ✗ ${method} (${ms}ms): ${message}`) ; return }
+    if (this.logger) { this.logger.warn(`request failed ${method}`, { ms, error: err }) ; return }
+    process.stderr.write(`[fastmcp] ✗ ${method} (${ms}ms): ${message}\n`)
   }
 
   async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     const t0 = Date.now()
-    this.out('info', `→ ${ctx.method}`)
+    this.emitRequest(ctx.method)
     try {
       const result = await next()
-      this.out('info', `← ${ctx.method} (${Date.now() - t0}ms)`)
+      this.emitResponse(ctx.method, Date.now() - t0)
       return result
     } catch (err) {
-      this.out('warn', `✗ ${ctx.method} (${Date.now() - t0}ms): ${err instanceof Error ? err.message : String(err)}`)
+      this.emitFailure(ctx.method, Date.now() - t0, err)
       throw err
     }
   }

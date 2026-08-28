@@ -44,7 +44,7 @@ function logProbeFailure(logger: ResolvedLogger, what: string, err: unknown): vo
   if (code === -32601) {
     logger.debug(`proxied server does not support ${what}`, { component: 'proxy' })
   } else {
-    logger.warn(`proxied server ${what} probe failed; serving none`, { component: 'proxy', error: String(err) })
+    logger.warn(`proxied server ${what} probe failed; serving none`, { component: 'proxy', error: err })
   }
 }
 

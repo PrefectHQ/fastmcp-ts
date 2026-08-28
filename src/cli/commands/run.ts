@@ -8,6 +8,25 @@ import { theme } from '../ui/theme.js'
 import { symbols } from '../ui/symbols.js'
 import { createStartupReporter } from '../ui/startup.js'
 
+/**
+ * Whether the startup reporter should animate a spinner for this run.
+ *
+ * The stdio transport never animates: it is the default transport (see the
+ * `transport` arg below and MCP_TRANSPORT's fallback in FastMCP.run), a spawned
+ * stdio child never emits any of the reporter's sniff words on stderr (they only
+ * ever appear in an HTTP server's "listening" line), and buffering its stderr
+ * behind a live spinner would hide all output for the process lifetime on a TTY.
+ * `--reload` also disables animation: the reporter re-fires on every restart.
+ *
+ * `transport` here is always the resolved value — `spawnServer` unconditionally
+ * sets the spawned child's MCP_TRANSPORT to it (see transportEnv below),
+ * overriding anything already in the shell's environment — so no separate
+ * MCP_TRANSPORT lookup is needed.
+ */
+export function shouldAnimateStartup(transport: string, reload: boolean): boolean {
+  return transport !== 'stdio' && !reload
+}
+
 function spawnServer(
   spec: FileSpec,
   env: NodeJS.ProcessEnv,
@@ -50,7 +69,7 @@ export default defineCommand({
     let child = spawnServer(fileSpec, transportEnv)
 
     function attachHandlers(proc: ReturnType<typeof spawn>): void {
-      const reporter = createStartupReporter({ animate: !args.reload })
+      const reporter = createStartupReporter({ animate: shouldAnimateStartup(args.transport, args.reload) })
 
       proc.stdout?.on('data', (chunk: Buffer) => {
         reporter.onStdout(chunk.toString())

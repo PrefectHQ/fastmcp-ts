@@ -117,7 +117,7 @@ export async function toJsonSchema(
         return result as Record<string, unknown>
       }
     } catch (err) {
-      logger?.debug('toJsonSchema strategy failed', { component: 'tool', strategy: 'native', error: String(err) })
+      logger?.debug('toJsonSchema strategy failed', { component: 'tool', strategy: 'native', error: err })
       // fall through
     }
   }
@@ -129,7 +129,7 @@ export async function toJsonSchema(
       schema,
     )
   } catch (err) {
-    logger?.debug('toJsonSchema strategy failed', { component: 'tool', strategy: 'zod-v4', error: String(err) })
+    logger?.debug('toJsonSchema strategy failed', { component: 'tool', strategy: 'zod-v4', error: err })
     // fall through
   }
 

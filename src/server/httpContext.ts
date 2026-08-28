@@ -90,7 +90,7 @@ export function buildHttpRequestContext(
     const u = new URL(req.url)
     url = u.pathname + u.search
   } catch (err) {
-    logger?.debug('request URL parse failed; using origin-form as-is', { component: 'http', error: String(err) })
+    logger?.debug('request URL parse failed; using origin-form as-is', { component: 'http', error: err })
     url = req.url // already origin-form
   }
   return { headers, redactedHeaderNames: redacted, method: req.method, url }

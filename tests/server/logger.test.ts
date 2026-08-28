@@ -84,6 +84,37 @@ describe('resolveLogger', () => {
     expect(seen[0]![0]).not.toMatch(/\x1b\[/)
     expect(seen[0]![0]).not.toContain('[fastmcp]')
   })
+
+  it('a meta-less call reaches the sink with exactly one argument, not (message, undefined)', () => {
+    // Regression: forwarding `meta` unconditionally means a sink like `console`
+    // sees a real (but empty) second argument and prints a literal "undefined".
+    // `arguments.length` proves the argument was omitted, not merely `undefined`.
+    const argCounts: Record<string, number> = {}
+    const sink = {
+      debug: function () { argCounts['debug'] = arguments.length },
+      info: function () { argCounts['info'] = arguments.length },
+      warn: function () { argCounts['warn'] = arguments.length },
+      error: function () { argCounts['error'] = arguments.length },
+    }
+    const log = resolveLogger(sink, 'debug')
+    log.debug('a')
+    log.info('b')
+    log.warn('c')
+    log.error('d')
+    expect(argCounts).toEqual({ debug: 1, info: 1, warn: 1, error: 1 })
+  })
+
+  it('a call with meta still reaches the sink with exactly two arguments', () => {
+    const argCounts: number[] = []
+    const sink = {
+      debug: () => {},
+      info: function () { argCounts.push(arguments.length) },
+      warn: () => {},
+      error: () => {},
+    }
+    resolveLogger(sink, 'info').info('hello', { component: 'proxy' })
+    expect(argCounts).toEqual([2])
+  })
 })
 
 describe('DefaultSink plain mode', () => {
@@ -102,6 +133,20 @@ describe('DefaultSink plain mode', () => {
     const { lines, restore } = capture()
     try { new DefaultSink('plain').error('failed', { error: new Error('nope') }) } finally { restore() }
     expect(lines[0]).toContain('Error: nope')
+  })
+
+  it('a circular meta value falls back to String() instead of throwing', () => {
+    // A circular value thrown from a custom route handler and logged as meta
+    // must not make the log call itself throw: that would surface inside
+    // whatever caller logged it (for example an error handler whose own 500
+    // response then never gets written).
+    const circular: Record<string, unknown> = { a: 1 }
+    circular['self'] = circular
+    const { lines, restore } = capture()
+    try {
+      expect(() => new DefaultSink('plain').error('failed', { value: circular })).not.toThrow()
+    } finally { restore() }
+    expect(lines[0]).toContain('[fastmcp] ERROR failed')
   })
 })
 
@@ -139,6 +184,16 @@ describe('DefaultSink pretty mode', () => {
     expect(banner).toContain('http')
     expect(lines[1]).toContain(symbols.success)
     expect(lines[1]).toContain('listening on http://localhost:8000/mcp')
+  })
+
+  it('a circular meta value falls back to String() instead of throwing', () => {
+    const circular: Record<string, unknown> = { a: 1 }
+    circular['self'] = circular
+    const { lines, restore } = capture()
+    try {
+      expect(() => new DefaultSink('pretty').warn('careful', { value: circular })).not.toThrow()
+    } finally { restore() }
+    expect(lines[0]).toContain('careful')
   })
 })
 

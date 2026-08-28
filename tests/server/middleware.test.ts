@@ -206,13 +206,16 @@ describe('Server — Middleware', () => {
       }
     })
 
-    it('LoggingMiddleware adopts the server logger when bound', async () => {
-      const calls: Array<{ level: string; message: string }> = []
+    it('LoggingMiddleware adopts the server logger when bound, as plain text with no glyphs', async () => {
+      // Spec invariant: an injected logger never receives symbols/glyphs — those
+      // are presentation and belong to the default sink / explicit-emit / stderr
+      // fallback paths only. The LOGGER branch sends plain text plus meta.
+      const calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = []
       const sink = {
-        debug: (message: string) => calls.push({ level: 'debug', message }),
-        info: (message: string) => calls.push({ level: 'info', message }),
-        warn: (message: string) => calls.push({ level: 'warn', message }),
-        error: (message: string) => calls.push({ level: 'error', message }),
+        debug: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'debug', message, meta }),
+        info: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'info', message, meta }),
+        warn: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'warn', message, meta }),
+        error: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'error', message, meta }),
       }
 
       const mcp = new FastMCP({
@@ -226,8 +229,46 @@ describe('Server — Middleware', () => {
       const { client, close } = await createTestClient(mcp)
       try {
         await client.callTool({ name: 'ping', arguments: {} })
-        expect(calls.some((c) => c.level === 'info' && c.message.startsWith('→ '))).toBe(true)
-        expect(calls.some((c) => c.level === 'info' && c.message.startsWith('← '))).toBe(true)
+        const request = calls.find((c) => c.level === 'info' && c.message === 'request tools/call')
+        const response = calls.find((c) => c.level === 'info' && c.message === 'response tools/call')
+        expect(request).toBeDefined()
+        expect(response).toBeDefined()
+        expect(typeof response?.meta?.['ms']).toBe('number')
+        for (const c of calls) {
+          expect(c.message).not.toContain('→')
+          expect(c.message).not.toContain('←')
+          expect(c.message).not.toContain('✗')
+        }
+      } finally {
+        await close()
+      }
+    })
+
+    it('LoggingMiddleware reports a failed request to the server logger with plain text and structured meta', async () => {
+      const calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = []
+      const sink = {
+        debug: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'debug', message, meta }),
+        info: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'info', message, meta }),
+        warn: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'warn', message, meta }),
+        error: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'error', message, meta }),
+      }
+
+      const mcp = new FastMCP({
+        name: 'test',
+        logger: sink,
+        logLevel: 'debug',
+        middleware: [new LoggingMiddleware()],
+      })
+      mcp.tool({ name: 'boom', description: 'boom' }, () => { throw new Error('kaboom') })
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.callTool({ name: 'boom', arguments: {} })
+        expect(result.isError).toBe(true)
+        const failure = calls.find((c) => c.level === 'warn' && c.message === 'request failed tools/call')
+        expect(failure).toBeDefined()
+        expect(typeof failure?.meta?.['ms']).toBe('number')
+        expect(failure?.meta?.['error']).toBeInstanceOf(Error)
       } finally {
         await close()
       }

@@ -108,7 +108,10 @@ export interface FastMCPOptions {
    * errors). `console` and Winston loggers satisfy the shape directly; see
    * the logging docs for a Pino adapter. Default: a built-in stderr logger
    * (styled on a TTY, plain single-line format otherwise). Client-facing MCP
-   * logging (`ctx.log`) is a separate channel and is not affected.
+   * logging (`ctx.log`) is a separate channel and is not affected. Do not use
+   * `logger: console` with the stdio transport: `console.info` and
+   * `console.debug` write to stdout, which carries the JSON-RPC stream on
+   * that transport.
    */
   logger?: Logger
   /**
@@ -417,7 +420,7 @@ async function resolveCliEnvToken(
     _cliEnvToken = await verifier.verify(raw)
     return _cliEnvToken
   } catch (err) {
-    logger?.debug('FASTMCP_CLI_AUTH_TOKEN verification failed; continuing unauthenticated', { component: 'auth', error: String(err) })
+    logger?.debug('FASTMCP_CLI_AUTH_TOKEN verification failed; continuing unauthenticated', { component: 'auth', error: err })
     _cliEnvToken = null
     return undefined
   }

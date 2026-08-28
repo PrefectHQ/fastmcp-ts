@@ -58,7 +58,13 @@ describeEachEra('Server — Tools', (combo) => {
 
     it('an explicit inputSchema in config overrides auto-generation and suppresses warnings', async () => {
       const mcp = new FastMCP({ name: 'test' })
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      // The framework-logging migration (2026-08-28) routes this warning through the
+      // FastMCP instance's resolved logger; a default-constructed instance's logger
+      // writes to stderr directly, not via console.warn, so the spy target moved.
+      // Match on the specific warning text: the server's default sink also emits
+      // lifecycle INFO lines (banner, listening) to stderr, so "nothing written"
+      // would be the wrong (vacuous) assertion.
+      const warnSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
       try {
         // A fake non-Zod Standard Schema — auto-generation would warn and fall back
         const fakeSchema = {
@@ -79,8 +85,10 @@ describeEachEra('Server — Tools', (combo) => {
           const result = await client.listTools()
           const schema = result.tools[0].inputSchema as Record<string, unknown>
           expect((schema.properties as Record<string, unknown>)).toMatchObject({ x: { type: 'number' } })
-          // No warning should have been emitted (explicit schema took precedence)
-          expect(warnSpy).not.toHaveBeenCalled()
+          // No auto-generation warning should have been emitted (explicit schema took precedence)
+          expect(
+            warnSpy.mock.calls.some((c) => String(c[0]).includes('[fastmcp] WARN') && String(c[0]).includes('Could not auto-generate')),
+          ).toBe(false)
         } finally {
           await close()
         }

@@ -216,5 +216,66 @@ describe('createStartupReporter', () => {
         } finally { spy.mockRestore() }
       })
     })
+
+    describe('flush deadline', () => {
+      it('stops the spinner and flushes the buffer when startup is not detected within the deadline, then still detects a later sniff hit without a second spinner call', () => {
+        withTTY(() => {
+          const writes: string[] = []
+          const spy = vi.spyOn(process.stderr, 'write').mockImplementation((c) => { writes.push(String(c)); return true })
+          vi.useFakeTimers()
+          try {
+            const r = createStartupReporter({ animate: true })
+            r.onStderr('warming up\n')
+            expect(writes.join('')).toBe('')
+            expect(r.done).toBe(false)
+
+            vi.advanceTimersByTime(10_000)
+
+            // Buffer flushed by the deadline, even though startup was never detected.
+            expect(writes.join('')).toContain('warming up')
+            expect(r.done).toBe(false)
+            const record = spinnerState.calls[0]
+            expect(record?.stop.length).toBe(1)
+            expect(record?.error.length).toBe(0)
+
+            // Subsequent output streams live (no more buffering behind a spinner).
+            r.onStderr('still working\n')
+            expect(writes.join('')).toContain('still working')
+
+            // A later sniff hit still completes startup and prints the normal
+            // started line via the non-animated branch, without a second spinner call.
+            r.onStderr('listening on http://x\n')
+            expect(r.done).toBe(true)
+            expect(writes.join('')).toContain('Server started')
+            expect(record?.stop.length).toBe(1)
+          } finally {
+            vi.useRealTimers()
+            spy.mockRestore()
+          }
+        })
+      })
+
+      it('does not fire once startup is detected before the deadline', () => {
+        withTTY(() => {
+          const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+          vi.useFakeTimers()
+          try {
+            const r = createStartupReporter({ animate: true })
+            r.onStderr('listening on http://x\n')
+            expect(r.done).toBe(true)
+            const record = spinnerState.calls[0]
+            expect(record?.stop.length).toBe(1)
+
+            vi.advanceTimersByTime(10_000)
+
+            // No second stop call from a deadline that should have been cleared.
+            expect(record?.stop.length).toBe(1)
+          } finally {
+            vi.useRealTimers()
+            spy.mockRestore()
+          }
+        })
+      })
+    })
   })
 })

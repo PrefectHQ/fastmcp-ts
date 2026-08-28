@@ -81,6 +81,12 @@ object.
 const server = new FastMCP({ name: 'server', logger: console })
 ```
 
+Do not use `logger: console` with the stdio transport. `console.info` and
+`console.debug` write to stdout, and stdout carries the JSON-RPC protocol
+stream on stdio. This corrupts the protocol. Use a logger that writes every
+level to stderr instead, for example the Winston example below, which routes
+`info` and `debug` to stderr via `stderrLevels`.
+
 Winston also satisfies this shape directly. Winston's `info(message,
 meta)` signature matches FastMCP's.
 
@@ -160,3 +166,11 @@ point it at stderr instead.
 With an explicit `emit` function, `LoggingMiddleware` calls it directly
 with a `[fastmcp]`-prefixed string. This keeps the previous format, and
 you control where the string goes.
+
+## Proxy servers
+
+`createProxy` and `buildProxyFromClient` accept `logger` and `logLevel`
+options. FastMCP forwards them to the internal `FastMCP` instance that
+backs the proxy, so the proxy's own lifecycle and warning logs (for
+example a failed capability probe against the upstream server) follow
+the same configuration as any other server.

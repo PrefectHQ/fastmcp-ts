@@ -2,7 +2,7 @@
 title: "RunOptions"
 ---
 
-Defined in: [server/FastMCP.ts:224](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L224)
+Defined in: [server/FastMCP.ts:227](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L227)
 
 ## Properties
 
@@ -12,7 +12,7 @@ Defined in: [server/FastMCP.ts:224](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional health?: boolean | HealthOptions;
 ```
 
-Defined in: [server/FastMCP.ts:252](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L252)
+Defined in: [server/FastMCP.ts:255](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L255)
 
 Health endpoint on the HTTP listener `run()` starts — for Kubernetes
 liveness/readiness probes and load-balancer checks. Off unless supplied:
@@ -32,7 +32,7 @@ startup, like `stateless`) and never served through `fetch()`.
 optional host?: string;
 ```
 
-Defined in: [server/FastMCP.ts:227](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L227)
+Defined in: [server/FastMCP.ts:230](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L230)
 
 ***
 
@@ -42,7 +42,7 @@ Defined in: [server/FastMCP.ts:227](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional path?: string;
 ```
 
-Defined in: [server/FastMCP.ts:228](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L228)
+Defined in: [server/FastMCP.ts:231](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L231)
 
 ***
 
@@ -52,7 +52,7 @@ Defined in: [server/FastMCP.ts:228](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional port?: number;
 ```
 
-Defined in: [server/FastMCP.ts:226](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L226)
+Defined in: [server/FastMCP.ts:229](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L229)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [server/FastMCP.ts:226](https://github.com/PrefectHQ/fastmcp-ts/blob
 optional stateless?: boolean;
 ```
 
-Defined in: [server/FastMCP.ts:240](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L240)
+Defined in: [server/FastMCP.ts:243](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L243)
 
 Serve the legacy (2025-era) HTTP transport statelessly: a fresh server and
 transport per request, no session registry, incoming `mcp-session-id`
@@ -82,7 +82,7 @@ is already stateless and is unaffected.
 optional stdin?: Readable;
 ```
 
-Defined in: [server/FastMCP.ts:254](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L254)
+Defined in: [server/FastMCP.ts:257](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L257)
 
 Custom stdin stream for the stdio transport. Defaults to process.stdin.
 
@@ -94,7 +94,7 @@ Custom stdin stream for the stdio transport. Defaults to process.stdin.
 optional stdout?: Writable;
 ```
 
-Defined in: [server/FastMCP.ts:256](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L256)
+Defined in: [server/FastMCP.ts:259](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L259)
 
 Custom stdout stream for the stdio transport. Defaults to process.stdout.
 
@@ -106,4 +106,4 @@ Custom stdout stream for the stdio transport. Defaults to process.stdout.
 optional transport?: "stdio" | "http";
 ```
 
-Defined in: [server/FastMCP.ts:225](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L225)
+Defined in: [server/FastMCP.ts:228](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L228)
