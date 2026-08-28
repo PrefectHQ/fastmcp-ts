@@ -1,0 +1,12 @@
+---
+title: "FrameworkLogLevel"
+---
+
+```ts
+type FrameworkLogLevel = typeof FRAMEWORK_LOG_LEVELS[number];
+```
+
+Defined in: [server/logger.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/logger.ts#L27)
+
+Framework-diagnostics level axis. Distinct from the MCP `LogLevel` union
+(client-facing `ctx.log` levels), which is a separate axis entirely.

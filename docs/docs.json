@@ -43,7 +43,8 @@
               "servers/resources",
               "servers/prompts",
               "servers/context",
-              "servers/running"
+              "servers/running",
+              "servers/logging"
             ]
           },
           {
@@ -157,6 +158,7 @@
                   "api/server/interfaces/HttpRequestContext",
                   "api/server/interfaces/HTTPRoute",
                   "api/server/interfaces/IfNode",
+                  "api/server/interfaces/Logger",
                   "api/server/interfaces/McpContext",
                   "api/server/interfaces/Middleware",
                   "api/server/interfaces/MiddlewareContext",
@@ -204,6 +206,7 @@
                   "api/server/type-aliases/CompleteCallback",
                   "api/server/type-aliases/ComponentFn",
                   "api/server/type-aliases/CustomRouteHandler",
+                  "api/server/type-aliases/FrameworkLogLevel",
                   "api/server/type-aliases/HttpMethod",
                   "api/server/type-aliases/LogLevel",
                   "api/server/type-aliases/MCPType",

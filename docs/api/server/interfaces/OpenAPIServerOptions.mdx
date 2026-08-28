@@ -2,7 +2,7 @@
 title: "OpenAPIServerOptions"
 ---
 
-Defined in: [server/openapi/index.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L39)
+Defined in: [server/openapi/index.ts:40](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L40)
 
 ## Properties
 
@@ -12,7 +12,7 @@ Defined in: [server/openapi/index.ts:39](https://github.com/PrefectHQ/fastmcp-ts
 optional client?: OpenAPIClientOptions;
 ```
 
-Defined in: [server/openapi/index.ts:47](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L47)
+Defined in: [server/openapi/index.ts:48](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L48)
 
 HTTP client configuration (base URL, headers, auth, fetch, timeout).
 
@@ -24,7 +24,7 @@ HTTP client configuration (base URL, headers, auth, fetch, timeout).
 optional componentFn?: ComponentFn;
 ```
 
-Defined in: [server/openapi/index.ts:53](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L53)
+Defined in: [server/openapi/index.ts:54](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L54)
 
 Component customization hook, called before each registration.
 
@@ -36,7 +36,7 @@ Component customization hook, called before each registration.
 optional name?: string;
 ```
 
-Defined in: [server/openapi/index.ts:43](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L43)
+Defined in: [server/openapi/index.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L44)
 
 Server name. Default 'OpenAPI Server'.
 
@@ -48,7 +48,7 @@ Server name. Default 'OpenAPI Server'.
 optional names?: Record<string, string>;
 ```
 
-Defined in: [server/openapi/index.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L55)
+Defined in: [server/openapi/index.ts:56](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L56)
 
 Overrides mapping operationId → component name.
 
@@ -60,7 +60,7 @@ Overrides mapping operationId → component name.
 optional routeMapFn?: RouteMapFn;
 ```
 
-Defined in: [server/openapi/index.ts:51](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L51)
+Defined in: [server/openapi/index.ts:52](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L52)
 
 Route-type hook, run after the route maps on every route.
 
@@ -72,7 +72,7 @@ Route-type hook, run after the route maps on every route.
 optional routeMaps?: RouteMap[];
 ```
 
-Defined in: [server/openapi/index.ts:49](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L49)
+Defined in: [server/openapi/index.ts:50](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L50)
 
 Route maps checked in order before the default (everything → tool).
 
@@ -84,7 +84,7 @@ Route maps checked in order before the default (everything → tool).
 optional serverOptions?: Omit<FastMCPOptions, "name" | "version">;
 ```
 
-Defined in: [server/openapi/index.ts:65](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L65)
+Defined in: [server/openapi/index.ts:66](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L66)
 
 Remaining FastMCP options (auth, middleware, page sizes, ...).
 
@@ -96,7 +96,7 @@ Remaining FastMCP options (auth, middleware, page sizes, ...).
 spec: string | Record<string, unknown>;
 ```
 
-Defined in: [server/openapi/index.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L41)
+Defined in: [server/openapi/index.ts:42](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L42)
 
 The OpenAPI 3.0/3.1 spec: a parsed object, or YAML/JSON text.
 
@@ -108,7 +108,7 @@ The OpenAPI 3.0/3.1 spec: a parsed object, or YAML/JSON text.
 optional tags?: string[];
 ```
 
-Defined in: [server/openapi/index.ts:57](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L57)
+Defined in: [server/openapi/index.ts:58](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L58)
 
 Tags added to every generated component.
 
@@ -120,7 +120,7 @@ Tags added to every generated component.
 optional validateOutput?: boolean;
 ```
 
-Defined in: [server/openapi/index.ts:63](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L63)
+Defined in: [server/openapi/index.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L64)
 
 When true (default), tools advertise the output schema extracted from
 the spec. When false, a permissive schema is advertised instead (the
@@ -134,6 +134,6 @@ wrap-result marker is preserved).
 optional version?: string;
 ```
 
-Defined in: [server/openapi/index.ts:45](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L45)
+Defined in: [server/openapi/index.ts:46](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/openapi/index.ts#L46)
 
 Server version. Defaults to FastMCP's own default.

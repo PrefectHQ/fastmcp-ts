@@ -1,0 +1,162 @@
+---
+title: "Logging"
+description: "Framework logs, log levels, and custom logger injection"
+icon: "scroll-text"
+---
+
+FastMCP writes its own diagnostic logs: lifecycle events, warnings, and
+errors from the framework itself. These are framework logs. They are
+separate from `ctx.log`, which sends MCP log notifications to the
+connected client. This page covers framework logs only.
+
+## Default output
+
+FastMCP chooses a log format on its own. You do not need to configure it.
+
+When stderr is a terminal (a TTY) and the `NO_COLOR` environment variable
+is unset, FastMCP writes styled lines. Each line starts with a colored
+symbol that marks its level. On startup, FastMCP also prints a banner:
+the server name, version, transport, and, for HTTP, the URL it listens
+on.
+
+When stderr is not a terminal, or `NO_COLOR` is set, FastMCP writes plain
+lines instead. Each line has this form:
+
+```
+[fastmcp] LEVEL message {"meta":"json"}
+```
+
+`LEVEL` is one of `DEBUG`, `INFO`, `WARN`, or `ERROR`, in uppercase. The
+JSON object at the end is optional. It appears only when the log call
+carries metadata.
+
+All framework logs go to stderr. FastMCP never writes a framework log to
+stdout. On the stdio transport, stdout carries the protocol stream, so a
+framework log there would corrupt it.
+
+## Log level
+
+Use `logLevel` to set the lowest severity FastMCP logs. There are five
+levels, from most to least verbose: `debug`, `info`, `warn`, `error`, and
+`silent`. Setting a level logs that level and every level after it. For
+example, `warn` logs warnings and errors, but not debug or info messages.
+`silent` logs nothing at all, including the startup banner and the
+listening line.
+
+```typescript
+new FastMCP({ name: 'server', logLevel: 'debug' })
+```
+
+FastMCP resolves the level from three sources, checked in this order:
+
+1. The `logLevel` option, if you set it.
+2. The `FASTMCP_LOG_LEVEL` environment variable, if you set it. The value
+   is case-insensitive.
+3. `info`, the default, when neither is set.
+
+The gate applies before FastMCP calls any logger, including a logger you
+inject. A log call below the configured level never reaches your logger.
+
+An invalid value throws an error at construction, when you call `new
+FastMCP(...)`. This applies to both `logLevel` and `FASTMCP_LOG_LEVEL`.
+A misconfigured deployment fails immediately, instead of logging too
+much or too little in silence.
+
+The TypeScript type for this option is `FrameworkLogLevel`. It is a
+separate type from `LogLevel`, which is the eight-level type `ctx.log`
+uses. See [Framework logs and client logging](#framework-logs-and-client-logging)
+below.
+
+## Custom loggers
+
+FastMCP does not require a specific logging library. The `logger` option
+accepts any object with four methods: `debug`, `info`, `warn`, and
+`error`. Each method takes a message string and an optional metadata
+object.
+
+`console` satisfies this shape directly.
+
+```typescript
+// console satisfies the Logger interface directly
+const server = new FastMCP({ name: 'server', logger: console })
+```
+
+Winston also satisfies this shape directly. Winston's `info(message,
+meta)` signature matches FastMCP's.
+
+```typescript
+// Winston: also direct; winston's info(message, meta) matches
+import winston from 'winston'
+const server = new FastMCP({ name: 'server', logger: winston.createLogger({ transports: [new winston.transports.Console({ stderrLevels: ['error', 'warn', 'info', 'debug'] })] }) })
+```
+
+Pino inverts the argument order: its methods take the metadata object
+first and the message second. Wrap it in a small adapter:
+
+```typescript
+// Pino inverts the argument order, so wrap it:
+import { pino } from 'pino'
+const p = pino()
+const server = new FastMCP({
+  name: 'server',
+  logger: {
+    debug: (message, meta) => p.debug(meta ?? {}, message),
+    info: (message, meta) => p.info(meta ?? {}, message),
+    warn: (message, meta) => p.warn(meta ?? {}, message),
+    error: (message, meta) => p.error(meta ?? {}, message),
+  },
+})
+```
+
+An injected logger receives clean input. FastMCP strips ANSI color codes
+and the `[fastmcp]` prefix before it calls your logger. The message is
+plain text, and the metadata is a structured object, not a formatted
+string.
+
+Most metadata objects carry a `component` field. This field names the
+part of the framework that produced the log, for example `tool`, `http`,
+`cors`, `openapi`, `proxy`, `auth`, `context`, or `routes`.
+
+## Framework logs and client logging
+
+FastMCP has two separate logging systems. Do not confuse them.
+
+| | Framework logs (this page) | `ctx.log` |
+|---|---|---|
+| Audience | The operator running the server | The connected MCP client |
+| Purpose | Diagnose the server itself: startup, shutdown, internal warnings and errors | Let a tool handler narrate its own work to the client |
+| Levels | Five: `debug`, `info`, `warn`, `error`, `silent` | Eight (RFC 5424): `debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert`, `emergency` |
+| Destination | Your injected `logger`, or stderr by default | An MCP `notifications/message` sent to the client |
+| Configured by | `FastMCPOptions.logger` and `FastMCPOptions.logLevel` | The client, which decides what to do with each notification |
+
+These two systems never mix. A framework log never reaches the client.
+A `ctx.log` call never reaches your injected `logger`. See
+[context](/servers/context) for `ctx.log`.
+
+## LoggingMiddleware
+
+`LoggingMiddleware` logs every request: its method, its outcome, and how
+long it took. See [middleware](/servers/middleware) for the full
+middleware system.
+
+```typescript
+import { FastMCP, LoggingMiddleware } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server' })
+server.use(new LoggingMiddleware())
+```
+
+`LoggingMiddleware` takes an optional `emit` function, and its behavior
+depends on whether you supply one.
+
+With no `emit` function, `LoggingMiddleware` writes through the
+framework logger. Its output goes to stderr, gated by `logLevel` like
+any other framework log. This is the default, and it changed in this
+release: earlier versions wrote to stdout through `console.log`. On the
+stdio transport, that corrupted the JSON-RPC protocol stream. If
+something in your setup reads `LoggingMiddleware` output from stdout,
+point it at stderr instead.
+
+With an explicit `emit` function, `LoggingMiddleware` calls it directly
+with a `[fastmcp]`-prefixed string. This keeps the previous format, and
+you control where the string goes.
