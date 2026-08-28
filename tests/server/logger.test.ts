@@ -100,3 +100,58 @@ describe('DefaultSink plain mode', () => {
     expect(lines[0]).toContain('Error: nope')
   })
 })
+
+describe('DefaultSink pretty mode', () => {
+  it('renders level badges with the CLI theme and dim key=value meta', () => {
+    const { lines, restore } = capture()
+    try {
+      const sink = new DefaultSink('pretty')
+      sink.info('hello', { component: 'proxy' })
+      sink.warn('careful')
+      sink.error('broken')
+      sink.debug('detail')
+    } finally { restore() }
+    expect(lines[0]).toContain(symbols.info)
+    expect(lines[0]).toContain('hello')
+    expect(lines[0]).toContain('component=proxy')
+    expect(lines[1]).toContain(symbols.warning)
+    expect(lines[2]).toContain(symbols.failure)
+    expect(lines[3]).toContain('detail')
+    // pretty lines never carry the plain-mode prefix
+    for (const l of lines) expect(l).not.toContain('[fastmcp]')
+  })
+
+  it('renders the startup banner block and the listening line', () => {
+    const { lines, restore } = capture()
+    try {
+      const sink = new DefaultSink('pretty')
+      sink.banner({ name: 'weather', version: '1.2.0', transport: 'http', url: 'http://localhost:8000/mcp' })
+      sink.listening('http://localhost:8000/mcp')
+    } finally { restore() }
+    const banner = lines[0]!
+    expect(banner).toContain('FastMCP')
+    expect(banner).toContain('weather')
+    expect(banner).toContain('v1.2.0')
+    expect(banner).toContain('http')
+    expect(lines[1]).toContain(symbols.success)
+    expect(lines[1]).toContain('listening on http://localhost:8000/mcp')
+  })
+})
+
+describe('ResolvedLogger banner dispatch', () => {
+  it('uses the DefaultSink banner when the sink is the default', () => {
+    const { lines, restore } = capture()
+    try {
+      new ResolvedLogger(new DefaultSink('pretty'), 'info')
+        .startupBanner({ name: 'n', version: '1.0.0', transport: 'stdio' })
+    } finally { restore() }
+    expect(lines[0]).toContain('FastMCP')
+  })
+
+  it('falls back to a plain info line for injected sinks', () => {
+    const seen: string[] = []
+    const sink = { debug: () => {}, info: (m: string) => seen.push(m), warn: () => {}, error: () => {} }
+    new ResolvedLogger(sink, 'info').startupBanner({ name: 'n', version: '1.0.0', transport: 'stdio' })
+    expect(seen).toEqual(['starting n v1.0.0 (stdio)'])
+  })
+})

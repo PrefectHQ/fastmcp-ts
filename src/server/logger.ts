@@ -81,11 +81,50 @@ export class DefaultSink implements Logger {
     return `[fastmcp] ${level.toUpperCase()} ${message}${metaStr}`
   }
 
-  // Pretty rendering lands in Task 3; until then every level uses plainLine.
-  debug(message: string, meta?: Record<string, unknown>): void { this.write(this.plainLine('debug', message, meta)) }
-  info(message: string, meta?: Record<string, unknown>): void { this.write(this.plainLine('info', message, meta)) }
-  warn(message: string, meta?: Record<string, unknown>): void { this.write(this.plainLine('warn', message, meta)) }
-  error(message: string, meta?: Record<string, unknown>): void { this.write(this.plainLine('error', message, meta)) }
+  private prettyMeta(meta?: Record<string, unknown>): string {
+    if (!meta || Object.keys(meta).length === 0) return ''
+    const pairs = Object.entries(meta).map(([k, v]) => `${k}=${formatMetaValue(v)}`).join(' ')
+    return ` ${theme.muted(pairs)}`
+  }
+
+  private emit(level: Exclude<FrameworkLogLevel, 'silent'>, message: string, meta?: Record<string, unknown>): void {
+    if (this.mode === 'plain') { this.write(this.plainLine(level, message, meta)) ; return }
+    switch (level) {
+      case 'debug': this.write(theme.muted(`· ${message}`) + this.prettyMeta(meta)); break
+      case 'info': this.write(`${theme.muted(symbols.info)} ${message}${this.prettyMeta(meta)}`); break
+      case 'warn': this.write(`${theme.warning(symbols.warning)} ${theme.warning(message)}${this.prettyMeta(meta)}`); break
+      case 'error': this.write(`${theme.error(symbols.failure)} ${theme.error(message)}${this.prettyMeta(meta)}`); break
+    }
+  }
+
+  debug(message: string, meta?: Record<string, unknown>): void { this.emit('debug', message, meta) }
+  info(message: string, meta?: Record<string, unknown>): void { this.emit('info', message, meta) }
+  warn(message: string, meta?: Record<string, unknown>): void { this.emit('warn', message, meta) }
+  error(message: string, meta?: Record<string, unknown>): void { this.emit('error', message, meta) }
+
+  /** Startup card (pretty) or single plain info line. Mirrors the CLI's
+   * output.kv/section look (src/cli/ui/output.ts). */
+  banner(fields: BannerFields): void {
+    if (this.mode === 'plain') {
+      this.info(`starting ${fields.name} v${fields.version} (${fields.transport})`, fields.url !== undefined ? { url: fields.url } : undefined)
+      return
+    }
+    const kv = (key: string, value: string) => `  ${theme.label(key.padEnd(12))} ${theme.value(value)}`
+    const rows = [
+      '',
+      `  ${theme.primary('FastMCP')}  ${theme.value(fields.name)} ${theme.muted(`v${fields.version}`)}`,
+      `  ${theme.muted(symbols.separator)}`,
+      kv('transport', fields.transport),
+      ...(fields.url !== undefined ? [kv('url', fields.url)] : []),
+      '',
+    ]
+    this.write(rows.join('\n'))
+  }
+
+  listening(url: string): void {
+    if (this.mode === 'plain') { this.info(`listening on ${url}`) ; return }
+    this.write(`${theme.success(symbols.success)} listening on ${theme.url(url)}`)
+  }
 }
 
 /** Level-gated wrapper around the sink. This is what the framework holds and
@@ -105,16 +144,19 @@ export class ResolvedLogger {
   warn(message: string, meta?: Record<string, unknown>): void { if (this.enabled('warn')) this.sink.warn(message, meta) }
   error(message: string, meta?: Record<string, unknown>): void { if (this.enabled('error')) this.sink.error(message, meta) }
 
-  /** Server-start card. Pretty DefaultSink renders a banner block (Task 3);
+  /** Server-start card. Pretty DefaultSink renders a banner block;
    * every other sink gets one plain info line. Gated as info. */
   startupBanner(fields: BannerFields): void {
     if (!this.enabled('info')) return
+    if (this.sink instanceof DefaultSink) { this.sink.banner(fields) ; return }
     this.info(`starting ${fields.name} v${fields.version} (${fields.transport})`, fields.url !== undefined ? { url: fields.url } : undefined)
   }
 
   /** Listening confirmation. The word "listening" is load-bearing: the CLI's
    * run command detects a successful start by sniffing stderr for it. */
   listening(url: string): void {
+    if (!this.enabled('info')) return
+    if (this.sink instanceof DefaultSink) { this.sink.listening(url) ; return }
     this.info(`listening on ${url}`)
   }
 }
