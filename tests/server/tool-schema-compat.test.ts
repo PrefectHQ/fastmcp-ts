@@ -175,13 +175,17 @@ describe('Valibot', () => {
 
   it('emits a warning and falls back to { type: object } when generating inputSchema', async () => {
     const schema = v.object({ x: v.number() })
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // The framework-logging migration (2026-08-28) routes this warning through the
+    // FastMCP instance's resolved logger; a default-constructed instance's logger
+    // writes to stderr directly, not via console.warn, so the spy target moved. The
+    // formatted stderr line still carries the '[fastmcp]' prefix.
+    const warnSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     try {
       const { client, close } = await withTool(schema, () => 'ok')
       try {
         const { tools } = await client.listTools()
         expect(tools[0].inputSchema.type).toBe('object')
-        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[fastmcp]'))
+        expect(warnSpy.mock.calls.some((c) => String(c[0]).includes('[fastmcp]'))).toBe(true)
       } finally {
         await close()
       }

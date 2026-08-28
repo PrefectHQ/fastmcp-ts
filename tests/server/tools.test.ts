@@ -507,13 +507,18 @@ describeEachEra('Server — Tools', (combo) => {
     })
 
     it('an array return produces a JSON text block', async () => {
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      // The framework-logging migration (2026-08-28) routes this warning through the
+      // FastMCP instance's resolved logger; a default-constructed instance's logger
+      // writes to stderr directly, not via console.warn, so the spy target moved.
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
       try {
         const result = await callTool(() => [1, 2, 3])
         expect(result.content).toEqual([{ type: 'text', text: '[1,2,3]' }])
-        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('structuredContent will not be set'))
+        expect(
+          stderrSpy.mock.calls.some((c) => String(c[0]).includes('structuredContent will not be set')),
+        ).toBe(true)
       } finally {
-        warnSpy.mockRestore()
+        stderrSpy.mockRestore()
       }
     })
 

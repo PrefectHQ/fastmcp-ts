@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { isInputRequiredResult, assertInputRequestsAllowedStateless } from './mrtr'
 import type { InputRequiredResult } from './mrtr'
+import type { ResolvedLogger } from './logger'
 
 export class Image {
   constructor(
@@ -26,6 +27,7 @@ export class ToolResult {
 export function convertResult(
   value: unknown,
   stateless?: boolean,
+  logger?: ResolvedLogger,
 ): CallToolResult | InputRequiredResult {
   // Multi-round-trip escape hatch (protocol revision 2026-07-28): a handler that
   // needs more input from the client returns inputRequired({ ... }) — passed through
@@ -74,9 +76,16 @@ export function convertResult(
     return { content: [] }
   }
   if (Array.isArray(value)) {
-    console.warn(
-      '[fastmcp] Tool returned an array — structuredContent will not be set (MCP spec requires a plain object). Wrap in an object or use ToolResult to suppress this warning.',
-    )
+    if (logger) {
+      logger.warn(
+        'Tool returned an array; structuredContent will not be set (MCP spec requires a plain object). Wrap in an object or use ToolResult to suppress this warning.',
+        { component: 'tool' },
+      )
+    } else {
+      console.warn(
+        '[fastmcp] Tool returned an array — structuredContent will not be set (MCP spec requires a plain object). Wrap in an object or use ToolResult to suppress this warning.',
+      )
+    }
     return {
       content: [{ type: 'text', text: JSON.stringify(value) }],
     }
@@ -97,6 +106,7 @@ export function convertResult(
 export async function toJsonSchema(
   schema: StandardSchemaV1,
   context?: string,
+  logger?: ResolvedLogger,
 ): Promise<Record<string, unknown>> {
   // Strategy 1: schema-native .toJsonSchema() method (ArkType and any library following this convention)
   const maybeNative = schema as { toJsonSchema?: () => unknown }
@@ -122,9 +132,9 @@ export async function toJsonSchema(
   }
 
   const where = context ? ` for ${context}` : ''
-  console.warn(
-    `[fastmcp] Could not auto-generate JSON schema${where}. Sending { type: 'object' } to clients. Provide an explicit 'inputSchema' in ToolConfig to suppress this warning.`,
-  )
+  const message = `Could not auto-generate JSON schema${where}. Sending { type: 'object' } to clients. Provide an explicit 'inputSchema' in ToolConfig to suppress this warning.`
+  if (logger) logger.warn(message, { component: 'tool' })
+  else console.warn(`[fastmcp] ${message}`)
   return { type: 'object' }
 }
 

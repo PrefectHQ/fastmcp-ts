@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { DefaultSink, ResolvedLogger, resolveLogger } from '../../src/server/logger'
+import type { Logger } from '../../src/server/logger'
 import { theme, symbols } from '../../src/shared/terminal'
 import { theme as cliTheme } from '../../src/cli/ui/theme.js'
 import { FastMCP } from '../../src/server/FastMCP'
+import { toJsonSchema } from '../../src/server/tool'
 
 describe('shared terminal module', () => {
   it('CLI re-export is the same object', () => {
@@ -169,5 +171,33 @@ describe('FastMCP logger option', () => {
     mcp._logger.info('x')
     mcp._logger.warn('y')
     expect(calls).toEqual(['warn'])
+  })
+})
+
+function collectingLogger(): {
+  logger: ResolvedLogger
+  sink: Logger
+  calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }>
+} {
+  const calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = []
+  const sink = {
+    debug: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'debug', message, meta }),
+    info: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'info', message, meta }),
+    warn: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'warn', message, meta }),
+    error: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'error', message, meta }),
+  }
+  return { logger: new ResolvedLogger(sink, 'debug'), sink, calls }
+}
+
+describe('threading', () => {
+  it('toJsonSchema warns through the provided logger, not console', async () => {
+    const { logger, calls } = collectingLogger()
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const result = await toJsonSchema({ '~standard': { validate: () => ({ value: {} }) } } as never, 'tool myTool', logger)
+      expect(result).toEqual({ type: 'object' })
+      expect(calls.some((c) => c.level === 'warn' && c.message.includes('Could not auto-generate'))).toBe(true)
+      expect(consoleSpy).not.toHaveBeenCalled()
+    } finally { consoleSpy.mockRestore() }
   })
 })

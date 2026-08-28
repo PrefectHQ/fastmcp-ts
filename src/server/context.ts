@@ -4,6 +4,7 @@ import type { AccessToken } from './auth/types'
 import type { InputResponses } from './mrtr'
 import { buildHttpRequestContext, resolveSensitiveHeaders } from './httpContext'
 import type { HttpRequestContext } from './httpContext'
+import type { ResolvedLogger } from './logger'
 
 // ---------------------------------------------------------------------------
 // Supporting types
@@ -304,6 +305,9 @@ const SERVER_INITIATED_STATELESS_HTTP_ERROR =
  *   (`_makeServer`'s `opts.stateless`). Gates session state and the server-initiated
  *   request APIs on the legacy path with a message naming the switch, distinct from the
  *   modern era's own established errors for the same APIs.
+ * @param logger  The owning FastMCP instance's resolved framework logger. Backs the
+ *   `ctx.mintRequestState()` unsigned-state warning; falls back to `console.warn` when
+ *   omitted (a call path not yet threaded).
  */
 export function createContext(
   server: Server,
@@ -313,6 +317,7 @@ export function createContext(
   requestStateCodec?: RequestStateCodec,
   stateless?: boolean,
   sensitiveHeaders?: ReadonlySet<string>,
+  logger?: ResolvedLogger,
 ): McpContext {
   const requestId = String(sdkCtx.mcpReq.id)
   const progressToken = (sdkCtx.mcpReq._meta as { progressToken?: string | number } | undefined)
@@ -491,11 +496,20 @@ export function createContext(
 
     async mintRequestState<T = unknown>(payload: T): Promise<string> {
       if (requestStateCodec) return requestStateCodec.mint(payload, sdkCtx)
-      console.warn(
-        '[fastmcp] ctx.mintRequestState() called without FastMCPOptions.requestState configured — ' +
-          'the resulting requestState is unsigned. Configure FastMCPOptions.requestState for any ' +
-          'state that influences authorization, resource access, or business logic.',
-      )
+      if (logger) {
+        logger.warn(
+          'ctx.mintRequestState() called without FastMCPOptions.requestState configured; ' +
+            'the resulting requestState is unsigned. Configure FastMCPOptions.requestState for any ' +
+            'state that influences authorization, resource access, or business logic.',
+          { component: 'context' },
+        )
+      } else {
+        console.warn(
+          '[fastmcp] ctx.mintRequestState() called without FastMCPOptions.requestState configured — ' +
+            'the resulting requestState is unsigned. Configure FastMCPOptions.requestState for any ' +
+            'state that influences authorization, resource access, or business logic.',
+        )
+      }
       return JSON.stringify(payload)
     },
 

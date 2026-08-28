@@ -12,6 +12,7 @@
 
 import { FastMCP } from '../FastMCP'
 import type { FastMCPOptions } from '../FastMCP'
+import type { ResolvedLogger } from '../logger'
 import type {
   ComponentFn,
   HTTPRoute,
@@ -168,6 +169,7 @@ export function createOpenAPIServer(options: OpenAPIServerOptions): FastMCP {
       } catch (error) {
         warn(
           `Error in routeMapFn for ${route.method} ${route.path}: ${(error as Error).message}. Using mapped type.`,
+          server._logger,
         )
       }
     }
@@ -194,6 +196,7 @@ function applyComponentFn(
   componentFn: ComponentFn | undefined,
   route: HTTPRoute,
   component: OpenAPIComponent,
+  logger?: ResolvedLogger,
 ): void {
   if (componentFn === undefined) return
   try {
@@ -201,6 +204,7 @@ function applyComponentFn(
   } catch (error) {
     warn(
       `Error in componentFn for ${component.kind} '${component.name}': ${(error as Error).message}`,
+      logger,
     )
   }
 }
@@ -239,7 +243,7 @@ function createTool(
     ...(outputSchema !== null ? { outputSchema } : {}),
     tags,
   }
-  applyComponentFn(componentFn, route, component)
+  applyComponentFn(componentFn, route, component, server._logger)
 
   server.tool(
     {
@@ -250,7 +254,7 @@ function createTool(
       tags: component.tags,
     },
     async (args: unknown) =>
-      runToolRequest(client, route, isPlainObject(args) ? args : {}, component.outputSchema),
+      runToolRequest(client, route, isPlainObject(args) ? args : {}, component.outputSchema, server._logger),
   )
 }
 
@@ -272,7 +276,7 @@ function createResource(
     mimeType: extractMimeTypeFromRoute(route),
     tags,
   }
-  applyComponentFn(componentFn, route, component)
+  applyComponentFn(componentFn, route, component, server._logger)
 
   server.resource(
     {
@@ -282,7 +286,7 @@ function createResource(
       mimeType: component.mimeType,
       tags: component.tags,
     },
-    async () => readResourceRequest(client, route, {}, component.uri, component.mimeType),
+    async () => readResourceRequest(client, route, {}, component.uri, component.mimeType, server._logger),
   )
 }
 
@@ -336,7 +340,7 @@ function createTemplate(
     parameters: parametersSchema,
     tags,
   }
-  applyComponentFn(componentFn, route, component)
+  applyComponentFn(componentFn, route, component, server._logger)
 
   server.resource(
     {
@@ -355,6 +359,7 @@ function createTemplate(
         templateArguments(route, matched),
         concreteUri,
         component.mimeType,
+        server._logger,
       )
     },
   )
