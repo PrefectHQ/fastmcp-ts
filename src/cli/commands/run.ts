@@ -6,6 +6,7 @@ import { cliError, formatError } from '../utils/error.js'
 import { log } from '../ui/output.js'
 import { theme } from '../ui/theme.js'
 import { symbols } from '../ui/symbols.js'
+import { createStartupReporter } from '../ui/startup.js'
 
 function spawnServer(
   spec: FileSpec,
@@ -47,28 +48,20 @@ export default defineCommand({
     if (args.path) transportEnv['MCP_PATH'] = args.path
 
     let child = spawnServer(fileSpec, transportEnv)
-    let started = false
 
     function attachHandlers(proc: ReturnType<typeof spawn>): void {
+      const reporter = createStartupReporter({ animate: !args.reload })
+
       proc.stdout?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString()
-        if (!started) {
-          started = true
-          process.stderr.write(`${theme.success(symbols.success)} Server started\n`)
-        }
-        process.stdout.write(text)
+        reporter.onStdout(chunk.toString())
       })
 
       proc.stderr?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString()
-        if (!started && (text.includes('listening') || text.includes('started') || text.includes('running'))) {
-          started = true
-          process.stderr.write(`${theme.success(symbols.success)} Server started\n`)
-        }
-        process.stderr.write(text)
+        reporter.onStderr(chunk.toString())
       })
 
       proc.on('exit', (code) => {
+        if (!reporter.done) reporter.fail()
         if (code !== null && code !== 0 && !args.reload) {
           process.exit(code)
         }
@@ -84,7 +77,6 @@ export default defineCommand({
       watcher.on('change', () => {
         process.stderr.write(`${theme.muted(symbols.reload)} Reloading…\n`)
         child.kill()
-        started = false
         child = spawnServer(fileSpec, transportEnv)
         attachHandlers(child)
       })
