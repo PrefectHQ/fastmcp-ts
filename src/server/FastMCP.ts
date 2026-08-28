@@ -1956,6 +1956,7 @@ export class FastMCP {
     const resolvedHealth = resolveHealth(options?.health)
 
     if (transport === 'stdio') {
+      this._logger.startupBanner({ name: this.name, version: this.version, transport: 'stdio' })
       const { StdioServerTransport, serveStdio } = await import('@modelcontextprotocol/server/stdio')
       const stdioTransport = new StdioServerTransport(options?.stdin, options?.stdout)
       // serveStdio owns the connection's era decision (from the opening exchange) and
@@ -2126,6 +2127,7 @@ export class FastMCP {
         retryInterval: LEGACY_SSE_RETRY_MS,
         onsessioninitialized: (id) => {
           this._sessions.set(id, { transport: mcpTransport, server: sessionServer, state: sessionState })
+          this._logger.debug('session opened', { component: 'http', sessionId: id })
         },
         onsessionclosed: (id) => {
           const session = this._sessions.get(id)
@@ -2134,6 +2136,7 @@ export class FastMCP {
             for (const cb of callbacks) cb()
           }
           this._sessions.delete(id)
+          this._logger.debug('session closed', { component: 'http', sessionId: id })
         },
       })
       await sessionServer.connect(mcpTransport)
@@ -2251,6 +2254,9 @@ export class FastMCP {
 
     this._httpServer = httpServer
     this._address = { host: bound.address, port: bound.port, path }
+    const url = `http://${bound.address}:${bound.port}${path}`
+    this._logger.startupBanner({ name: this.name, version: this.version, transport: 'http', url })
+    this._logger.listening(url)
   }
 
   private async _runHttpSimple(port: number, host: string, path: string): Promise<void> {
@@ -2379,6 +2385,9 @@ export class FastMCP {
 
     const bound = httpServer.address() as AddressInfo
     this._address = { host: bound.address, port: bound.port, path }
+    const url = `http://${bound.address}:${bound.port}${path}`
+    this._logger.startupBanner({ name: this.name, version: this.version, transport: 'http', url })
+    this._logger.listening(url)
   }
 
   async close(): Promise<void> {

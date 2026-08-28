@@ -5,6 +5,7 @@ import { theme, symbols } from '../../src/shared/terminal'
 import { theme as cliTheme } from '../../src/cli/ui/theme.js'
 import { FastMCP } from '../../src/server/FastMCP'
 import { toJsonSchema } from '../../src/server/tool'
+import { LEGACY_INITIALIZE_PROTOCOL_VERSION } from '../helpers/http.js'
 
 describe('shared terminal module', () => {
   it('CLI re-export is the same object', () => {
@@ -214,5 +215,70 @@ describe('threading', () => {
       expect(debugIndex).toBeLessThan(warnIndex)
       expect(consoleSpy).not.toHaveBeenCalled()
     } finally { consoleSpy.mockRestore() }
+  })
+})
+
+describe('lifecycle logs', () => {
+  it('http run emits banner then listening with the bound URL', async () => {
+    const { sink, calls } = collectingLogger()
+    const mcp = new FastMCP({ name: 'life', version: '2.0.0', logger: sink, logLevel: 'info' })
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    try {
+      const messages = calls.map((c) => c.message)
+      expect(messages.some((m) => m.includes('starting life v2.0.0 (http)'))).toBe(true)
+      expect(messages.some((m) => /^listening on http:\/\/127\.0\.0\.1:\d+/.test(m))).toBe(true)
+    } finally { await mcp.close() }
+  })
+
+  it('the default plain listening line contains the CLI sniff word', () => {
+    const { lines, restore } = capture()
+    try { new ResolvedLogger(new DefaultSink('plain'), 'info').listening('http://h:1/p') } finally { restore() }
+    expect(lines[0]).toContain('listening')
+  })
+})
+
+describe('stdio stdout purity', () => {
+  it('emits no non-protocol bytes on stdout', async () => {
+    const { PassThrough } = await import('node:stream')
+    const stdin = new PassThrough()
+    const stdout = new PassThrough()
+    const out: Buffer[] = []
+    stdout.on('data', (c: Buffer) => out.push(c))
+    // Event-driven wait for the initialize response, matching the precedent in
+    // tests/server/server.test.ts's "runs over stdio" test, instead of a fixed
+    // sleep that could pass vacuously if the handshake produced no output.
+    const responsePromise = new Promise<string>((resolve) => {
+      stdout.once('data', (chunk: Buffer) => resolve(chunk.toString()))
+    })
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const mcp = new FastMCP({ name: 'pure', logLevel: 'debug' })
+    try {
+      await mcp.run({ transport: 'stdio', stdin, stdout })
+      stdin.write(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: LEGACY_INITIALIZE_PROTOCOL_VERSION,
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '0.0.0' },
+          },
+        }) + '\n',
+      )
+      // Prove a real response for id 1 arrived, not just that the (possibly
+      // empty) line loop below ran zero iterations without failing.
+      const msg = JSON.parse(await responsePromise)
+      expect(msg.id).toBe(1)
+      const text = Buffer.concat(out).toString()
+      const lines = text.split('\n').filter((l) => l.trim() !== '')
+      expect(lines.length).toBeGreaterThan(0)
+      for (const line of lines) {
+        expect(() => JSON.parse(line)).not.toThrow()
+      }
+    } finally {
+      stderrSpy.mockRestore()
+      await mcp.close()
+    }
   })
 })
