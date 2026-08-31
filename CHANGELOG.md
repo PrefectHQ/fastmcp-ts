@@ -1,5 +1,12 @@
 # @prefecthq/fastmcp-ts
 
+## 1.7.0
+
+### Minor Changes
+
+- 6342119: Add configurable CORS for the HTTP listener via `http.cors` — restrict origins (string, list, or predicate), enable credentialed requests, extend the allowed/exposed header lists, replace the methods list, set a preflight max-age, or disable CORS entirely with `cors: false`. The OAuth serve path now applies the same CORS handling as the plain path (it previously had none), and responses now expose `Mcp-Session-Id` by default so cross-origin browser clients can read their session id. Defaults are otherwise unchanged (`Access-Control-Allow-Origin: *`). Non-preflight responses no longer include `Access-Control-Allow-Methods`/`Access-Control-Allow-Headers`; browsers read those only from preflight answers.
+- 1b458b9: Framework logs are now configurable. `FastMCPOptions.logger` accepts any object with `debug`/`info`/`warn`/`error` methods (console and Winston work directly; Pino needs a four-line adapter, see the logging docs), and `FastMCPOptions.logLevel` (or `FASTMCP_LOG_LEVEL`, default `info`, `silent` to disable) gates what reaches it. The built-in default logger writes styled output with a startup banner when stderr is a TTY and plain `[fastmcp] LEVEL message` lines otherwise, always to stderr. Server lifecycle events (start, listening URL, session open and close) are now logged, previously swallowed failures (proxied-server capability probes, schema-generation strategy failures) are now visible at warn or debug, and `LoggingMiddleware` constructed without an emit function now writes through the framework logger to stderr instead of `console.log`; that last change moves its output off stdout, which previously corrupted the JSON-RPC stream on the stdio transport. Anything parsing LoggingMiddleware output from stdout must read stderr instead. `createProxy` and `buildProxyFromClient` also accept `logger` and `logLevel` options, forwarded to the internal FastMCP instance that backs the proxy. The `run` CLI command now shows a startup spinner while it waits for the server to report listening, on a TTY; the `--quiet` flag also suppresses the "Server started" confirmation line that follows it.
+
 ## 1.6.0
 
 ### Minor Changes
