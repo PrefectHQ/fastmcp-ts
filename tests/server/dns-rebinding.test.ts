@@ -72,10 +72,16 @@ function rawInitialize(
 
 // Every test resets the once-per-process warning guard and suppresses the warning so
 // the file's output stays pristine; the warning cases below read `warnSpy` directly.
+//
+// The framework-logging migration (2026-08-28) routes this warning through the FastMCP
+// instance's resolved logger; a default-constructed instance's logger writes to stderr
+// directly, not via console.warn, so the spy target moved from console.warn to
+// process.stderr.write. The formatted line still carries the raw message text, so the
+// substring match below is unaffected.
 let warnSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   __resetDnsRebindingWarningForTests()
-  warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  warnSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 })
 afterEach(() => {
   warnSpy.mockRestore()

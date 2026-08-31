@@ -150,14 +150,7 @@ async function main(): Promise<void> {
 
   await resolved.run()
 
-  // Mirrors the "listening on <url>" line the raw-SDK CLI test fixtures print
-  // themselves — FastMCP's own run() doesn't emit a startup banner, but the
-  // CLI's `run` command watches stderr for this text to detect a successful
-  // HTTP start (see spawnServer()'s "started" detection in commands/run.ts).
-  if (resolved.address) {
-    const { host, port, path } = resolved.address
-    process.stderr.write(`listening on http://${host}:${port}${path}\n`)
-  }
+  // FastMCP.run() now logs its own 'listening on <url>' line (framework lifecycle logs), which the CLI's run command sniffs on stderr; no manual line needed here.
 }
 
 main().catch((err) => {

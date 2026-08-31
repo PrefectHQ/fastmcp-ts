@@ -1,4 +1,5 @@
 /** Small shared helpers for the OpenAPI port. Not exported from the package. */
+import type { ResolvedLogger } from '../logger'
 
 /**
  * Python-style truthiness: the ported logic from Python FastMCP branches on
@@ -35,6 +36,7 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   return false
 }
 
-export function warn(message: string): void {
-  console.warn(`[fastmcp] ${message}`)
+export function warn(message: string, logger?: ResolvedLogger): void {
+  if (logger) logger.warn(message, { component: 'openapi' })
+  else console.warn(`[fastmcp] ${message}`)
 }

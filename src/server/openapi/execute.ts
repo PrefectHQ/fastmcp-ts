@@ -13,6 +13,7 @@ import { ResourceResult } from '../resource'
 import type { HTTPRoute, JsonSchema } from './types'
 import { buildRequest } from './director'
 import { isPlainObject, truthy } from './internal'
+import type { ResolvedLogger } from '../logger'
 
 export const DEFAULT_TIMEOUT_MS = 30_000
 
@@ -100,11 +101,12 @@ async function sendRequest(
   client: ResolvedClient,
   route: HTTPRoute,
   args: Record<string, unknown>,
+  logger?: ResolvedLogger,
 ): Promise<Response> {
   let url: string
   let init: RequestInit
   try {
-    const directed = buildRequest(route, args, client.baseUrl)
+    const directed = buildRequest(route, args, client.baseUrl, logger)
     const authHeaders = client.auth ? await client.auth.getHeaders() : {}
     // Client defaults merge under auth headers; directed headers win over
     // both. HTTP header names are case-insensitive, so merge on lowercase
@@ -157,14 +159,16 @@ export async function runToolRequest(
   route: HTTPRoute,
   args: Record<string, unknown>,
   outputSchema: JsonSchema | null | undefined,
+  logger?: ResolvedLogger,
 ): Promise<ToolResult> {
-  const response = await sendRequest(client, route, args)
+  const response = await sendRequest(client, route, args, logger)
   const text = await response.text()
 
   let result: unknown
   try {
     result = JSON.parse(text)
   } catch {
+    logger?.debug('openapi response was not JSON; returning raw text', { component: 'openapi' })
     // Not JSON: return the raw text.
     return new ToolResult({ content: [{ type: 'text', text }] })
   }
@@ -196,8 +200,9 @@ export async function readResourceRequest(
   args: Record<string, unknown>,
   uri: string,
   mimeType: string,
+  logger?: ResolvedLogger,
 ): Promise<ResourceResult> {
-  const response = await sendRequest(client, route, args)
+  const response = await sendRequest(client, route, args, logger)
   const contentType = (response.headers.get('content-type') ?? '').toLowerCase()
 
   if (contentType.includes('application/json')) {

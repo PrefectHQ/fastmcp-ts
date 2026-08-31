@@ -59,7 +59,7 @@ export class FormInput {
       { name, description, ui: { visibility: ['model', 'app'] } },
       async () => {
         // Use the shared extractor so Zod, Valibot, ArkType, etc. all work.
-        const jsonSchema = await toJsonSchema(schema, `form "${name}"`)
+        const jsonSchema = await toJsonSchema(schema, `form "${name}"`, this.server._logger)
         const properties = (jsonSchema.properties ?? {}) as Record<string, FieldSchema>
         const required = (jsonSchema.required ?? []) as string[]
 

@@ -4,9 +4,9 @@
  * which allows `inspect` and `call --file` to force stdio mode.
  *
  * Also used as a dual-era (2025 legacy + 2026-07-28 modern) HTTP fixture:
- * when actually served over HTTP (not overridden to stdio), it logs
- * "listening on http://localhost:PORT/mcp" to stderr once ready so the test
- * harness can read the actual bound port.
+ * when actually served over HTTP (not overridden to stdio), the framework's
+ * own "listening on http://..." line (see FastMCP.run / src/server/logger.ts)
+ * lets the test harness read the actual bound port from stderr.
  */
 import { FastMCP } from '../../src/server/index.js'
 import { z } from 'zod'
@@ -25,6 +25,3 @@ server.tool(
 // Explicitly hardcodes HTTP — the point is that MCP_TRANSPORT=stdio (set by
 // the CLI's inprocess connector) must still win.
 await server.run({ transport: 'http', port: 0 })
-if (server.address) {
-  process.stderr.write(`listening on http://localhost:${server.address.port}/mcp\n`)
-}

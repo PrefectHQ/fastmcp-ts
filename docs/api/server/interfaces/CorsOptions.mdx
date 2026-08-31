@@ -2,7 +2,7 @@
 title: "CorsOptions"
 ---
 
-Defined in: [server/cors.ts:15](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L15)
+Defined in: [server/cors.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L16)
 
 `FastMCPOptions.http.cors` object form. `true` and omitted mean the
 permissive defaults; `false` disables CORS handling entirely (no global
@@ -16,7 +16,7 @@ preflight, no headers).
 optional allowedHeaders?: string[];
 ```
 
-Defined in: [server/cors.ts:31](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L31)
+Defined in: [server/cors.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L32)
 
 Extra request headers for `Access-Control-Allow-Headers`, added to the
 defaults. The MCP protocol headers are never removed: silently dropping
@@ -31,7 +31,7 @@ production.
 optional credentials?: boolean;
 ```
 
-Defined in: [server/cors.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L39)
+Defined in: [server/cors.ts:40](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L40)
 
 Send `Access-Control-Allow-Credentials: true`. Requires an explicit
 non-`'*'` `origin`: browsers reject `*` on credentialed requests, so
@@ -45,7 +45,7 @@ that combination is a construction-time error.
 optional exposedHeaders?: string[];
 ```
 
-Defined in: [server/cors.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L35)
+Defined in: [server/cors.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L36)
 
 Extra response headers for `Access-Control-Expose-Headers`, added to
 the default `Mcp-Session-Id` (legacy sessionful browser clients must
@@ -59,7 +59,7 @@ read it from the initialize response).
 optional maxAge?: number;
 ```
 
-Defined in: [server/cors.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L41)
+Defined in: [server/cors.ts:42](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L42)
 
 `Access-Control-Max-Age` for preflight caching, in seconds.
 
@@ -71,7 +71,7 @@ Defined in: [server/cors.ts:41](https://github.com/PrefectHQ/fastmcp-ts/blob/mai
 optional methods?: string[];
 ```
 
-Defined in: [server/cors.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L26)
+Defined in: [server/cors.ts:27](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L27)
 
 `Access-Control-Allow-Methods` value; replaces the default
 `GET, POST, DELETE, OPTIONS` list verbatim.
@@ -84,7 +84,7 @@ Defined in: [server/cors.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/mai
 optional origin?: string | string[] | ((origin) => boolean);
 ```
 
-Defined in: [server/cors.ts:23](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L23)
+Defined in: [server/cors.ts:24](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L24)
 
 Origins allowed to call the MCP endpoint from a browser, compared
 against the request's `Origin` header. `'*'` (the default) allows every

@@ -171,6 +171,126 @@ describe('Server — Middleware', () => {
       }
     })
 
+    it('LoggingMiddleware with no emit never writes to stdout', async () => {
+      // Regression: the pre-fix default emit was console.log, which writes to stdout —
+      // the stdio transport's protocol channel. A no-argument LoggingMiddleware must
+      // never touch stdout, on any transport.
+      //
+      // Note: in this project's vitest setup, console.log's internal write does not
+      // route through a live process.stdout.write lookup, so spying on
+      // process.stdout.write alone does not observe a console.log call (verified: a
+      // process.stdout.write spy stays uncalled even while console.log genuinely
+      // writes to the real stdout). console.log itself is spied directly so the
+      // assertion actually distinguishes the buggy default from the fix; the
+      // process.stdout.write spy is kept for defense in depth.
+      const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      try {
+        const mcp = new FastMCP({ name: 'test' })
+        mcp.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+        mcp.use(new LoggingMiddleware())
+
+        const { client, close } = await createTestClient(mcp)
+        try {
+          await client.callTool({ name: 'ping', arguments: {} })
+        } finally {
+          await close()
+        }
+        expect(stdoutSpy).not.toHaveBeenCalled()
+        expect(consoleLogSpy).not.toHaveBeenCalled()
+      } finally {
+        stdoutSpy.mockRestore()
+        consoleLogSpy.mockRestore()
+        stderrSpy.mockRestore()
+      }
+    })
+
+    it('LoggingMiddleware adopts the server logger when bound, as plain text with no glyphs', async () => {
+      // Spec invariant: an injected logger never receives symbols/glyphs — those
+      // are presentation and belong to the default sink / explicit-emit / stderr
+      // fallback paths only. The LOGGER branch sends plain text plus meta.
+      const calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = []
+      const sink = {
+        debug: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'debug', message, meta }),
+        info: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'info', message, meta }),
+        warn: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'warn', message, meta }),
+        error: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'error', message, meta }),
+      }
+
+      const mcp = new FastMCP({
+        name: 'test',
+        logger: sink,
+        logLevel: 'debug',
+        middleware: [new LoggingMiddleware()],
+      })
+      mcp.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await client.callTool({ name: 'ping', arguments: {} })
+        const request = calls.find((c) => c.level === 'info' && c.message === 'request tools/call')
+        const response = calls.find((c) => c.level === 'info' && c.message === 'response tools/call')
+        expect(request).toBeDefined()
+        expect(response).toBeDefined()
+        expect(typeof response?.meta?.['ms']).toBe('number')
+        for (const c of calls) {
+          expect(c.message).not.toContain('→')
+          expect(c.message).not.toContain('←')
+          expect(c.message).not.toContain('✗')
+        }
+      } finally {
+        await close()
+      }
+    })
+
+    it('LoggingMiddleware reports a failed request to the server logger with plain text and structured meta', async () => {
+      const calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = []
+      const sink = {
+        debug: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'debug', message, meta }),
+        info: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'info', message, meta }),
+        warn: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'warn', message, meta }),
+        error: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'error', message, meta }),
+      }
+
+      const mcp = new FastMCP({
+        name: 'test',
+        logger: sink,
+        logLevel: 'debug',
+        middleware: [new LoggingMiddleware()],
+      })
+      mcp.tool({ name: 'boom', description: 'boom' }, () => { throw new Error('kaboom') })
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.callTool({ name: 'boom', arguments: {} })
+        expect(result.isError).toBe(true)
+        const failure = calls.find((c) => c.level === 'warn' && c.message === 'request failed tools/call')
+        expect(failure).toBeDefined()
+        expect(typeof failure?.meta?.['ms']).toBe('number')
+        expect(failure?.meta?.['error']).toBeInstanceOf(Error)
+      } finally {
+        await close()
+      }
+    })
+
+    it('LoggingMiddleware with an explicit emit is byte-for-byte unchanged', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool({ name: 'ping', description: 'ping' }, () => 'pong')
+
+      const logs: string[] = []
+      mcp.use(new LoggingMiddleware((msg) => logs.push(msg)))
+
+      const { client, close } = await createTestClient(mcp)
+      try {
+        await client.callTool({ name: 'ping', arguments: {} })
+        expect(logs.some((l) => l.startsWith('[fastmcp] → tools/call'))).toBe(true)
+        expect(logs.some((l) => /^\[fastmcp\] ← tools\/call \(\d+ms\)$/.test(l))).toBe(true)
+      } finally {
+        await close()
+      }
+    })
+
     it('caching middleware returns a stored response for repeated identical requests', async () => {
       const mcp = new FastMCP({ name: 'test' })
       let callCount = 0

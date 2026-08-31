@@ -1,0 +1,104 @@
+---
+title: "Logger"
+---
+
+Defined in: [server/logger.ts:16](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/logger.ts#L16)
+
+Sink contract for FastMCPOptions.logger. `console` and Winston loggers
+satisfy it structurally; Pino needs a small adapter (see docs/servers/logging.mdx).
+
+## Methods
+
+### debug()
+
+```ts
+debug(message, meta?): void;
+```
+
+Defined in: [server/logger.ts:17](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/logger.ts#L17)
+
+#### Parameters
+
+##### message
+
+`string`
+
+##### meta?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+#### Returns
+
+`void`
+
+***
+
+### error()
+
+```ts
+error(message, meta?): void;
+```
+
+Defined in: [server/logger.ts:20](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/logger.ts#L20)
+
+#### Parameters
+
+##### message
+
+`string`
+
+##### meta?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+#### Returns
+
+`void`
+
+***
+
+### info()
+
+```ts
+info(message, meta?): void;
+```
+
+Defined in: [server/logger.ts:18](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/logger.ts#L18)
+
+#### Parameters
+
+##### message
+
+`string`
+
+##### meta?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+#### Returns
+
+`void`
+
+***
+
+### warn()
+
+```ts
+warn(message, meta?): void;
+```
+
+Defined in: [server/logger.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/logger.ts#L19)
+
+#### Parameters
+
+##### message
+
+`string`
+
+##### meta?
+
+`Record`&lt;`string`, `unknown`&gt;
+
+#### Returns
+
+`void`

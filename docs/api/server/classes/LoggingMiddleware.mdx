@@ -2,9 +2,14 @@
 title: "LoggingMiddleware"
 ---
 
-Defined in: [server/middleware.ts:95](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/middleware.ts#L95)
+Defined in: [server/middleware.ts:101](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/middleware.ts#L101)
 
 Logs every request with method, outcome, and elapsed time.
+
+Output resolution, in order: an explicit `emit` (unchanged legacy behavior,
+`[fastmcp]`-prefixed strings); the server's framework logger when attached
+via FastMCPOptions.middleware or `use()`; a plain stderr write. The default
+was `console.log` before v-next, which corrupted the stdio protocol stream.
 
 ## Implements
 
@@ -18,7 +23,7 @@ Logs every request with method, outcome, and elapsed time.
 new LoggingMiddleware(emit?): LoggingMiddleware;
 ```
 
-Defined in: [server/middleware.ts:96](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/middleware.ts#L96)
+Defined in: [server/middleware.ts:104](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/middleware.ts#L104)
 
 #### Parameters
 
@@ -38,7 +43,7 @@ Defined in: [server/middleware.ts:96](https://github.com/PrefectHQ/fastmcp-ts/bl
 onRequest(ctx, next): Promise<unknown>;
 ```
 
-Defined in: [server/middleware.ts:98](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/middleware.ts#L98)
+Defined in: [server/middleware.ts:137](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/middleware.ts#L137)
 
 #### Parameters
 

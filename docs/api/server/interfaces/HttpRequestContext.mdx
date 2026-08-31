@@ -2,7 +2,7 @@
 title: "HttpRequestContext"
 ---
 
-Defined in: [server/httpContext.ts:51](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L51)
+Defined in: [server/httpContext.ts:52](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L52)
 
 Read-only, per-request snapshot of the HTTP request that carried the current
 MCP message. Present wherever the server is reached over an HTTP transport;
@@ -31,7 +31,7 @@ servers/auth/trusted-proxy.
 readonly headers: Headers;
 ```
 
-Defined in: [server/httpContext.ts:53](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L53)
+Defined in: [server/httpContext.ts:54](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L54)
 
 Headers of the carrying HTTP request, minus the sensitive set. A per-request copy; mutations affect nothing.
 
@@ -43,7 +43,7 @@ Headers of the carrying HTTP request, minus the sensitive set. A per-request cop
 readonly method: string;
 ```
 
-Defined in: [server/httpContext.ts:57](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L57)
+Defined in: [server/httpContext.ts:58](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L58)
 
 HTTP method of the carrying request (e.g. 'POST').
 
@@ -55,7 +55,7 @@ HTTP method of the carrying request (e.g. 'POST').
 readonly redactedHeaderNames: readonly string[];
 ```
 
-Defined in: [server/httpContext.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L55)
+Defined in: [server/httpContext.ts:56](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L56)
 
 Names (lowercase, sorted) that were present on the wire but withheld from `headers`.
 
@@ -67,7 +67,7 @@ Names (lowercase, sorted) that were present on the wire but withheld from `heade
 readonly url: string;
 ```
 
-Defined in: [server/httpContext.ts:64](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L64)
+Defined in: [server/httpContext.ts:65](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/httpContext.ts#L65)
 
 Origin-form request target (path + query, e.g. '/mcp?tenant=a'). Scheme and
 authority are deliberately absent: behind a proxy this server cannot know

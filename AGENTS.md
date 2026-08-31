@@ -65,7 +65,7 @@ Binary types (`Buffer`, `Uint8Array`) always require an explicit wrapper — MIM
 
 **JSON Schema advertisement vs Standard Schema validation:** `ToolConfig` has two orthogonal layers for schemas:
 - `input` / `output` — Standard Schema validators used for runtime validation. Works with any Standard Schema-compliant library (Zod, Valibot, ArkType, etc.) via `~standard.validate()`.
-- `inputSchema` / `outputSchema` — explicit JSON Schema objects advertised to clients in `tools/list`. If omitted, FastMCP auto-generates from `input`/`output` via Zod v4's `z.toJSONSchema()`. A `console.warn` is emitted when auto-generation falls back to `{ type: 'object' }` (i.e., when the schema is not a Zod v4 schema).
+- `inputSchema` / `outputSchema` — explicit JSON Schema objects advertised to clients in `tools/list`. If omitted, FastMCP auto-generates from `input`/`output` via Zod v4's `z.toJSONSchema()`. A `warn`-level framework log (`component: 'tool'`) is emitted through `FastMCPOptions.logger` when auto-generation falls back to `{ type: 'object' }` (i.e., when the schema is not a Zod v4 schema); each intermediate strategy failure also logs at `debug`. See Framework logging below.
 
 **Input schema validation:** When `input` is provided, the client-supplied arguments are validated before the handler runs. A validation failure throws `McpError(InvalidParams)` — a protocol-level error signalling that the *client* sent bad arguments. The handler is never invoked.
 
@@ -162,6 +162,8 @@ The `stdio` transport accepts optional `stdin`/`stdout` stream overrides in `Run
 
 **Package entrypoints:** Pillars are exposed as subpath entrypoints — `fastmcp-ts/server` and `fastmcp-ts/client` — so consumers only pull in what they use.
 
+**Framework logging:** `FastMCPOptions.logger` accepts any object with `debug`/`info`/`warn`/`error` methods, each `(message, meta?)`. `console` and Winston satisfy this directly; Pino needs a small adapter (see `docs/servers/logging.mdx`). `FastMCPOptions.logLevel` gates what reaches the logger. Its type is `FrameworkLogLevel` (`'debug' | 'info' | 'warn' | 'error' | 'silent'`), a separate axis from the client-facing `LogLevel` used by `ctx.log` above; the two never mix. Precedence: `logLevel`, then the `FASTMCP_LOG_LEVEL` environment variable (case-insensitive), then `info`. A malformed value in either throws at construction, for every transport. Every framework log goes to stderr, by construction; stdout carries the stdio protocol stream and must never carry a log. The built-in default logger renders a styled startup banner on a TTY (unless `NO_COLOR` is set) and plain `[fastmcp] LEVEL message {"meta":"json"}` lines otherwise. Server start, the listening URL, and session open/close are now logged (info/debug). `createProxy`/`buildProxyFromClient` also accept `logger`/`logLevel`, forwarded to the proxy's internal `FastMCP`; a proxied server's capability-probe failures now log at `warn` or `debug` instead of being swallowed. Full page: `docs/servers/logging.mdx`.
+
 **Middleware:** Registered with `mcp.use(mw)` (fluent) or via `FastMCPOptions.middleware`. The `Middleware` interface has three hook levels:
 
 - `setup?(server)` — called once per `Server` instance; use to register notification handlers. `use()` calls `setup` immediately on `_primaryServer` so handlers are active before `connect()`/`run()`. HTTP sessions also call `setup` via `_makeServer()`.
@@ -174,7 +176,7 @@ The `stdio` transport accepts optional `stdin`/`stdout` stream overrides in `Run
 
 | Class | Purpose |
 |---|---|
-| `LoggingMiddleware` | Logs method, outcome, and elapsed time via a configurable emit function |
+| `LoggingMiddleware` | Logs method, outcome, and elapsed time. With no `emit` function (the default), writes through the server's framework logger to stderr. Pass an `emit` function to keep the pre-v-next `[fastmcp]`-prefixed-string format |
 | `CachingMiddleware(ttl, keyFn?)` | TTL response cache; default key `method:authPartition:JSON(params)` partitions by identity (`anon` when unauthenticated, else SHA-256 of the bearer token — hash never raw); a custom `CacheKeyFn` **replaces** that partitioning (its owner then owns identity). Never caches `resources/subscribe`/`unsubscribe` (mutate session state) or `input_required` rounds (single-use flow token) |
 | `RateLimitingMiddleware(limit, windowMs)` | Fixed-window token bucket; throws `ProtocolError(ProtocolErrorCode.InvalidRequest)` when exceeded |
 | `SizeLimitingMiddleware(maxBytes)` | Throws `ProtocolError(ProtocolErrorCode.InternalError)` when serialised response exceeds limit |
@@ -544,7 +546,7 @@ await multi.callTool('github_list_repos', { org: 'PrefectHQ' })
 
 **Era flags:** the connecting commands (`list`, `call`, `inspect`) accept `--legacy` and `--pin <revision>` era selectors, resolved by `resolveVersionNegotiation` (`src/cli/utils/connect.ts`): every transport defaults to `{ mode: 'auto' }` (matching the library `Client` default), `--legacy` opts a connection out with `{ mode: 'legacy' }` (no probe), and `--pin` forces a pinned modern era (the strongest request — it wins over `--legacy`). `--modern` is still accepted as a deprecated no-op. `run` takes no era flags (it starts a server, which serves both eras).
 
-`run` — Spawns file via `npx tsx` (TypeScript) or `node` (JS) with `MCP_TRANSPORT` / `MCP_PORT` env vars. Detects server start from "listening/started/running" keywords in stderr; for HTTP servers this fires reliably. `--reload` uses `chokidar` to kill and respawn on file change. The `exportName` from `server.ts:app` file spec syntax is parsed but not passed to the subprocess — only the file path is used.
+`run` — Spawns file via `npx tsx` (TypeScript) or `node` (JS) with `MCP_TRANSPORT` / `MCP_PORT` env vars. Detects server start from "listening/started/running" keywords in stderr; for HTTP servers this fires reliably. On a TTY (and not `--quiet`), shows a startup spinner while it waits for that sniff word, then stops it with a "Server started" line; `--quiet` suppresses that line too. `--reload` uses `chokidar` to kill and respawn on file change. The `exportName` from `server.ts:app` file spec syntax is parsed but not passed to the subprocess — only the file path is used.
 
 `inspect` — Spawns the server file via `inprocess` mode (`StdioTransport` to `npx tsx`), lists tools/resources/prompts in parallel, renders tables. Does not paginate beyond the first page. `--format fastmcp` (implies JSON mode) instead emits the snake_case manifest the Python FastMCP CLI produces for `--format fastmcp` — built by `src/cli/utils/manifest.ts` from the wire lists plus `Client.getServerInfo()` / `getInstructions()` / `getServerCapabilities()`; also fetches resource templates. Server-side-only Python fields (`tags`, template `parameters`) are `null`; `server.generation` is `2` for `--file`, `null` for `--url`/`--command`. The default `--json` output is unchanged.
 

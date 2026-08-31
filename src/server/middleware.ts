@@ -1,6 +1,7 @@
 import { ProtocolError, ProtocolErrorCode, Server } from "@modelcontextprotocol/server";
 import { createHash } from 'node:crypto'
 import type { McpContext } from './context'
+import type { ResolvedLogger } from './logger'
 
 // ---------------------------------------------------------------------------
 // Core types
@@ -91,21 +92,57 @@ export function runMiddlewareChain<R>(
 // Built-in middleware
 // ---------------------------------------------------------------------------
 
-/** Logs every request with method, outcome, and elapsed time. */
+/** Logs every request with method, outcome, and elapsed time.
+ *
+ * Output resolution, in order: an explicit `emit` (unchanged legacy behavior,
+ * `[fastmcp]`-prefixed strings); the server's framework logger when attached
+ * via FastMCPOptions.middleware or `use()`; a plain stderr write. The default
+ * was `console.log` before v-next, which corrupted the stdio protocol stream. */
 export class LoggingMiddleware implements Middleware {
-  constructor(private readonly emit: (msg: string) => void = console.log) {}
+  private logger: ResolvedLogger | undefined
+
+  constructor(private readonly emit?: (msg: string) => void) {}
+
+  /** @internal Called by FastMCP when this middleware is attached. */
+  _bindLogger(logger: ResolvedLogger): void {
+    if (!this.emit) this.logger = logger
+  }
+
+  // Three output paths, each shaped for its audience:
+  // - explicit `emit`: byte-identical to the pre-logger-injection format
+  //   (arrows and the ✗ glyph), since callers may already parse it.
+  // - `this.logger` (the LOGGER branch): the spec invariant that injected
+  //   loggers receive no symbols — plain text plus structured meta.
+  // - stderr fallback (detached from a server): presentation output, like
+  //   DefaultSink, so it keeps the arrow/glyph format too.
+  private emitRequest(method: string): void {
+    if (this.emit) { this.emit(`[fastmcp] → ${method}`) ; return }
+    if (this.logger) { this.logger.info(`request ${method}`) ; return }
+    process.stderr.write(`[fastmcp] → ${method}\n`)
+  }
+
+  private emitResponse(method: string, ms: number): void {
+    if (this.emit) { this.emit(`[fastmcp] ← ${method} (${ms}ms)`) ; return }
+    if (this.logger) { this.logger.info(`response ${method}`, { ms }) ; return }
+    process.stderr.write(`[fastmcp] ← ${method} (${ms}ms)\n`)
+  }
+
+  private emitFailure(method: string, ms: number, err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err)
+    if (this.emit) { this.emit(`[fastmcp] ✗ ${method} (${ms}ms): ${message}`) ; return }
+    if (this.logger) { this.logger.warn(`request failed ${method}`, { ms, error: err }) ; return }
+    process.stderr.write(`[fastmcp] ✗ ${method} (${ms}ms): ${message}\n`)
+  }
 
   async onRequest(ctx: MiddlewareContext, next: Next): Promise<unknown> {
     const t0 = Date.now()
-    this.emit(`[fastmcp] → ${ctx.method}`)
+    this.emitRequest(ctx.method)
     try {
       const result = await next()
-      this.emit(`[fastmcp] ← ${ctx.method} (${Date.now() - t0}ms)`)
+      this.emitResponse(ctx.method, Date.now() - t0)
       return result
     } catch (err) {
-      this.emit(
-        `[fastmcp] ✗ ${ctx.method} (${Date.now() - t0}ms): ${err instanceof Error ? err.message : String(err)}`,
-      )
+      this.emitFailure(ctx.method, Date.now() - t0, err)
       throw err
     }
   }

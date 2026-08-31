@@ -1,0 +1,339 @@
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { DefaultSink, ResolvedLogger, resolveLogger } from '../../src/server/logger'
+import type { Logger } from '../../src/server/logger'
+import { theme, symbols } from '../../src/shared/terminal'
+import { theme as cliTheme } from '../../src/cli/ui/theme.js'
+import { FastMCP } from '../../src/server/FastMCP'
+import { toJsonSchema } from '../../src/server/tool'
+import { LEGACY_INITIALIZE_PROTOCOL_VERSION } from '../helpers/http.js'
+
+describe('shared terminal module', () => {
+  it('CLI re-export is the same object', () => {
+    expect(cliTheme).toBe(theme)
+  })
+})
+
+function capture(): { lines: string[]; restore: () => void } {
+  const lines: string[] = []
+  const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+    lines.push(String(chunk))
+    return true
+  })
+  return { lines, restore: () => spy.mockRestore() }
+}
+
+describe('resolveLogger', () => {
+  afterEach(() => { delete process.env['FASTMCP_LOG_LEVEL'] })
+
+  it('defaults to info with the built-in sink', () => {
+    const log = resolveLogger(undefined, undefined)
+    expect(log.level).toBe('info')
+  })
+
+  it('level precedence: option > env > info', () => {
+    process.env['FASTMCP_LOG_LEVEL'] = 'error'
+    expect(resolveLogger(undefined, undefined).level).toBe('error')
+    expect(resolveLogger(undefined, 'debug').level).toBe('debug')
+  })
+
+  it('env value is case-insensitive and trimmed', () => {
+    process.env['FASTMCP_LOG_LEVEL'] = '  WARN '
+    expect(resolveLogger(undefined, undefined).level).toBe('warn')
+  })
+
+  it('throws on a malformed logLevel option', () => {
+    expect(() => resolveLogger(undefined, 'verbose' as never)).toThrow(/logLevel/)
+  })
+
+  it('throws on a malformed env value', () => {
+    process.env['FASTMCP_LOG_LEVEL'] = 'loud'
+    expect(() => resolveLogger(undefined, undefined)).toThrow(/FASTMCP_LOG_LEVEL/)
+  })
+
+  it('throws on a logger missing methods', () => {
+    expect(() => resolveLogger({ info: () => {} } as never, undefined)).toThrow(/logger/)
+  })
+
+  it('gates calls below the threshold before the sink sees them', () => {
+    const calls: string[] = []
+    const sink = {
+      debug: (m: string) => calls.push(`debug:${m}`),
+      info: (m: string) => calls.push(`info:${m}`),
+      warn: (m: string) => calls.push(`warn:${m}`),
+      error: (m: string) => calls.push(`error:${m}`),
+    }
+    const log = resolveLogger(sink, 'warn')
+    log.debug('a'); log.info('b'); log.warn('c'); log.error('d')
+    expect(calls).toEqual(['warn:c', 'error:d'])
+  })
+
+  it('silent drops everything, banner included', () => {
+    const calls: string[] = []
+    const sink = { debug: () => calls.push('x'), info: () => calls.push('x'), warn: () => calls.push('x'), error: () => calls.push('x') }
+    const log = resolveLogger(sink, 'silent')
+    log.error('boom')
+    log.startupBanner({ name: 'n', version: '1.0.0', transport: 'stdio' })
+    expect(calls).toEqual([])
+  })
+
+  it('passes meta through to an injected sink untouched (no ANSI, no prefix)', () => {
+    const seen: Array<[string, unknown]> = []
+    const sink = { debug: () => {}, info: (m: string, x?: unknown) => seen.push([m, x]), warn: () => {}, error: () => {} }
+    resolveLogger(sink, 'info').info('hello', { component: 'proxy' })
+    expect(seen).toEqual([['hello', { component: 'proxy' }]])
+    expect(seen[0]![0]).not.toMatch(/\x1b\[/)
+    expect(seen[0]![0]).not.toContain('[fastmcp]')
+  })
+
+  it('a meta-less call reaches the sink with exactly one argument, not (message, undefined)', () => {
+    // Regression: forwarding `meta` unconditionally means a sink like `console`
+    // sees a real (but empty) second argument and prints a literal "undefined".
+    // `arguments.length` proves the argument was omitted, not merely `undefined`.
+    const argCounts: Record<string, number> = {}
+    const sink = {
+      debug: function () { argCounts['debug'] = arguments.length },
+      info: function () { argCounts['info'] = arguments.length },
+      warn: function () { argCounts['warn'] = arguments.length },
+      error: function () { argCounts['error'] = arguments.length },
+    }
+    const log = resolveLogger(sink, 'debug')
+    log.debug('a')
+    log.info('b')
+    log.warn('c')
+    log.error('d')
+    expect(argCounts).toEqual({ debug: 1, info: 1, warn: 1, error: 1 })
+  })
+
+  it('a call with meta still reaches the sink with exactly two arguments', () => {
+    const argCounts: number[] = []
+    const sink = {
+      debug: () => {},
+      info: function () { argCounts.push(arguments.length) },
+      warn: () => {},
+      error: () => {},
+    }
+    resolveLogger(sink, 'info').info('hello', { component: 'proxy' })
+    expect(argCounts).toEqual([2])
+  })
+})
+
+describe('DefaultSink plain mode', () => {
+  it('formats [fastmcp] LEVEL message with JSON meta, to stderr', () => {
+    const { lines, restore } = capture()
+    try {
+      const sink = new DefaultSink('plain')
+      sink.warn('something odd', { component: 'tool', count: 2 })
+      sink.info('plain line')
+    } finally { restore() }
+    expect(lines[0]).toBe('[fastmcp] WARN something odd {"component":"tool","count":2}\n')
+    expect(lines[1]).toBe('[fastmcp] INFO plain line\n')
+  })
+
+  it('stringifies Error meta values readably', () => {
+    const { lines, restore } = capture()
+    try { new DefaultSink('plain').error('failed', { error: new Error('nope') }) } finally { restore() }
+    expect(lines[0]).toContain('Error: nope')
+  })
+
+  it('a circular meta value falls back to String() instead of throwing', () => {
+    // A circular value thrown from a custom route handler and logged as meta
+    // must not make the log call itself throw: that would surface inside
+    // whatever caller logged it (for example an error handler whose own 500
+    // response then never gets written).
+    const circular: Record<string, unknown> = { a: 1 }
+    circular['self'] = circular
+    const { lines, restore } = capture()
+    try {
+      expect(() => new DefaultSink('plain').error('failed', { value: circular })).not.toThrow()
+    } finally { restore() }
+    expect(lines[0]).toContain('[fastmcp] ERROR failed')
+  })
+})
+
+describe('DefaultSink pretty mode', () => {
+  it('renders level badges with the CLI theme and dim key=value meta', () => {
+    const { lines, restore } = capture()
+    try {
+      const sink = new DefaultSink('pretty')
+      sink.info('hello', { component: 'proxy' })
+      sink.warn('careful')
+      sink.error('broken')
+      sink.debug('detail')
+    } finally { restore() }
+    expect(lines[0]).toContain(symbols.info)
+    expect(lines[0]).toContain('hello')
+    expect(lines[0]).toContain('component=proxy')
+    expect(lines[1]).toContain(symbols.warning)
+    expect(lines[2]).toContain(symbols.failure)
+    expect(lines[3]).toContain('detail')
+    // pretty lines never carry the plain-mode prefix
+    for (const l of lines) expect(l).not.toContain('[fastmcp]')
+  })
+
+  it('renders the startup banner block and the listening line', () => {
+    const { lines, restore } = capture()
+    try {
+      const sink = new DefaultSink('pretty')
+      sink.banner({ name: 'weather', version: '1.2.0', transport: 'http', url: 'http://localhost:8000/mcp' })
+      sink.listening('http://localhost:8000/mcp')
+    } finally { restore() }
+    const banner = lines[0]!
+    expect(banner).toContain('FastMCP')
+    expect(banner).toContain('weather')
+    expect(banner).toContain('v1.2.0')
+    expect(banner).toContain('http')
+    expect(lines[1]).toContain(symbols.success)
+    expect(lines[1]).toContain('listening on http://localhost:8000/mcp')
+  })
+
+  it('a circular meta value falls back to String() instead of throwing', () => {
+    const circular: Record<string, unknown> = { a: 1 }
+    circular['self'] = circular
+    const { lines, restore } = capture()
+    try {
+      expect(() => new DefaultSink('pretty').warn('careful', { value: circular })).not.toThrow()
+    } finally { restore() }
+    expect(lines[0]).toContain('careful')
+  })
+})
+
+describe('ResolvedLogger banner dispatch', () => {
+  it('uses the DefaultSink banner when the sink is the default', () => {
+    const { lines, restore } = capture()
+    try {
+      new ResolvedLogger(new DefaultSink('pretty'), 'info')
+        .startupBanner({ name: 'n', version: '1.0.0', transport: 'stdio' })
+    } finally { restore() }
+    expect(lines[0]).toContain('FastMCP')
+  })
+
+  it('falls back to a plain info line for injected sinks', () => {
+    const seen: string[] = []
+    const sink = { debug: () => {}, info: (m: string) => seen.push(m), warn: () => {}, error: () => {} }
+    new ResolvedLogger(sink, 'info').startupBanner({ name: 'n', version: '1.0.0', transport: 'stdio' })
+    expect(seen).toEqual(['starting n v1.0.0 (stdio)'])
+  })
+})
+
+describe('FastMCP logger option', () => {
+  it('throws at construction on a malformed logLevel', () => {
+    expect(() => new FastMCP({ name: 't', logLevel: 'loud' as never })).toThrow(/logLevel/)
+  })
+
+  it('resolves an injected logger with the gate applied', () => {
+    const calls: string[] = []
+    const sink = { debug: () => calls.push('debug'), info: () => calls.push('info'), warn: () => calls.push('warn'), error: () => calls.push('error') }
+    const mcp = new FastMCP({ name: 't', logger: sink, logLevel: 'warn' })
+    mcp._logger.info('x')
+    mcp._logger.warn('y')
+    expect(calls).toEqual(['warn'])
+  })
+})
+
+function collectingLogger(): {
+  logger: ResolvedLogger
+  sink: Logger
+  calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }>
+} {
+  const calls: Array<{ level: string; message: string; meta?: Record<string, unknown> }> = []
+  const sink = {
+    debug: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'debug', message, meta }),
+    info: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'info', message, meta }),
+    warn: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'warn', message, meta }),
+    error: (message: string, meta?: Record<string, unknown>) => calls.push({ level: 'error', message, meta }),
+  }
+  return { logger: new ResolvedLogger(sink, 'debug'), sink, calls }
+}
+
+describe('threading', () => {
+  it('toJsonSchema warns through the provided logger, not console', async () => {
+    const { logger, calls } = collectingLogger()
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const result = await toJsonSchema(
+        {
+          '~standard': { validate: () => ({ value: {} }) },
+          toJsonSchema: () => { throw new Error('native failed') },
+        } as never,
+        'tool myTool',
+        logger,
+      )
+      expect(result).toEqual({ type: 'object' })
+      const debugIndex = calls.findIndex(
+        (c) => c.level === 'debug' && c.message.includes('toJsonSchema strategy'),
+      )
+      const warnIndex = calls.findIndex(
+        (c) => c.level === 'warn' && c.message.includes('Could not auto-generate'),
+      )
+      expect(debugIndex).toBeGreaterThanOrEqual(0)
+      expect(warnIndex).toBeGreaterThanOrEqual(0)
+      expect(debugIndex).toBeLessThan(warnIndex)
+      expect(consoleSpy).not.toHaveBeenCalled()
+    } finally { consoleSpy.mockRestore() }
+  })
+})
+
+describe('lifecycle logs', () => {
+  it('http run emits banner then listening with the bound URL', async () => {
+    const { sink, calls } = collectingLogger()
+    const mcp = new FastMCP({ name: 'life', version: '2.0.0', logger: sink, logLevel: 'info' })
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    try {
+      const messages = calls.map((c) => c.message)
+      expect(messages.some((m) => m.includes('starting life v2.0.0 (http)'))).toBe(true)
+      expect(messages.some((m) => /^listening on http:\/\/127\.0\.0\.1:\d+/.test(m))).toBe(true)
+    } finally { await mcp.close() }
+  })
+
+  it('the default plain listening line contains the CLI sniff word', () => {
+    const { lines, restore } = capture()
+    try { new ResolvedLogger(new DefaultSink('plain'), 'info').listening('http://h:1/p') } finally { restore() }
+    expect(lines[0]).toContain('listening')
+  })
+})
+
+describe('stdio stdout purity', () => {
+  it('emits no non-protocol bytes on stdout', async () => {
+    const { PassThrough } = await import('node:stream')
+    const stdin = new PassThrough()
+    const stdout = new PassThrough()
+    const out: Buffer[] = []
+    stdout.on('data', (c: Buffer) => out.push(c))
+    // Event-driven wait for the initialize response, matching the precedent in
+    // tests/server/server.test.ts's "runs over stdio" test, instead of a fixed
+    // sleep that could pass vacuously if the handshake produced no output.
+    const responsePromise = new Promise<string>((resolve) => {
+      stdout.once('data', (chunk: Buffer) => resolve(chunk.toString()))
+    })
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const mcp = new FastMCP({ name: 'pure', logLevel: 'debug' })
+    try {
+      await mcp.run({ transport: 'stdio', stdin, stdout })
+      stdin.write(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: LEGACY_INITIALIZE_PROTOCOL_VERSION,
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '0.0.0' },
+          },
+        }) + '\n',
+      )
+      // Prove a real response for id 1 arrived, not just that the (possibly
+      // empty) line loop below ran zero iterations without failing.
+      const msg = JSON.parse(await responsePromise)
+      expect(msg.id).toBe(1)
+      const text = Buffer.concat(out).toString()
+      const lines = text.split('\n').filter((l) => l.trim() !== '')
+      expect(lines.length).toBeGreaterThan(0)
+      for (const line of lines) {
+        expect(() => JSON.parse(line)).not.toThrow()
+      }
+    } finally {
+      stderrSpy.mockRestore()
+      await mcp.close()
+    }
+  })
+})

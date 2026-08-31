@@ -8,6 +8,7 @@
  * `fetch()` is deliberately untouched: the embedding framework owns CORS at
  * its HTTP boundary, exactly as it owns Host/Origin validation.
  */
+import type { ResolvedLogger } from './logger'
 
 /** `FastMCPOptions.http.cors` object form. `true` and omitted mean the
  * permissive defaults; `false` disables CORS handling entirely (no global
@@ -186,7 +187,11 @@ export function resolveCors(cors: boolean | CorsOptions | undefined): ResolvedCo
 
 /** The `Access-Control-Allow-Origin` value for this request, or null when the
  * origin is not allowed (or absent, under a non-`any` mode). */
-function allowOriginValue(cors: ResolvedCors, requestOrigin: string | undefined): string | null {
+function allowOriginValue(
+  cors: ResolvedCors,
+  requestOrigin: string | undefined,
+  logger?: ResolvedLogger,
+): string | null {
   switch (cors.originMode.kind) {
     case 'any':
       return '*'
@@ -197,19 +202,24 @@ function allowOriginValue(cors: ResolvedCors, requestOrigin: string | undefined)
       try {
         return cors.originMode.test(requestOrigin) ? requestOrigin : null
       } catch (err) {
-        console.error('[fastmcp] cors.origin predicate threw; denying origin:', err)
+        if (logger) logger.error('cors.origin predicate threw; denying origin', { component: 'cors', error: err })
+        else console.error('[fastmcp] cors.origin predicate threw; denying origin:', err)
         return null
       }
     }
   }
 }
 
-function baseHeaders(cors: ResolvedCors, requestOrigin: string | undefined): Record<string, string> {
+function baseHeaders(
+  cors: ResolvedCors,
+  requestOrigin: string | undefined,
+  logger?: ResolvedLogger,
+): Record<string, string> {
   const headers: Record<string, string> = {}
   // Any non-static ACAO makes the response vary by Origin; shared caches must
   // never serve one origin's copy to another. Set even on rejected origins.
   if (cors.originMode.kind !== 'any') headers['Vary'] = 'Origin'
-  const origin = allowOriginValue(cors, requestOrigin)
+  const origin = allowOriginValue(cors, requestOrigin, logger)
   if (origin === null) return headers
   headers['Access-Control-Allow-Origin'] = origin
   if (cors.credentials) headers['Access-Control-Allow-Credentials'] = 'true'
@@ -217,8 +227,12 @@ function baseHeaders(cors: ResolvedCors, requestOrigin: string | undefined): Rec
 }
 
 /** Headers for the global `OPTIONS` preflight answer (204). */
-export function corsPreflightHeaders(cors: ResolvedCors, requestOrigin: string | undefined): Record<string, string> {
-  const headers = baseHeaders(cors, requestOrigin)
+export function corsPreflightHeaders(
+  cors: ResolvedCors,
+  requestOrigin: string | undefined,
+  logger?: ResolvedLogger,
+): Record<string, string> {
+  const headers = baseHeaders(cors, requestOrigin, logger)
   if (headers['Access-Control-Allow-Origin'] === undefined) return headers
   headers['Access-Control-Allow-Methods'] = cors.methods
   headers['Access-Control-Allow-Headers'] = cors.allowedHeaders
@@ -228,8 +242,12 @@ export function corsPreflightHeaders(cors: ResolvedCors, requestOrigin: string |
 
 /** Headers attached to every MCP-endpoint response, auth failures included,
  * so a browser can read the 401 challenge. */
-export function corsResponseHeaders(cors: ResolvedCors, requestOrigin: string | undefined): Record<string, string> {
-  const headers = baseHeaders(cors, requestOrigin)
+export function corsResponseHeaders(
+  cors: ResolvedCors,
+  requestOrigin: string | undefined,
+  logger?: ResolvedLogger,
+): Record<string, string> {
+  const headers = baseHeaders(cors, requestOrigin, logger)
   if (headers['Access-Control-Allow-Origin'] === undefined) return headers
   headers['Access-Control-Expose-Headers'] = cors.exposedHeaders
   return headers

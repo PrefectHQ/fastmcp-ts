@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
+import type { ResolvedLogger } from './logger'
 
 /**
  * Handler for a custom HTTP route served by the listener `run()` starts.
@@ -148,13 +149,15 @@ export async function serveCustomRouteNode(
   handler: CustomRouteHandler,
   req: IncomingMessage,
   res: ServerResponse,
+  logger?: ResolvedLogger,
 ): Promise<void> {
   const { toWebRequest } = await import('@modelcontextprotocol/node')
   let response: Response
   try {
     response = await handler(await toWebRequest(req))
   } catch (error) {
-    console.error('[fastmcp] custom route handler failed:', error)
+    if (logger) logger.error('custom route handler failed', { component: 'routes', error })
+    else console.error('[fastmcp] custom route handler failed:', error)
     res
       .writeHead(500, { 'Content-Type': 'application/json' })
       .end(JSON.stringify({ error: 'Internal Server Error' }))
@@ -164,7 +167,8 @@ export async function serveCustomRouteNode(
   if (response.body) {
     const stream = Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream)
     stream.on('error', (error) => {
-      console.error('[fastmcp] custom route response stream failed:', error)
+      if (logger) logger.error('custom route response stream failed', { component: 'routes', error })
+      else console.error('[fastmcp] custom route response stream failed:', error)
       res.destroy()
     })
     stream.pipe(res)
