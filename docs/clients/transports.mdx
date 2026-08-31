@@ -29,7 +29,7 @@ Because the transport is resolved from the argument and nothing else, the same c
 
 Each accepted input maps to a concrete connection, and knowing the mapping tells you which one to reach for.
 
-A **string URL** speaks [Streamable HTTP](/servers/running#transports), the transport for servers exposed over the network. It is the only network transport the client reaches for on its own. The older SSE transport is deprecated in the MCP SDK, so the client never connects to it silently: a URL whose path looks like an SSE endpoint — one ending in `/sse` — throws a clear error that points you at Streamable HTTP and at the opt-in below. To connect to a legacy SSE server on purpose, set `legacySSE: true`, which permits the SSE path and logs a one-time deprecation warning.
+A **string URL** speaks [Streamable HTTP](/servers/running#transports), the transport for servers exposed over the network. It is the only network transport the client reaches for on its own. The string must be an `http:` or `https:` URL. Anything else, a bare file path like `'server.py'` or a non-HTTP scheme like `file:`, throws before any connection is attempted, with an error that points at `StdioTransport` for local scripts. A script path never runs implicitly; stdio always requires the explicit forms below. The older SSE transport is deprecated in the MCP SDK, so the client never connects to it silently: a URL whose path looks like an SSE endpoint — one ending in `/sse` — throws a clear error that points you at Streamable HTTP and at the opt-in below. To connect to a legacy SSE server on purpose, set `legacySSE: true`, which permits the SSE path and logs a one-time deprecation warning.
 
 ```typescript
 const client = await Client.connect('https://legacy-mcp.example.com/sse', {
