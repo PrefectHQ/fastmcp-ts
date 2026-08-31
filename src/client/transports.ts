@@ -221,6 +221,35 @@ function buildHttpOptions(
 }
 
 // ---------------------------------------------------------------------------
+// URL string validation — URL strings must be http(s). A bare script path (or
+// any other scheme) must never be silently accepted: stdio always requires an
+// explicit StdioTransport or a { command } config entry, so a string that is
+// not an http(s) URL is a caller error and fails here with a pointer to the
+// explicit form.
+// ---------------------------------------------------------------------------
+
+const STDIO_HINT =
+  'To run a local server script over stdio, pass an explicit StdioTransport ' +
+  "(e.g. new StdioTransport('node', ['server.js'])) or an mcpServers entry " +
+  'with a "command" key.'
+
+function parseHttpUrl(input: string): URL {
+  if (!URL.canParse(input)) {
+    throw new Error(
+      `"${input}" is not a valid URL. URL strings must be http: or https:. ${STDIO_HINT}`,
+    )
+  }
+  const url = new URL(input)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(
+      `"${input}" has unsupported scheme "${url.protocol}". URL strings must be ` +
+        `http: or https:. ${STDIO_HINT}`,
+    )
+  }
+  return url
+}
+
+// ---------------------------------------------------------------------------
 // URL → SDK transport
 // ---------------------------------------------------------------------------
 
@@ -302,6 +331,13 @@ export async function resolveEntryTransport(
   auth?: BearerAuth | OAuth | AsyncHeaderAuth,
   options?: TransportResolutionOptions,
 ): Promise<ResolvedTransport> {
+  if (typeof entry !== 'object' || entry === null) {
+    throw new Error(
+      `mcpServers entry ${JSON.stringify(entry)} must be an object with a "url" ` +
+        `or "command" key. ${STDIO_HINT}`,
+    )
+  }
+
   // In-process server (McpServerLike: has connect(transport)).
   if (isMcpServerLike(entry)) {
     if (isPinnedModern(options?.versionNegotiation) && entry._modernFetch) {
@@ -317,7 +353,7 @@ export async function resolveEntryTransport(
   const entryAuth = resolveEntryAuth(entry.auth) ?? auth
 
   if ('url' in entry) {
-    const url = new URL(entry.url)
+    const url = parseHttpUrl(entry.url)
     const extraHeaders = entry.headers ?? {}
     return { transport: urlToTransport(url, entryAuth, extraHeaders, options?.legacySSE) }
   }
@@ -363,7 +399,7 @@ export async function resolveTransport(
 
   // 2. URL string → auto-detect HTTP transport.
   if (typeof input === 'string') {
-    const url = new URL(input)
+    const url = parseHttpUrl(input)
     return { transport: urlToTransport(url, auth, {}, options?.legacySSE) }
   }
 

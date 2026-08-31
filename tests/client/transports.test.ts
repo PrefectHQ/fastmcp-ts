@@ -40,7 +40,45 @@ describe('resolveTransport', () => {
     })
 
     it('throws on an invalid URL string', async () => {
-      await expect(resolveTransport('not-a-url')).rejects.toThrow()
+      await expect(resolveTransport('not-a-url')).rejects.toThrow(/not a valid URL/)
+    })
+  })
+
+  describe('URL scheme validation', () => {
+    it('rejects a bare script path and points at StdioTransport', async () => {
+      await expect(resolveTransport('harmful_script.py')).rejects.toThrow(
+        /not a valid URL[\s\S]*StdioTransport/,
+      )
+    })
+
+    it('rejects a relative script path', async () => {
+      await expect(resolveTransport('./server.js')).rejects.toThrow(/not a valid URL/)
+    })
+
+    it('rejects a file: URL', async () => {
+      await expect(resolveTransport('file:///tmp/server.py')).rejects.toThrow(
+        /unsupported scheme "file:"/,
+      )
+    })
+
+    it('rejects a python: scheme', async () => {
+      await expect(resolveTransport('python:server.py')).rejects.toThrow(
+        /unsupported scheme "python:"/,
+      )
+    })
+
+    it('rejects a Windows-style path (parses as a c: scheme)', async () => {
+      await expect(resolveTransport('C:\\scripts\\server.py')).rejects.toThrow(
+        /unsupported scheme/,
+      )
+    })
+
+    it('rejects a non-http scheme in an mcpServers url entry', async () => {
+      await expect(
+        resolveTransport({
+          mcpServers: { myServer: { url: 'file:///tmp/server.py' } },
+        }),
+      ).rejects.toThrow(/unsupported scheme "file:"/)
     })
   })
 
@@ -115,6 +153,12 @@ describe('resolveTransport', () => {
 
     it('throws when mcpServers is empty', async () => {
       await expect(resolveTransport({ mcpServers: {} })).rejects.toThrow('empty')
+    })
+
+    it('rejects a raw string entry with a clear error', async () => {
+      await expect(
+        resolveTransport({ mcpServers: { myServer: 'harmful_script.py' as never } }),
+      ).rejects.toThrow(/must be an object with a "url" or "command" key/)
     })
   })
 
