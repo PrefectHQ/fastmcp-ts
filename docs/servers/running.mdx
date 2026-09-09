@@ -199,7 +199,7 @@ If you'd rather drive the server from the command line during development, the [
 
 ## Ship as a package
 
-`fastmcp run server.ts` is the development story. When you hand a finished server to other people, the usual shape is an npm package that hosts launch with `npx`. Claude Desktop, Cursor, Codex, and most other hosts write an entry like this into their MCP configuration and spawn the server over stdio:
+Shipping a server usually means bundling it as an npm package that hosts can launch with `npx`. Claude Desktop, Cursor, Codex, and other hosts write an entry like this into their MCP configuration and spawn the server over stdio:
 
 ```json mcp.json
 {
@@ -212,7 +212,7 @@ If you'd rather drive the server from the command line during development, the [
 }
 ```
 
-For that to work the package needs two things: a `bin` field that names the entry file, and a shebang as the first line of that file. On macOS and Linux, npm links the `bin` file into `node_modules/.bin` and the operating system executes it directly. Without the shebang the shell tries to run the JavaScript itself, and the server dies on its first line with a syntax error before any MCP message is exchanged. The host reports a crashed server and nothing more.
+npm exposes the package's `bin` entry as an executable script: on macOS and Linux it is linked into `node_modules/.bin` and run directly by the operating system, so the file must open with an interpreter directive (the shebang line) naming Node. Without it the shell tries to run the JavaScript itself, and the server exits with a syntax error before the host sees a single MCP message.
 
 ```typescript src/index.ts
 #!/usr/bin/env node
@@ -236,12 +236,10 @@ await server.run()
 }
 ```
 
-The shebang has to survive your build. `tsc` copies it from the source file into the output unchanged. Bundlers strip it: with `tsup` or `esbuild`, set `banner: { js: '#!/usr/bin/env node' }` in the build config so the line is prepended to the bundle. This is how the `fastmcp` CLI itself is built. npm marks `bin` files executable when the package is installed, so there is nothing else to set.
+The directive has to survive the build. `tsc` copies it through unchanged; `tsup` and `esbuild` strip it unless you set `banner: { js: '#!/usr/bin/env node' }`, which is how the `fastmcp` CLI itself is built. npm sets the executable bit at install time, so nothing else needs marking.
 
-Leave the transport to `run()`'s defaults. Hosts speak stdio, so an env-driven `await server.run()` does the right thing when `npx` launches it, and the same package still serves HTTP under `MCP_TRANSPORT=http` in a container. To check the result before you publish, build the package, run `npm link` in its directory, and point the CLI at the linked binary:
+Keep `await server.run()` env-driven: hosts speak stdio, and the same package serves HTTP under `MCP_TRANSPORT=http`. To check the result before publishing, build, run `npm link`, and point the CLI at the linked binary:
 
 ```bash
 fastmcp list --command my-server
 ```
-
-If that lists your tools, a host launching the published package will see the same thing.
