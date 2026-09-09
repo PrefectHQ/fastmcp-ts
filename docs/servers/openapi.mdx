@@ -100,9 +100,9 @@ By default tools advertise the exact output schema derived from the spec. If the
 
 Output schemas also omit `format` keywords: MCP validators treat `format` as a hard assertion on tool results, and real APIs routinely return values (an empty string for an unset URL, say) that a spec's `format: uri` would reject. Input schemas keep their formats.
 
-## Running with npx
+## Running the generated server
 
-A generated server file is an ordinary FastMCP entry point, so the [CLI](/cli) treats it like any other server: `npx fastmcp run server.ts` for stdio, `npx fastmcp inspect --file server.ts` to see what was generated, and the standard env vars (`MCP_TRANSPORT`, `MCP_PORT`) select the transport in deployment.
+A generated server file is an ordinary FastMCP entry point, so the [CLI](/cli) treats it like any other server: `npx fastmcp run server.ts` for stdio, `npx fastmcp inspect --file server.ts` to see what was generated, and the standard env vars (`MCP_TRANSPORT`, `MCP_PORT`) select the transport in deployment. To publish it as an npm package that hosts launch with `npx <your-package>`, see [ship as a package](/servers/running#ship-as-a-package): the entry file needs a shebang line and a `bin` field, or the host will report a crash on launch.
 
 ## Python parity
 

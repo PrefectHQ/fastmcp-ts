@@ -196,3 +196,50 @@ await server.run({ transport: 'stdio', stdin: testInput, stdout: testOutput })
 ```
 
 If you'd rather drive the server from the command line during development, the [CLI](/cli) wraps all of this — `fastmcp run server.ts` launches a server and its `dev inspector` loop reloads it on change.
+
+## Ship as a package
+
+Shipping a server usually means bundling it as an npm package that hosts can launch with `npx`. Claude Desktop, Cursor, Codex, and other hosts write an entry like this into their MCP configuration and spawn the server over stdio:
+
+```json mcp.json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "my-server"]
+    }
+  }
+}
+```
+
+npm exposes the package's `bin` entry as an executable script: on macOS and Linux it is linked into `node_modules/.bin` and run directly by the operating system, so the file must open with an interpreter directive (the shebang line) naming Node. Without it the shell tries to run the JavaScript itself, and the server exits with a syntax error before the host sees a single MCP message.
+
+```typescript src/index.ts
+#!/usr/bin/env node
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({ name: 'my-server', version: '1.0.0' })
+// register tools, resources, prompts…
+
+await server.run()
+```
+
+```json package.json
+{
+  "name": "my-server",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": { "my-server": "dist/index.js" },
+  "files": ["dist"],
+  "scripts": { "build": "tsc" },
+  "dependencies": { "@prefecthq/fastmcp-ts": "^1.7.1" }
+}
+```
+
+The directive has to survive the build. `tsc` copies it through unchanged; `tsup` and `esbuild` strip it unless you set `banner: { js: '#!/usr/bin/env node' }`, which is how the `fastmcp` CLI itself is built. npm sets the executable bit at install time, so nothing else needs marking.
+
+Keep `await server.run()` env-driven: hosts speak stdio, and the same package serves HTTP under `MCP_TRANSPORT=http`. To check the result before publishing, build, run `npm link`, and point the CLI at the linked binary:
+
+```bash
+fastmcp list --command my-server
+```

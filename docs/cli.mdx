@@ -139,6 +139,8 @@ fastmcp install mcp-json server.ts      # project-local mcp.json
 
 Pass `--args` (comma-separated) and `--env` (comma-separated `KEY=VALUE`) to configure the entry that gets written. When a target already has an entry for the server, the CLI confirms before overwriting it.
 
+`install` registers a source file on this machine. To distribute a server, [ship it as a package](/servers/running#ship-as-a-package) that hosts launch with `npx`.
+
 ## Discover configured servers
 
 `fastmcp discover` scans every known client configuration on the machine and lists the MCP servers already configured across all of them. Use it to see what a machine is set up to run before installing or to audit existing configuration.
