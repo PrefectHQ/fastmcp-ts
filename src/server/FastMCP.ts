@@ -1,7 +1,7 @@
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import { hostHeaderValidation, originValidation } from "@modelcontextprotocol/node";
 import type { OAuthServerProvider } from "@modelcontextprotocol/server-legacy/auth";
-import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, Server, createMcpHandler, legacyStatelessFallback, isLegacyRequest, isJsonContentType, createRequestStateCodec, localhostAllowedHostnames, localhostAllowedOrigins, assertCompleteRequestPrompt, assertCompleteRequestResourceTemplate } from "@modelcontextprotocol/server";
+import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError, Server, createMcpHandler, legacyStatelessFallback, isLegacyRequest, isJsonContentType, createRequestStateCodec, localhostAllowedHostnames, localhostAllowedOrigins, getOAuthProtectedResourceMetadataUrl, assertCompleteRequestPrompt, assertCompleteRequestResourceTemplate } from "@modelcontextprotocol/server";
 import type { Transport, AuthInfo, ListToolsResult, GetPromptResult, CompleteRequestParams, CompleteResult, McpHttpHandler, LegacyHttpHandler, McpHandlerRequestOptions, CacheHint, RequestStateCodec, ServerContext, ServerEventBus } from "@modelcontextprotocol/server";
 
 // Not exported by @modelcontextprotocol/server (CacheableResultMethod is internal-only);
@@ -2258,11 +2258,16 @@ export class FastMCP {
     const bound = httpServer.address() as AddressInfo
     const issuerUrl = oauth.issuerUrl ?? new URL(`http://${bound.address}:${bound.port}`)
 
+    // Explicit URLs keep the metadata path-scoped independent of the SDK's defaults (typescript-sdk#2751).
+    const resourceServerUrl = new URL(path, issuerUrl)
+    const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resourceServerUrl)
+
     // OAuth endpoints (authorize, token, register, metadata)
     app.use(
       mcpAuthRouter({
         provider: oauth.provider,
         issuerUrl,
+        resourceServerUrl,
         scopesSupported: oauth.scopes,
       }),
     )
@@ -2271,7 +2276,7 @@ export class FastMCP {
     // both the legacy transport and the modern handler read as pass-through authInfo.
     app.all(
       path,
-      requireBearerAuth({ verifier: oauth.provider }),
+      requireBearerAuth({ verifier: oauth.provider, resourceMetadataUrl }),
       async (req, res) => {
         await this._dispatchHttp(req, res)
       },

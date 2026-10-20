@@ -246,11 +246,11 @@ describe('remoteAuth over HTTP', () => {
 
   it('oauth takes precedence: no remote metadata route', async () => {
     const { local } = await start({ oauth: { provider: oauthProvider() } })
-    expect((await fetch(`${local}/.well-known/oauth-protected-resource/mcp`)).status).toBe(404)
-    const root = await fetch(`${local}/.well-known/oauth-protected-resource`)
-    expect(root.status).toBe(200)
-    const { authorization_servers } = (await root.json()) as { authorization_servers: string[] }
+    const scoped = await fetch(`${local}/.well-known/oauth-protected-resource/mcp`)
+    expect(scoped.status).toBe(200)
+    const { authorization_servers } = (await scoped.json()) as { authorization_servers: string[] }
     expect(authorization_servers).not.toContain('https://auth.example.com')
     expect(authorization_servers).toEqual([`${local}/`])
+    expect((await fetch(`${local}/.well-known/oauth-protected-resource`)).status).toBe(404)
   })
 })
