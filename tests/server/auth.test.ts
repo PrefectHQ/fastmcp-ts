@@ -19,6 +19,9 @@ import {
   CachingMiddleware,
 } from 'fastmcp-ts/server'
 import type { AccessToken, RequestVerifier } from 'fastmcp-ts/server'
+import type { OAuthClientInformationFull } from '@modelcontextprotocol/server'
+import { InvalidTokenError } from '@modelcontextprotocol/server-legacy/auth'
+import type { Response as ExpressResponse } from 'express'
 import { connectHttpClient, connectHttpClientWithHeaders, rawPost } from '../helpers/http'
 import { connectEra, ERA_COMBOS } from '../helpers/eras'
 
@@ -322,6 +325,61 @@ describe('Server — Authentication', () => {
     afterEach(async () => {
       await Promise.all(cleanup.map((c) => c()))
       cleanup.length = 0
+    })
+
+    it('answers an unknown bearer token with 401 invalid_token, not 500', async () => {
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider: oauthProvider() } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+      const res = await rawPost(new URL(`http://127.0.0.1:${mcp.address!.port}${mcp.address!.path}`), 'nope')
+      expect(res.status).toBe(401)
+      expect(res.headers.get('www-authenticate')).toContain('error="invalid_token"')
+      expect(await res.json()).toMatchObject({ error: 'invalid_token' })
+    })
+
+    it('serves protected resource metadata at the path-scoped URL for /mcp', async () => {
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider: oauthProvider(), scopes: ['read'] } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+      const base = `http://127.0.0.1:${mcp.address!.port}`
+      const res = await fetch(`${base}/.well-known/oauth-protected-resource/mcp`)
+      expect(res.status).toBe(200)
+      expect(await res.json()).toMatchObject({
+        resource: `${base}/mcp`,
+        authorization_servers: [`${base}/`],
+        scopes_supported: ['read'],
+      })
+      expect((await fetch(`${base}/.well-known/oauth-protected-resource`)).status).toBe(404)
+      expect((await fetch(`${base}/.well-known/oauth-authorization-server`)).status).toBe(200)
+    })
+
+    it('401 challenges carry resource_metadata', async () => {
+      const mcp = new FastMCP({ name: 'test-server', oauth: { provider: oauthProvider() } })
+      await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+      cleanup.push(() => mcp.close())
+      const base = `http://127.0.0.1:${mcp.address!.port}`
+      const mcpUrl = new URL(`${base}${mcp.address!.path}`)
+      for (const token of [undefined, 'nope']) {
+        const res = await rawPost(mcpUrl, token)
+        expect(res.status).toBe(401)
+        expect(res.headers.get('www-authenticate')).toContain(
+          `resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"`,
+        )
+      }
+    })
+
+    it('verifyAccessToken rejects an expired token with InvalidTokenError', async () => {
+      const provider = oauthProvider({ tokenTtl: -1 })
+      const client = { client_id: 'c', redirect_uris: ['http://localhost/cb'] } as OAuthClientInformationFull
+      let location = ''
+      await provider.authorize(
+        client,
+        { redirectUri: 'http://localhost/cb', codeChallenge: 'x', scopes: [] },
+        { redirect: (u: string) => { location = u } } as unknown as ExpressResponse,
+      )
+      const code = new URL(location).searchParams.get('code')!
+      const { access_token } = await provider.exchangeAuthorizationCode(client, code)
+      await expect(provider.verifyAccessToken(access_token)).rejects.toBeInstanceOf(InvalidTokenError)
     })
 
     it('a client without credentials can register dynamically and obtain tokens', async () => {

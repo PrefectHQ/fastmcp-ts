@@ -16,7 +16,7 @@ FastMCP's built-in authorization server is a supported interim, and you should c
 
 What is changing is the spec beneath them. The 2026-07-28 revision deprecates Dynamic Client Registration, the mechanism both arrangements rely on to let an unknown MCP client register itself. Because the built-in server is pinned to the frozen package, it does not track that change — which is why it is positioned as an interim rather than the long-term answer.
 
-For a new server, the durable path is to let an external identity provider own identity and simply [verify](/servers/auth/token-verification) the tokens it issues, which sidesteps client registration entirely. Reach for the built-in server only when your clients must discover and register on their own, and pair it with the client-side hardening on the [client auth](/clients/auth) page — client ID metadata documents and issuer (`iss`) validation — so the flow rests on verifiable metadata rather than the interim server alone.
+For a new server, the durable path is to let an external identity provider own identity and simply [verify](/servers/auth/token-verification) the tokens it issues, which sidesteps client registration entirely. Wrap your verifier with `remoteAuth` so clients can still [discover the authorization server](/servers/auth/token-verification#authorization-server-discovery). Reach for the built-in server only when your clients must discover and register on their own, and pair it with the client-side hardening on the [client auth](/clients/auth) page — client ID metadata documents and issuer (`iss`) validation — so the flow rests on verifiable metadata rather than the interim server alone.
 
 ## oauthProvider
 
@@ -76,6 +76,8 @@ The proxy delegates the flow, but it cannot delegate verification — you still 
 ## Protected resource metadata
 
 OAuth only works because a client that knows nothing can *discover* everything it needs. When you configure `oauth`, FastMCP mounts the standard metadata endpoints alongside your MCP endpoint: the authorization-server metadata that advertises where to register, authorize, and exchange tokens, and the supported scopes you declared. An MCP client following the spec reads this metadata, learns how to authenticate, and completes the flow without anything hardcoded.
+
+The protected resource document is path-scoped. FastMCP serves it at `/.well-known/oauth-protected-resource` followed by the MCP path, for example `/.well-known/oauth-protected-resource/mcp` for the default path. The root URL `/.well-known/oauth-protected-resource` does not serve it. Every `401` response names the document in the `resource_metadata` parameter of its `WWW-Authenticate` header, so a client that is refused can find the document from the response alone.
 
 The `issuerUrl` is the identity in that metadata, so it must be the public URL clients actually reach the server at. Omit it and FastMCP infers it from the bound address — convenient locally, where it resolves even when you let the OS pick a port, but set it explicitly in production so the advertised issuer matches what is behind your load balancer or proxy.
 

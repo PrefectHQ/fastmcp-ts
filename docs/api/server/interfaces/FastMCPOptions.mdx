@@ -2,7 +2,7 @@
 title: "FastMCPOptions"
 ---
 
-Defined in: [server/FastMCP.ts:75](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L75)
+Defined in: [server/FastMCP.ts:77](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L77)
 
 ## Properties
 
@@ -14,13 +14,14 @@ optional auth?:
   | RequestVerifier;
 ```
 
-Defined in: [server/FastMCP.ts:85](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L85)
+Defined in: [server/FastMCP.ts:88](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L88)
 
 Bearer-token verifier, or a RequestVerifier for header-based
 (trusted-proxy) deployments. See each type's docs. A RequestVerifier
 applies to HTTP transports only; stdio's FASTMCP_CLI_AUTH_TOKEN needs a
-TokenVerifier. When both `oauth` and `auth` are set, `oauth` serves the
-endpoint and `auth` is ignored.
+TokenVerifier. Wrap either in `remoteAuth(...)` to also serve RFC 9728
+protected resource metadata over HTTP. When both `oauth` and `auth` are
+set, `oauth` serves the endpoint and `auth` is ignored.
 
 ***
 
@@ -30,7 +31,7 @@ endpoint and `auth` is ignored.
 optional cacheHints?: Partial<Record<CacheableResultMethod, CacheHint>>;
 ```
 
-Defined in: [server/FastMCP.ts:145](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L145)
+Defined in: [server/FastMCP.ts:148](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L148)
 
 Cache hints (`ttlMs` / `cacheScope`) for the 2026-07-28 protocol revision's
 cacheable results (`tools/list`, `prompts/list`, `resources/list`,
@@ -54,7 +55,7 @@ optional dnsRebinding?: {
 };
 ```
 
-Defined in: [server/FastMCP.ts:209](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L209)
+Defined in: [server/FastMCP.ts:212](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L212)
 
 DNS-rebinding protection for the HTTP listener started by `run()`: validates
 the `Host` and `Origin` request headers (port-agnostic, by hostname) and rejects
@@ -108,7 +109,7 @@ Force protection on (`true`) or off (`false`). Omit for the loopback-auto defaul
 optional eventBus?: ServerEventBus;
 ```
 
-Defined in: [server/FastMCP.ts:191](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L191)
+Defined in: [server/FastMCP.ts:194](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L194)
 
 The change-event bus modern (2026-07-28) `subscriptions/listen` streams
 subscribe to, and `tool()`/`resource()`/`prompt()` registration publishes
@@ -130,7 +131,7 @@ optional http?: {
 };
 ```
 
-Defined in: [server/FastMCP.ts:105](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L105)
+Defined in: [server/FastMCP.ts:108](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L108)
 
 HTTP request context tuning for `ctx.http`. `redactHeaders` adds names to
 the sensitive set withheld from `ctx.http.headers` (defaults:
@@ -178,7 +179,7 @@ optional inputRequired?: {
 };
 ```
 
-Defined in: [server/FastMCP.ts:171](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L171)
+Defined in: [server/FastMCP.ts:174](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L174)
 
 Multi-round-trip (`inputRequired`) serving knobs (protocol revision 2026-07-28).
 On 2026-era requests the client fulfils `input_required` returns directly; on
@@ -221,7 +222,7 @@ Default: 600_000 (10 minutes) — human-paced, deliberately above the 60s protoc
 optional logger?: Logger;
 ```
 
-Defined in: [server/FastMCP.ts:116](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L116)
+Defined in: [server/FastMCP.ts:119](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L119)
 
 Sink for the framework's own diagnostic logs (lifecycle, warnings,
 errors). `console` and Winston loggers satisfy the shape directly; see
@@ -240,7 +241,7 @@ that transport.
 optional logLevel?: "debug" | "info" | "warn" | "error" | "silent";
 ```
 
-Defined in: [server/FastMCP.ts:123](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L123)
+Defined in: [server/FastMCP.ts:126](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L126)
 
 Minimum level for framework logs, applied before any logger (injected or
 default) is called. Precedence: this option, then the FASTMCP_LOG_LEVEL
@@ -255,7 +256,7 @@ Malformed values throw here, at construction, for every transport.
 optional middleware?: Middleware[];
 ```
 
-Defined in: [server/FastMCP.ts:131](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L131)
+Defined in: [server/FastMCP.ts:134](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L134)
 
 Middleware applied to every request in registration order.
 
@@ -267,7 +268,7 @@ Middleware applied to every request in registration order.
 name: string;
 ```
 
-Defined in: [server/FastMCP.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L76)
+Defined in: [server/FastMCP.ts:78](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L78)
 
 ***
 
@@ -277,7 +278,7 @@ Defined in: [server/FastMCP.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/
 optional oauth?: OAuthConfig;
 ```
 
-Defined in: [server/FastMCP.ts:87](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L87)
+Defined in: [server/FastMCP.ts:90](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L90)
 
 Full OAuth 2.1 server with Dynamic Client Registration support.
 
@@ -289,7 +290,7 @@ Full OAuth 2.1 server with Dynamic Client Registration support.
 optional promptsPageSize?: number;
 ```
 
-Defined in: [server/FastMCP.ts:129](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L129)
+Defined in: [server/FastMCP.ts:132](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L132)
 
 Maximum number of prompts returned per prompts/list page. Default: 50.
 
@@ -305,7 +306,7 @@ optional requestState?: {
 };
 ```
 
-Defined in: [server/FastMCP.ts:154](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L154)
+Defined in: [server/FastMCP.ts:157](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L157)
 
 HMAC-SHA256 integrity protection for multi-round-trip `requestState`
 (protocol revision 2026-07-28) — see `ctx.requestState()` / `ctx.mintRequestState()`.
@@ -358,7 +359,7 @@ How long a minted `requestState` stays valid, in seconds. Default: 600 (10 minut
 optional resourcesPageSize?: number;
 ```
 
-Defined in: [server/FastMCP.ts:127](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L127)
+Defined in: [server/FastMCP.ts:130](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L130)
 
 Maximum number of resources (or templates) returned per page. Default: 50.
 
@@ -370,7 +371,7 @@ Maximum number of resources (or templates) returned per page. Default: 50.
 optional toolsPageSize?: number;
 ```
 
-Defined in: [server/FastMCP.ts:125](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L125)
+Defined in: [server/FastMCP.ts:128](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L128)
 
 Maximum number of tools returned per listTools page. Default: 50.
 
@@ -382,7 +383,7 @@ Maximum number of tools returned per listTools page. Default: 50.
 optional transforms?: Transform[];
 ```
 
-Defined in: [server/FastMCP.ts:133](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L133)
+Defined in: [server/FastMCP.ts:136](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L136)
 
 Transforms applied to component list responses in registration order.
 
@@ -394,4 +395,4 @@ Transforms applied to component list responses in registration order.
 optional version?: string;
 ```
 
-Defined in: [server/FastMCP.ts:77](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L77)
+Defined in: [server/FastMCP.ts:79](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L79)

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { OAuthClientInformationFull, AuthInfo } from "@modelcontextprotocol/server";
-import { UnsupportedGrantTypeError } from "@modelcontextprotocol/server-legacy/auth";
+import { InvalidTokenError, UnsupportedGrantTypeError } from "@modelcontextprotocol/server-legacy/auth";
 import type { OAuthServerProvider, AuthorizationParams, OAuthRegisteredClientsStore } from "@modelcontextprotocol/server-legacy/auth";
 import type { Response } from 'express'
 
@@ -103,8 +103,8 @@ export function oauthProvider(options: OAuthProviderOptions = {}): OAuthServerPr
 
     async verifyAccessToken(token): Promise<AuthInfo> {
       const data = tokens.get(token)
-      if (!data) throw new Error('Invalid token')
-      if (data.expiresAt < Math.floor(Date.now() / 1000)) throw new Error('Token has expired')
+      if (!data) throw new InvalidTokenError('Invalid token')
+      if (data.expiresAt < Math.floor(Date.now() / 1000)) throw new InvalidTokenError('Token has expired')
       return {
         token,
         clientId: data.clientId,
