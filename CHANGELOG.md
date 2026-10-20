@@ -1,5 +1,15 @@
 # @prefecthq/fastmcp-ts
 
+## 1.8.0
+
+### Minor Changes
+
+- e2cb1d1: Servers that verify tokens from an external authorization server can now publish RFC 9728 protected resource metadata (#114). Wrap a token or request verifier with `remoteAuth({ verifier, authorizationServers, baseUrl })` and pass it to `auth`: the HTTP server serves the document at the path-scoped well-known URL (`/.well-known/oauth-protected-resource/mcp` for `/mcp`) and every 401 challenge names it in `resource_metadata`. The built-in `oauth` mode now serves its protected resource metadata at the same path-scoped URL and names it in its 401 challenges. The root URL `/.well-known/oauth-protected-resource` no longer serves it. `oauthProvider()` now answers an unknown or expired token with 401 `invalid_token` instead of 500.
+
+### Patch Changes
+
+- d5cb7a5: Fix MCP Apps on the stateless 2025-era HTTP path (#113). `fetch()` and `run({ transport: 'http', stateless: true })` serve each request on a fresh server instance, so only `initialize` sees the client's capabilities. FastMCP treated every later request as coming from a client without UI support: it removed `_meta.ui` from `tools/list`, `resources/list` and `resources/read`, and replaced UI tool results with a placeholder. When the client's capabilities are unknown, FastMCP now serves the UI metadata and the real tool result. Clients known to lack UI support still get no UI metadata. For those clients a UI tool now keeps its text `content` and drops only `structuredContent`, instead of returning `[UI not available in this client]`. A UI tool that declares an output schema keeps its `structuredContent`.
+
 ## 1.7.3
 
 ### Patch Changes
