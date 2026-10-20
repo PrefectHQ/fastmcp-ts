@@ -22,6 +22,8 @@ import { AuthorizationError } from './auth/types'
 import type { TokenVerifier, AccessToken } from './auth/types'
 import type { RequestVerifier } from './auth/types'
 import { isRequestVerifier } from './auth/types'
+import { getProtectedResource, protectedResourceRoute, bearerChallenge } from './auth/remote'
+import type { BearerChallengeConfig } from './auth/remote'
 import type { AuthCheck } from './auth/authorization'
 import { BoundedEventStore, LEGACY_SSE_RETRY_MS } from './legacyEventStore'
 import { contextStore, createContext, SESSION_CLOSE_CALLBACKS_KEY } from './context'
@@ -79,8 +81,9 @@ export interface FastMCPOptions {
    * Bearer-token verifier, or a RequestVerifier for header-based
    * (trusted-proxy) deployments. See each type's docs. A RequestVerifier
    * applies to HTTP transports only; stdio's FASTMCP_CLI_AUTH_TOKEN needs a
-   * TokenVerifier. When both `oauth` and `auth` are set, `oauth` serves the
-   * endpoint and `auth` is ignored.
+   * TokenVerifier. Wrap either in `remoteAuth(...)` to also serve RFC 9728
+   * protected resource metadata over HTTP. When both `oauth` and `auth` are
+   * set, `oauth` serves the endpoint and `auth` is ignored.
    */
   auth?: TokenVerifier | RequestVerifier
   /** Full OAuth 2.1 server with Dynamic Client Registration support. */
@@ -455,6 +458,9 @@ export class FastMCP {
   private _templateResources = new Map<string, RegisteredResource>()
   private _prompts = new Map<string, RegisteredPrompt>()
   private _customRoutes = new CustomRouteRegistry()
+  // The metadata route that run() registers for remoteAuth; close() removes it
+  // so that a later run() can register it again.
+  private _protectedResourceRoutePath: string | null = null
   private _promptsPageSize: number
   private _middleware: Middleware[]
   private _transforms: Transform[]
@@ -2002,11 +2008,27 @@ export class FastMCP {
                 }),
         )
       }
+      const protectedResource = this._oauth ? undefined : getProtectedResource(this._auth)
+      let challenge: BearerChallengeConfig | undefined
+      if (protectedResource) {
+        const route = protectedResourceRoute(protectedResource, path)
+        // A custom route dispatches before auth, so clients can read the
+        // document without a token.
+        this._customRoutes.register({ path: route.path }, (request) =>
+          Response.json(route.metadata, {
+            headers: this._cors
+              ? corsResponseHeaders(this._cors, request.headers.get('origin') ?? undefined, this._logger)
+              : {},
+          }),
+        )
+        this._protectedResourceRoutePath = route.path
+        challenge = { resourceMetadataUrl: route.metadataUrl, scopes: protectedResource.scopesSupported }
+      }
       this._customRoutes.assertNoMcpCollision(path)
       if (this._oauth) {
         await this._runHttpOAuth(port, host, path)
       } else {
-        await this._runHttpSimple(port, host, path)
+        await this._runHttpSimple(port, host, path, challenge)
       }
     }
   }
@@ -2262,7 +2284,12 @@ export class FastMCP {
     this._logger.listening(url)
   }
 
-  private async _runHttpSimple(port: number, host: string, path: string): Promise<void> {
+  private async _runHttpSimple(
+    port: number,
+    host: string,
+    path: string,
+    challenge?: BearerChallengeConfig,
+  ): Promise<void> {
     this._resolveDnsRebindingGuards(host)
     const { createServer } = await import('node:http')
 
@@ -2313,7 +2340,10 @@ export class FastMCP {
                 .end(JSON.stringify({ error: err.message }))
             } else {
               res
-                .writeHead(401, { 'Content-Type': 'application/json' })
+                .writeHead(401, {
+                  'Content-Type': 'application/json',
+                  ...(challenge && { 'WWW-Authenticate': bearerChallenge(challenge) }),
+                })
                 .end(JSON.stringify({ error: err instanceof Error ? err.message : 'Authentication failed' }))
             }
             return
@@ -2344,7 +2374,10 @@ export class FastMCP {
 
           if (!bearer) {
             res
-              .writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="mcp"' })
+              .writeHead(401, {
+                'Content-Type': 'application/json',
+                'WWW-Authenticate': challenge ? bearerChallenge(challenge) : 'Bearer realm="mcp"',
+              })
               .end(JSON.stringify({ error: 'Missing bearer token' }))
             return
           }
@@ -2365,7 +2398,10 @@ export class FastMCP {
                 .end(JSON.stringify({ error: err.message }))
             } else {
               res
-                .writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="mcp"' })
+                .writeHead(401, {
+                  'Content-Type': 'application/json',
+                  'WWW-Authenticate': challenge ? bearerChallenge(challenge, 'invalid_token') : 'Bearer realm="mcp"',
+                })
                 .end(JSON.stringify({ error: err instanceof Error ? err.message : 'Authentication failed' }))
             }
             return
@@ -2429,6 +2465,10 @@ export class FastMCP {
       this._httpServer = null
     }
     this._address = null
+    if (this._protectedResourceRoutePath) {
+      this._customRoutes.unregister(this._protectedResourceRoutePath)
+      this._protectedResourceRoutePath = null
+    }
     await this._primaryServer.close()
   }
 }

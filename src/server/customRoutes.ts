@@ -74,6 +74,11 @@ export class CustomRouteRegistry {
     this._routes.set(path, { methods: new Set(methods), handler })
   }
 
+  /** Remove the route at `path`, if any. */
+  unregister(path: string): void {
+    this._routes.delete(path)
+  }
+
   /** Throws when a registered route sits on the MCP endpoint path. Called at HTTP startup. */
   assertNoMcpCollision(mcpPath: string): void {
     if (this._routes.has(mcpPath)) {
