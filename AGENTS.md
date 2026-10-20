@@ -281,7 +281,7 @@ interface UiToolMeta {
 
 `listTools` filters out tools where `visibility` does not include `'model'`. For UI-capable clients, each tool response includes `_meta.ui` with `resourceUri` and `visibility`. Tools without a `ui` field are always included in `listTools` normally.
 
-**Graceful degradation:** When `callTool` is called on a tool with a `ui` config by a client that is not `isUiCapable` (has not declared the `text/html;profile=mcp-app` mimeType), and the handler returns a `structuredContent` response, the MCP layer strips `structuredContent` and returns `'[UI not available in this client]'` as a plain text content block.
+**Graceful degradation:** When a tool with a `ui` config is called and the gate is closed (`shouldServeUi` is false), the MCP layer removes `structuredContent` and returns the rest of the result unchanged. The text `content` from `convertResult` or from the author's `ToolResult` reaches the client, and a component-tree return keeps its JSON text in `content`, the same text a UI host receives. Exception: a tool with `output` or `outputSchema` keeps `structuredContent`, because the spec and the SDK client require it when an output schema is advertised. The framework never substitutes placeholder text.
 
 **`ResourceConfig.ui`:** Optional `ResourceUiMeta` field:
 

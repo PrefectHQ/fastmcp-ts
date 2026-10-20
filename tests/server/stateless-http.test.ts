@@ -220,6 +220,7 @@ describe('sessionful mode is unchanged', () => {
 
     expect(tool._meta).toBeUndefined()
     expect(call.structuredContent).toBeUndefined()
+    expect(call.content).toEqual([{ type: 'text', text: '{"id":"abc"}' }])
     await mcp.close()
   })
 })

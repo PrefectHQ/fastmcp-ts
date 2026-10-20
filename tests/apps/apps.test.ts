@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   FastMCP,
   ResourceResult,
+  ToolResult,
   Column, Row, Grid,
   Text, Badge, Table,
   Bar, Line, Area, Pie,
@@ -196,14 +197,50 @@ describe('Apps', () => {
       }
     })
 
-    it('graceful degradation: structuredContent is omitted and a plain text fallback is returned', async () => {
+    it('graceful degradation: structuredContent is dropped and the text content is kept', async () => {
       const mcp = makeUiServer()
       const { client, close } = await createTestClient(mcp)
       try {
         const result = await client.callTool({ name: 'show_dashboard', arguments: {} })
-        // Non-UI clients must not receive structuredContent — that would push
-        // the raw component tree into the LLM context with no rendering path.
+        // The tree stays in content, which a UI host also receives; only the render payload is dropped (#113).
         expect(result.structuredContent).toBeUndefined()
+        expect(result.content).toEqual([{ type: 'text', text: JSON.stringify(Column({}, [Text('Dashboard')])) }])
+      } finally {
+        await close()
+      }
+    })
+
+    it("graceful degradation keeps a ToolResult's own content", async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool(
+        { name: 'ship', description: 'Ship an order', ui: {} },
+        () =>
+          new ToolResult({
+            content: [{ type: 'text', text: 'Order abc shipped' }],
+            structuredContent: { id: 'abc' },
+          }),
+      )
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.callTool({ name: 'ship', arguments: {} })
+        expect(result.content).toEqual([{ type: 'text', text: 'Order abc shipped' }])
+        expect(result.structuredContent).toBeUndefined()
+        expect(result.isError).toBeFalsy()
+      } finally {
+        await close()
+      }
+    })
+
+    it('graceful degradation keeps structuredContent when the tool declares an output schema', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      mcp.tool(
+        { name: 'order', description: 'Get an order', ui: {}, output: z.object({ id: z.string() }) },
+        () => ({ id: 'abc' }),
+      )
+      const { client, close } = await createTestClient(mcp)
+      try {
+        const result = await client.callTool({ name: 'order', arguments: {} })
+        expect(result.structuredContent).toEqual({ id: 'abc' })
       } finally {
         await close()
       }

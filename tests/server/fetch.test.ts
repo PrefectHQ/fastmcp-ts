@@ -438,5 +438,6 @@ describe('FastMCP.fetch MCP Apps (#113)', () => {
 
     expect((list.result?.tools as Array<Record<string, unknown>>)[0]._meta).toBeUndefined()
     expect(call.result?.structuredContent).toBeUndefined()
+    expect(call.result?.content).toEqual([{ type: 'text', text: '{"id":"abc"}' }])
   })
 })

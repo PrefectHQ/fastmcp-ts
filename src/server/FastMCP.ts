@@ -787,12 +787,17 @@ export class FastMCP {
             let resultValue = await executePromise
             if (resolvedTool.config.output) resultValue = await validateInput(resolvedTool.config.output, resultValue)
             const callResult = convertResult(resultValue, opts?.stateless, this._logger)
-            // Graceful degradation: strip structuredContent for non-UI clients calling UI tools
-            if (resolvedTool.config.ui) {
-              const clientIsUi = shouldServeUi(server.getClientCapabilities())
-              if (!clientIsUi && callResult.structuredContent !== undefined) {
-                return { content: [{ type: 'text' as const, text: '[UI not available in this client]' }] }
-              }
+            // Graceful degradation: a non-UI client gets the text fallback the Apps spec
+            // requires, which content already holds, so only the render payload is dropped.
+            // An output schema keeps structuredContent: the spec and the SDK client require it.
+            const uiGateClosed =
+              resolvedTool.config.ui !== undefined &&
+              !shouldServeUi(server.getClientCapabilities()) &&
+              !resolvedTool.config.output &&
+              !resolvedTool.config.outputSchema
+            if (uiGateClosed && callResult.structuredContent !== undefined) {
+              const { structuredContent: _dropped, ...textResult } = callResult
+              return textResult
             }
             return callResult
           }),
