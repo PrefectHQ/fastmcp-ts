@@ -388,3 +388,56 @@ describe('FastMCP.fetch', () => {
     expect(unknownSession.status).toBe(404)
   })
 })
+
+describe('FastMCP.fetch MCP Apps (#113)', () => {
+  const UI_URI = 'ui://demo/view.html'
+  const UI_MIME = 'text/html;profile=mcp-app'
+  const UI_CAPABILITIES = { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: [UI_MIME] } } }
+  const UI_META = { ui: { csp: { connectDomains: ['https://example.com'] } } }
+
+  function createUiServer(): FastMCP {
+    const server = createServer()
+    server.resource(
+      { uri: UI_URI, name: 'view', mimeType: UI_MIME, ui: { csp: { connectDomains: ['https://example.com'] } } },
+      () => '<!doctype html><p>view</p>',
+    )
+    server.tool({ name: 'show', description: 'Show the view', ui: { resourceUri: UI_URI } }, () => ({ id: 'abc' }))
+    return server
+  }
+
+  async function legacyResult(server: FastMCP, id: number, method: string, params: Record<string, unknown> = {}) {
+    const body = await rpcBody(await server.fetch(legacyRequest({ jsonrpc: '2.0', id, method, params })))
+    expect(body.error).toBeUndefined()
+    return body.result as Record<string, any>
+  }
+
+  it('emits Apps metadata and the real tool result on the stateless 2025-era path', async () => {
+    const server = createUiServer()
+
+    const init = await legacyResult(server, 1, 'initialize', { ...INITIALIZE.params, capabilities: UI_CAPABILITIES })
+    const [tool] = (await legacyResult(server, 2, 'tools/list')).tools
+    const [resource] = (await legacyResult(server, 3, 'resources/list')).resources
+    const read = await legacyResult(server, 4, 'resources/read', { uri: UI_URI })
+    const call = await legacyResult(server, 5, 'tools/call', { name: 'show', arguments: {} })
+
+    expect(init.capabilities).toMatchObject({ extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: [UI_MIME] } } })
+    expect(tool._meta).toEqual({ ui: { resourceUri: UI_URI } })
+    expect(resource._meta).toEqual(UI_META)
+    expect(read.contents[0]._meta).toEqual(UI_META)
+    expect(call.structuredContent).toEqual({ id: 'abc' })
+    expect(call.content).toEqual([{ type: 'text', text: '{"id":"abc"}' }])
+  })
+
+  it('keeps gating a modern request whose capabilities lack the UI extension', async () => {
+    const server = createUiServer()
+
+    const list = await rpcBody(await server.fetch(modernRequest('tools/list', {}, { id: 1 })))
+    const call = await rpcBody(
+      await server.fetch(modernRequest('tools/call', { name: 'show', arguments: {} }, { id: 2, name: 'show' })),
+    )
+
+    expect((list.result?.tools as Array<Record<string, unknown>>)[0]._meta).toBeUndefined()
+    expect(call.result?.structuredContent).toBeUndefined()
+    expect(call.result?.content).toEqual([{ type: 'text', text: '{"id":"abc"}' }])
+  })
+})

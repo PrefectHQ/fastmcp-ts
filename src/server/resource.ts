@@ -123,10 +123,10 @@ export function convertResourceResult(
  * sandboxed iframe's CSP from the resources/read response, so the metadata
  * must ride on the read contents, not only on list entries.
  *
- * No-op when the resource declares no `ui`, the client is not UI-capable, or
- * the result is an InputRequiredResult. A handler-provided `_meta` (via
- * ResourceResult) wins key-by-key; an explicit `_meta.ui` overrides the
- * declared config for that item.
+ * No-op when the resource declares no `ui`, the UI gate is closed (see
+ * `shouldServeUi`), or the result is an InputRequiredResult. A handler-provided
+ * `_meta` (via ResourceResult) wins key-by-key; an explicit `_meta.ui`
+ * overrides the declared config for that item.
  */
 export function attachResourceUiMeta(
   result: { contents: ResourceContent[] } | InputRequiredResult,
