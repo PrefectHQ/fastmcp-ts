@@ -239,6 +239,8 @@ describe('Apps', () => {
       )
       const { client, close } = await createTestClient(mcp)
       try {
+        // Listing first makes the SDK client cache the output schema and validate the call.
+        await client.listTools()
         const result = await client.callTool({ name: 'order', arguments: {} })
         expect(result.structuredContent).toEqual({ id: 'abc' })
       } finally {
