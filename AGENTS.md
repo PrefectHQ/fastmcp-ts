@@ -266,7 +266,9 @@ type ProxyTransport =
 
 **`_hasUiComponents()`:** Returns true if any registered tool has a `ui` field, or if any registered resource URI starts with `ui://`. Called inside `connect()` to decide whether to include the extension in `ServerInfo`.
 
-**`isUiCapable(clientCapabilities)`:** The per-request check for whether a client can render UI. Per SEP-1865 the client must declare `mimeTypes` (REQUIRED) as the *value* of its own `io.modelcontextprotocol/ui` capability entry; `isUiCapable` returns true only when that array includes `text/html;profile=mcp-app` — a bare presence of the extension key is insufficient. Gates both `tools/list` `_meta.ui` inclusion and the `tools/call` graceful-degradation path.
+**`isUiCapable(clientCapabilities)`:** The per-request check for whether a client can render UI. Per SEP-1865 the client must declare `mimeTypes` (REQUIRED) as the *value* of its own `io.modelcontextprotocol/ui` capability entry; `isUiCapable` returns true only when that array includes `text/html;profile=mcp-app` — a bare presence of the extension key is insufficient.
+
+**`shouldServeUi(clientCapabilities)`:** The gate request handlers call. It gates `tools/list`, `tools/call`, `resources/list` and `resources/read`. It returns `isUiCapable(clientCapabilities)`, and it also returns true when `getClientCapabilities()` is `undefined`. That happens only on the stateless 2025-era HTTP path (`fetch()`, or `run()` with `stateless: true`), where each request runs on a fresh server instance and only `initialize` carries capabilities. The `initialize` response already advertised the extension, so closing the gate there would make the advertisement false (issue #113). Known capabilities that lack the app profile keep the gate closed.
 
 **`ToolConfig.ui`:** Optional `UiToolMeta` field on tool config:
 

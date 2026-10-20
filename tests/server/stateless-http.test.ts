@@ -207,6 +207,69 @@ describe('sessionful mode is unchanged', () => {
     expect(res.status).not.toBe(405)
     await mcp.close()
   })
+
+  it('still gates Apps metadata for a client that initialized without the UI extension', async () => {
+    const mcp = await startUi(false)
+    const url = urlFor(mcp)
+
+    const init = await post(url, INITIALIZE)
+    const sessionId = init.headers.get('mcp-session-id')!
+    expect(sessionId).toBeTruthy()
+    const [tool] = (await rpcResult(url, 2, 'tools/list', {}, sessionId)).tools
+    const call = await rpcResult(url, 3, 'tools/call', { name: 'show', arguments: {} }, sessionId)
+
+    expect(tool._meta).toBeUndefined()
+    expect(call.structuredContent).toBeUndefined()
+    await mcp.close()
+  })
+})
+
+const UI_URI = 'ui://demo/view.html'
+const UI_MIME = 'text/html;profile=mcp-app'
+const UI_CAPABILITIES = { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: [UI_MIME] } } }
+const UI_META = { ui: { csp: { connectDomains: ['https://example.com'] } } }
+
+async function startUi(stateless: boolean): Promise<FastMCP> {
+  const mcp = new FastMCP({ name: 'test', version: '0.0.0' })
+  mcp.resource(
+    { uri: UI_URI, name: 'view', mimeType: UI_MIME, ui: { csp: { connectDomains: ['https://example.com'] } } },
+    () => '<!doctype html><p>view</p>',
+  )
+  mcp.tool({ name: 'show', description: 'Show the view', ui: { resourceUri: UI_URI } }, () => ({ id: 'abc' }))
+  await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1', stateless })
+  return mcp
+}
+
+async function rpcResult(
+  url: string,
+  id: number,
+  method: string,
+  params: Record<string, unknown> = {},
+  sessionId?: string,
+): Promise<Record<string, any>> {
+  const body = await rpcBody(await post(url, { jsonrpc: '2.0', id, method, params }, sessionId))
+  expect(body.error).toBeUndefined()
+  return body.result
+}
+
+describe('stateless MCP Apps (#113)', () => {
+  it('emits Apps metadata and the real tool result on the stateless 2025-era path', async () => {
+    const mcp = await startUi(true)
+    const url = urlFor(mcp)
+
+    await rpcResult(url, 1, 'initialize', { ...INITIALIZE.params, capabilities: UI_CAPABILITIES })
+    const [tool] = (await rpcResult(url, 2, 'tools/list')).tools
+    const [resource] = (await rpcResult(url, 3, 'resources/list')).resources
+    const read = await rpcResult(url, 4, 'resources/read', { uri: UI_URI })
+    const call = await rpcResult(url, 5, 'tools/call', { name: 'show', arguments: {} })
+
+    expect(tool._meta).toEqual({ ui: { resourceUri: UI_URI } })
+    expect(resource._meta).toEqual(UI_META)
+    expect(read.contents[0]._meta).toEqual(UI_META)
+    expect(call.structuredContent).toEqual({ id: 'abc' })
+    expect(call.content).toEqual([{ type: 'text', text: '{"id":"abc"}' }])
+    await mcp.close()
+  })
 })
 
 async function initializeResult(url: string): Promise<Record<string, any>> {

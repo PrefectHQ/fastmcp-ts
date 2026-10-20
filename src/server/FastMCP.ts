@@ -44,7 +44,7 @@ import {
   ResourceResult,
 } from './resource'
 import type { ResourceConfig } from './resource'
-import { UI_EXTENSION_KEY, UI_RESOURCE_MIME_TYPE, isUiCapable } from './apps/types'
+import { UI_EXTENSION_KEY, UI_RESOURCE_MIME_TYPE, shouldServeUi } from './apps/types'
 import type { UiToolMeta } from './apps/types'
 import { convertPromptResult, PromptResult } from './prompt'
 import type { PromptConfig } from './prompt'
@@ -601,7 +601,7 @@ export class FastMCP {
       const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders, this._logger)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
-          const clientIsUiCapable = isUiCapable(server.getClientCapabilities())
+          const clientIsUiCapable = shouldServeUi(server.getClientCapabilities())
 
           const allVisible = (
             await Promise.all(
@@ -789,7 +789,7 @@ export class FastMCP {
             const callResult = convertResult(resultValue, opts?.stateless, this._logger)
             // Graceful degradation: strip structuredContent for non-UI clients calling UI tools
             if (resolvedTool.config.ui) {
-              const clientIsUi = isUiCapable(server.getClientCapabilities())
+              const clientIsUi = shouldServeUi(server.getClientCapabilities())
               if (!clientIsUi && callResult.structuredContent !== undefined) {
                 return { content: [{ type: 'text' as const, text: '[UI not available in this client]' }] }
               }
@@ -840,7 +840,7 @@ export class FastMCP {
               ? Buffer.from(page[page.length - 1].uri).toString('base64url')
               : undefined
 
-          const clientIsUiCapableRes = isUiCapable(server.getClientCapabilities())
+          const clientIsUiCapableRes = shouldServeUi(server.getClientCapabilities())
           return {
             resources: page.map((r) => ({
               uri: r.uri,
@@ -945,7 +945,7 @@ export class FastMCP {
 
           const result = await executePromise
           const converted = convertResourceResult(result, requestedUri, resource!.config.mimeType, opts?.stateless)
-          return attachResourceUiMeta(converted, resource!.config.ui, isUiCapable(server.getClientCapabilities()))
+          return attachResourceUiMeta(converted, resource!.config.ui, shouldServeUi(server.getClientCapabilities()))
         }),
       )
     })
