@@ -244,6 +244,18 @@ describe('remoteAuth over HTTP', () => {
     expect(res.status).toBe(200)
   })
 
+  it('runs again after a run() that failed to listen', async () => {
+    const { mcp: occupier } = await start()
+    const mcp = new FastMCP({ name: 'remote-auth-test', auth: remoteAuth(options) })
+    servers.push(mcp)
+    await expect(
+      mcp.run({ transport: 'http', port: occupier.address!.port, host: '127.0.0.1' }),
+    ).rejects.toThrow(/EADDRINUSE/)
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1' })
+    const res = await fetch(`http://127.0.0.1:${mcp.address!.port}/.well-known/oauth-protected-resource/mcp`)
+    expect(res.status).toBe(200)
+  })
+
   it('oauth takes precedence: no remote metadata route', async () => {
     const { local } = await start({ oauth: { provider: oauthProvider() } })
     const scoped = await fetch(`${local}/.well-known/oauth-protected-resource/mcp`)

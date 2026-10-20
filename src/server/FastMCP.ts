@@ -2024,11 +2024,18 @@ export class FastMCP {
         this._protectedResourceRoutePath = route.path
         challenge = { resourceMetadataUrl: route.metadataUrl, scopes: protectedResource.scopesSupported }
       }
-      this._customRoutes.assertNoMcpCollision(path)
-      if (this._oauth) {
-        await this._runHttpOAuth(port, host, path)
-      } else {
-        await this._runHttpSimple(port, host, path, challenge)
+      try {
+        this._customRoutes.assertNoMcpCollision(path)
+        if (this._oauth) {
+          await this._runHttpOAuth(port, host, path)
+        } else {
+          await this._runHttpSimple(port, host, path, challenge)
+        }
+      } catch (err) {
+        // Remove the metadata route so a retry (for example after EADDRINUSE)
+        // does not fail on a duplicate path.
+        this._unregisterProtectedResourceRoute()
+        throw err
       }
     }
   }
@@ -2463,6 +2470,7 @@ export class FastMCP {
       this._stdioModern = false
     }
 
+    this._unregisterProtectedResourceRoute()
     if (this._httpServer) {
       await new Promise<void>((resolve, reject) => {
         this._httpServer!.close((err) => (err != null ? reject(err) : resolve()))
@@ -2470,10 +2478,13 @@ export class FastMCP {
       this._httpServer = null
     }
     this._address = null
+    await this._primaryServer.close()
+  }
+
+  private _unregisterProtectedResourceRoute(): void {
     if (this._protectedResourceRoutePath) {
       this._customRoutes.unregister(this._protectedResourceRoutePath)
       this._protectedResourceRoutePath = null
     }
-    await this._primaryServer.close()
   }
 }

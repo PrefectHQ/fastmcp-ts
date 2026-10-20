@@ -124,7 +124,7 @@ const server = new FastMCP({
 })
 ```
 
-Set `baseUrl` to the public URL that clients use, without the MCP path. FastMCP joins `baseUrl` and the MCP path to make the `resource` value in the document. If your server runs behind a reverse proxy, use the address of the proxy, not the address that the server binds to. The proxy must also forward the well-known path to the server unchanged. A client that cannot reach the document cannot find the authorization server.
+Set `baseUrl` to the public URL that clients use, without the MCP path. FastMCP joins `baseUrl` and the MCP path to make the `resource` value in the document. If your server runs behind a reverse proxy, use the address of the proxy, not the address that the server binds to. The proxy must also forward the well-known path to the server unchanged. If `baseUrl` has a path, the well-known path includes it and starts at the root of the origin. For example, with `baseUrl: 'https://example.com/api'`, the document is at `https://example.com/.well-known/oauth-protected-resource/api/mcp`. A proxy that forwards only `/api/` does not forward this path. A client that cannot reach the document cannot find the authorization server.
 
 `remoteAuth` also accepts a [`RequestVerifier`](/servers/auth/trusted-proxy). The optional `resourceName` and `resourceDocumentation` fields add a display name and a documentation link to the document. `remoteAuth` throws at startup if `baseUrl` or an authorization server is not a valid `http` or `https` URL. It also throws if `authorizationServers` is empty.
 
