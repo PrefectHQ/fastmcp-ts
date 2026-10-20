@@ -10,8 +10,8 @@ export const UI_RESOURCE_MIME_TYPE = 'text/html;profile=mcp-app'
  * extension entry, and directs servers to check it (the SDK's own
  * `getUiCapability`/`mimeTypes.includes(RESOURCE_MIME_TYPE)` pattern) before
  * registering UI-enabled tools — a bare presence check on the extension key is not
- * sufficient. Used for both `tools/list` UI-meta inclusion and the `tools/call`
- * graceful-degradation check.
+ * sufficient. Request handlers gate through {@link shouldServeUi}, which adds the
+ * unknown-capabilities case.
  */
 export function isUiCapable(
   clientCapabilities: { extensions?: Record<string, unknown> } | undefined,
@@ -20,6 +20,24 @@ export function isUiCapable(
     | { mimeTypes?: string[] }
     | undefined
   return !!uiCapability?.mimeTypes?.includes(UI_RESOURCE_MIME_TYPE)
+}
+
+/**
+ * Decides whether a request handler serves MCP Apps metadata and the full tool
+ * result. Gates `tools/list`, `tools/call`, `resources/list` and `resources/read`.
+ *
+ * `undefined` capabilities mean the server never saw them. In normal operation
+ * that happens on the stateless 2025-era HTTP path, where each request runs on a
+ * fresh server instance and only `initialize` carries capabilities. That
+ * `initialize` response already advertised the extension, so withholding UI here
+ * would make the advertisement false. A stdio or in-memory client that sends a
+ * request before `initialize`, which the protocol forbids, also reaches this case.
+ * Known capabilities that lack the app profile close the gate.
+ */
+export function shouldServeUi(
+  clientCapabilities: { extensions?: Record<string, unknown> } | undefined,
+): boolean {
+  return clientCapabilities === undefined || isUiCapable(clientCapabilities)
 }
 
 export type Visibility = 'model' | 'app'
