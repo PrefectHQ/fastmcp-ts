@@ -100,6 +100,36 @@ const server = new FastMCP({
 
 Order the verifiers cheapest-first: each is only consulted when the ones before it reject, so putting the local static map ahead of a remote introspection call avoids a network round-trip for tokens the map already covers. Because every verifier yields the same `AccessToken` shape, the rest of your server — context, scope checks, per-component rules — never needs to know which one matched.
 
+## Authorization server discovery
+
+A verifier checks tokens, but a new MCP client has no token. It must first find which authorization server to use. [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) defines the answer: the server publishes protected resource metadata, a small JSON document that names the authorization servers it trusts. When you verify tokens from an external authorization server such as Auth0, Keycloak, or Okta, wrap your verifier with `remoteAuth` to publish this document.
+
+`remoteAuth` takes the verifier, the issuer URLs of your authorization servers, and the `baseUrl` of your server. It returns a verifier that behaves like the one you passed in, so you give it to the `auth` option as before. Over HTTP, the server then serves the metadata document at `/.well-known/oauth-protected-resource` followed by the MCP path. For the default `/mcp` path, that is `/.well-known/oauth-protected-resource/mcp`. The document needs no token. Every `401` response also carries a `WWW-Authenticate: Bearer` challenge. The challenge names the document in its `resource_metadata` parameter. If you set `scopesSupported`, the challenge also lists them in its `scope` parameter.
+
+```typescript server.ts
+import { FastMCP, remoteAuth, jwtVerifier } from '@prefecthq/fastmcp-ts/server'
+
+const server = new FastMCP({
+  name: 'secure-server',
+  auth: remoteAuth({
+    verifier: jwtVerifier({
+      jwksUri: 'https://auth.example.com/.well-known/jwks.json',
+      issuer: 'https://auth.example.com',
+      audience: 'https://mcp.example.com/mcp',
+    }),
+    authorizationServers: ['https://auth.example.com'],
+    baseUrl: 'https://mcp.example.com',
+    scopesSupported: ['read', 'write'],
+  }),
+})
+```
+
+Set `baseUrl` to the public URL that clients use, without the MCP path. FastMCP joins `baseUrl` and the MCP path to make the `resource` value in the document. If your server runs behind a reverse proxy, use the address of the proxy, not the address that the server binds to. The proxy must also forward the well-known path to the server unchanged. A client that cannot reach the document cannot find the authorization server.
+
+`remoteAuth` also accepts a [`RequestVerifier`](/servers/auth/trusted-proxy). The optional `resourceName` and `resourceDocumentation` fields add a display name and a documentation link to the document. `remoteAuth` throws at startup if `baseUrl` or an authorization server is not a valid `http` or `https` URL. It also throws if `authorizationServers` is empty.
+
+`remoteAuth` is for servers that verify tokens from another service. If you also set the [`oauth`](/servers/auth/oauth) option, `oauth` takes precedence and `remoteAuth` publishes nothing.
+
 ## Header-established identity
 
 `TokenVerifier` covers callers that present a bearer token. When a trusted reverse proxy authenticates the caller and forwards the identity as request headers instead, use a [`RequestVerifier`](/servers/auth/trusted-proxy).

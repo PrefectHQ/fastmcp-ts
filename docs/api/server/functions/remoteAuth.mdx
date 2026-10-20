@@ -1,0 +1,109 @@
+---
+title: "remoteAuth"
+---
+
+## Call Signature
+
+```ts
+function remoteAuth(options): RemoteAuthProvider<TokenVerifier>;
+```
+
+Defined in: [server/auth/remote.ts:95](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/auth/remote.ts#L95)
+
+Make this server an OAuth resource server for an external authorization
+server. Pass the result to `FastMCPOptions.auth`.
+
+Use it when another service issues the tokens, such as Auth0, Keycloak or
+Okta, and this server only verifies them. `verifier` checks each request, as
+with `jwtVerifier` or `introspectionVerifier`. `remoteAuth` adds the
+discovery information that lets MCP clients find the authorization server on
+their own.
+
+The resource URL is `baseUrl` joined with the path given to `run()`. For a
+`baseUrl` of `https://mcp.example.com` and the default path `/mcp`, the
+resource is `https://mcp.example.com/mcp`. Set `baseUrl` to the public URL
+that clients use, such as the address of your reverse proxy. A wrong value
+makes the advertised resource differ from the URL clients call.
+
+Over HTTP the server then serves the RFC 9728 metadata document at
+`/.well-known/oauth-protected-resource` followed by the MCP path. Each 401
+response also carries a `WWW-Authenticate: Bearer` challenge whose
+`resource_metadata` parameter points to that document.
+
+If you set both this and `oauth`, `oauth` takes precedence.
+
+### Parameters
+
+#### options
+
+[`RemoteAuthOptions`](/api/server/interfaces/RemoteAuthOptions)&lt;[`TokenVerifier`](/api/server/interfaces/TokenVerifier)&gt;
+
+### Returns
+
+[`RemoteAuthProvider`](/api/server/type-aliases/RemoteAuthProvider)&lt;[`TokenVerifier`](/api/server/interfaces/TokenVerifier)&gt;
+
+### Example
+
+```ts
+const mcp = new FastMCP({
+  name: 'my-server',
+  auth: remoteAuth({
+    verifier: jwtVerifier({ jwksUri: 'https://auth.example.com/.well-known/jwks.json' }),
+    authorizationServers: ['https://auth.example.com'],
+    baseUrl: 'https://mcp.example.com',
+  }),
+})
+```
+
+## Call Signature
+
+```ts
+function remoteAuth(options): RemoteAuthProvider<RequestVerifier>;
+```
+
+Defined in: [server/auth/remote.ts:96](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/auth/remote.ts#L96)
+
+Make this server an OAuth resource server for an external authorization
+server. Pass the result to `FastMCPOptions.auth`.
+
+Use it when another service issues the tokens, such as Auth0, Keycloak or
+Okta, and this server only verifies them. `verifier` checks each request, as
+with `jwtVerifier` or `introspectionVerifier`. `remoteAuth` adds the
+discovery information that lets MCP clients find the authorization server on
+their own.
+
+The resource URL is `baseUrl` joined with the path given to `run()`. For a
+`baseUrl` of `https://mcp.example.com` and the default path `/mcp`, the
+resource is `https://mcp.example.com/mcp`. Set `baseUrl` to the public URL
+that clients use, such as the address of your reverse proxy. A wrong value
+makes the advertised resource differ from the URL clients call.
+
+Over HTTP the server then serves the RFC 9728 metadata document at
+`/.well-known/oauth-protected-resource` followed by the MCP path. Each 401
+response also carries a `WWW-Authenticate: Bearer` challenge whose
+`resource_metadata` parameter points to that document.
+
+If you set both this and `oauth`, `oauth` takes precedence.
+
+### Parameters
+
+#### options
+
+[`RemoteAuthOptions`](/api/server/interfaces/RemoteAuthOptions)&lt;[`RequestVerifier`](/api/server/interfaces/RequestVerifier)&gt;
+
+### Returns
+
+[`RemoteAuthProvider`](/api/server/type-aliases/RemoteAuthProvider)&lt;[`RequestVerifier`](/api/server/interfaces/RequestVerifier)&gt;
+
+### Example
+
+```ts
+const mcp = new FastMCP({
+  name: 'my-server',
+  auth: remoteAuth({
+    verifier: jwtVerifier({ jwksUri: 'https://auth.example.com/.well-known/jwks.json' }),
+    authorizationServers: ['https://auth.example.com'],
+    baseUrl: 'https://mcp.example.com',
+  }),
+})
+```

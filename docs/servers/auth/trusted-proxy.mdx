@@ -51,6 +51,8 @@ const mcp = new FastMCP({
 
 The verifier runs once per HTTP request, before dispatch. The returned `AccessToken` becomes `ctx.auth`, exactly as with a bearer token. Per-tool `auth` checks, `tools/list` filtering, and `CachingMiddleware` partitioning all keep working.
 
+You can also pass a `RequestVerifier` to [`remoteAuth`](/servers/auth/token-verification#authorization-server-discovery). Use this when the proxy forwards identity that an external authorization server issued, and clients still need to discover that server.
+
 Throw `AuthorizationError` to reject with HTTP 403. Any other error rejects with HTTP 401. The error message is returned to the client in the response body. Do not put secrets in thrown error messages.
 
 ## Deployment checklist

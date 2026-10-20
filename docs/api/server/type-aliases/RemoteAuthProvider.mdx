@@ -1,0 +1,29 @@
+---
+title: "RemoteAuthProvider"
+---
+
+```ts
+type RemoteAuthProvider<V> = V & {
+  protectedResource: ProtectedResourceConfig;
+};
+```
+
+Defined in: [server/auth/remote.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/auth/remote.ts#L34)
+
+A verifier that also carries [ProtectedResourceConfig](/api/server/interfaces/ProtectedResourceConfig).
+
+## Type Declaration
+
+### protectedResource
+
+```ts
+readonly protectedResource: ProtectedResourceConfig;
+```
+
+## Type Parameters
+
+### V
+
+`V` *extends* 
+  \| [`TokenVerifier`](/api/server/interfaces/TokenVerifier)
+  \| [`RequestVerifier`](/api/server/interfaces/RequestVerifier)

@@ -175,6 +175,8 @@
                   "api/server/interfaces/PromptConfig",
                   "api/server/interfaces/PromptMessage",
                   "api/server/interfaces/PromptView",
+                  "api/server/interfaces/ProtectedResourceConfig",
+                  "api/server/interfaces/RemoteAuthOptions",
                   "api/server/interfaces/RequestBodyInfo",
                   "api/server/interfaces/RequestVerifier",
                   "api/server/interfaces/ResourceAnnotations",
@@ -214,6 +216,7 @@
                   "api/server/type-aliases/OpenAPIComponent",
                   "api/server/type-aliases/PromptContent",
                   "api/server/type-aliases/ProxyTransport",
+                  "api/server/type-aliases/RemoteAuthProvider",
                   "api/server/type-aliases/RouteMapFn",
                   "api/server/type-aliases/Visibility"
                 ]
@@ -243,6 +246,7 @@
                   "api/server/functions/oauthProxy",
                   "api/server/functions/Pie",
                   "api/server/functions/redescribeTool",
+                  "api/server/functions/remoteAuth",
                   "api/server/functions/renameTool",
                   "api/server/functions/requireScopes",
                   "api/server/functions/Row",
