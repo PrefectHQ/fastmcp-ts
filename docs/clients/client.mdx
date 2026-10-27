@@ -90,6 +90,33 @@ const client = await Client.connect('http://localhost:3000', {
 await client.close()
 ```
 
+## Skills
+
+The [Skills extension](https://github.com/modelcontextprotocol/ext-skills) lets a server publish agent skills. A skill is a folder with a `SKILL.md` file and any supporting files. The server serves each file as an ordinary resource, and the extension adds discovery on top of those resources: `skills/list` returns one entry per skill, and `skills/get` returns the entry for a single `SKILL.md` URI. Each entry carries the skill's frontmatter, its `name` and `description` among it, plus the URI, size, and SHA-256 digest of every file in the skill.
+
+Skills is an opt-in extension. Add `SKILLS_EXTENSION_ID` to `capabilities.extensions` to advertise it. Servers serve the extension only on the modern era, so the connection must negotiate 2026-07-28, which the default `auto` mode does whenever the server offers it. `supportsSkills()` returns `true` when three things hold: the connection is modern, your client advertised the extension, and the server advertised it back. The skills methods throw an error that names the missing condition when any of them is false.
+
+`listSkills()` follows the server's pagination and returns every entry. `getSkill(uri)` returns a single entry. `readSkill(uri)` fetches every file of the skill through `resources/read` and checks each one against the size and digest in its entry before returning the bytes, keyed by path relative to the skill folder. A skill whose entry lists `'dynamic'` instead of a file list cannot be read this way.
+
+```typescript
+import { Client, SKILLS_EXTENSION_ID } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('http://localhost:3000', {
+  capabilities: { extensions: { [SKILLS_EXTENSION_ID]: {} } },
+})
+
+if (client.supportsSkills()) {
+  for (const skill of await client.listSkills()) {
+    console.log(skill.frontmatter.name, skill.frontmatter.description)
+  }
+
+  const review = await client.readSkill('skill://code-review/SKILL.md')
+  const instructions = new TextDecoder().decode(review.files.get('SKILL.md'))
+}
+
+await client.close()
+```
+
 ## Error handling
 
 `callTool()` throws a `ToolCallError` when the server returns `isError: true`. The error carries the server's content blocks on its `content` field:

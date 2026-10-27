@@ -35,6 +35,15 @@ import type {
   Tool,
 } from './results.js'
 import { normalizeCallToolResult } from './results.js'
+import type { SkillContents, SkillEntry } from './skills.js'
+import {
+  GetSkillResultSchema,
+  ListSkillsResultSchema,
+  SKILLS_EXTENSION_ID,
+  parseSkillFile,
+  skillDirectory,
+} from './skills.js'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { ClientTransportInput, McpConfig } from './transports.js'
 import { resolveTransport } from './transports.js'
 import type { MultiServerOptions } from './multi-server.js'
@@ -584,6 +593,90 @@ export class Client implements IClient {
       ),
     )
     return result as GetPromptResult
+  }
+
+  // -------------------------------------------------------------------------
+  // Skills (SEP-2640 extension)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Whether this connection can send Skills requests: it negotiated the modern
+   * era (servers bind `skills/*` to 2026-07-28 only), the client advertised
+   * {@link SKILLS_EXTENSION_ID} under `capabilities.extensions`, and the server
+   * advertised it back. `false` before connect().
+   */
+  supportsSkills(): boolean {
+    return this._skillsUnavailableReason() === undefined
+  }
+
+  /** Lists every skill the server publishes, following `nextCursor` across pages. */
+  async listSkills(options?: RequestOptions): Promise<SkillEntry[]> {
+    const skills: SkillEntry[] = []
+    let cursor: string | undefined
+    do {
+      const page = await this._skillsRequest('skills/list', { cursor }, ListSkillsResultSchema, options)
+      skills.push(...page.skills)
+      cursor = page.nextCursor
+    } while (cursor)
+    return skills
+  }
+
+  /** Fetches one skill entry by the URI of its `SKILL.md` resource. */
+  async getSkill(uri: string, options?: RequestOptions): Promise<SkillEntry> {
+    const result = await this._skillsRequest('skills/get', { uri }, GetSkillResultSchema, options)
+    return result.skill
+  }
+
+  /**
+   * Reads every file of a skill through `resources/read` and verifies each one
+   * against the size and SHA-256 digest its `skills/get` entry promised. Throws
+   * for a `'dynamic'` skill, which has no file list to read.
+   */
+  async readSkill(uri: string, options?: RequestOptions): Promise<SkillContents> {
+    const entry = await this.getSkill(uri, options)
+    if (entry.resources === 'dynamic') {
+      throw new Error(`Skill ${uri} has no static file list to read`)
+    }
+    const directory = skillDirectory(entry.uri)
+    const files = await Promise.all(
+      entry.resources.map(async (record) => {
+        const contents = await this.readResource(record.uri, options)
+        const path = decodeURIComponent(record.uri.slice(directory.length))
+        return [path, await parseSkillFile(record, contents)] as const
+      }),
+    )
+    return { entry, files: new Map(files) }
+  }
+
+  private async _skillsRequest<T extends StandardSchemaV1>(
+    method: 'skills/list' | 'skills/get',
+    params: { cursor?: string } | { uri: string },
+    resultSchema: T,
+    options: RequestOptions | undefined,
+  ): Promise<StandardSchemaV1.InferOutput<T>> {
+    const reason = this._skillsUnavailableReason()
+    if (reason !== undefined) throw new Error(reason)
+    return this._reauthRetry(() =>
+      this._sdk().request(
+        { method, params: { ...params, ...this._metaParams() } },
+        resultSchema,
+        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
+      ),
+    )
+  }
+
+  private _skillsUnavailableReason(): string | undefined {
+    if (!this._sdkClient) return 'Client is not connected. Call connect() first.'
+    if (this.getProtocolEra() !== 'modern') {
+      return 'The Skills extension requires a modern (2026-07-28) connection'
+    }
+    if (this._capabilities.extensions?.[SKILLS_EXTENSION_ID] === undefined) {
+      return `This client did not opt into the Skills extension; add '${SKILLS_EXTENSION_ID}' to capabilities.extensions`
+    }
+    if (this.getServerCapabilities()?.extensions?.[SKILLS_EXTENSION_ID] === undefined) {
+      return 'The server does not advertise the Skills extension'
+    }
+    return undefined
   }
 
   // -------------------------------------------------------------------------
