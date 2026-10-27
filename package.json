@@ -87,7 +87,8 @@
     "typedoc-plugin-markdown": "^4.12.0",
     "typescript": "^5.0.0",
     "valibot": "^1.3.1",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "zod": "^4.3.6"
   },
   "repository": {
     "type": "git",
@@ -143,7 +144,6 @@
     "jose": "6.2.2",
     "listr2": "^10.2.1",
     "url-template": "^3.1.1",
-    "yaml": "^2.8.3",
-    "zod": "^4.3.6"
+    "yaml": "^2.8.3"
   }
 }

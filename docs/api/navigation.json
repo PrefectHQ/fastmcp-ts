@@ -407,35 +407,6 @@
             "kind": 2097152,
             "path": "client/type-aliases/SamplingHandler.mdx",
             "isDeprecated": false
-          },
-          {
-            "title": "SkillEntry",
-            "kind": 2097152,
-            "path": "client/type-aliases/SkillEntry.mdx",
-            "isDeprecated": false
-          },
-          {
-            "title": "SkillFrontmatter",
-            "kind": 2097152,
-            "path": "client/type-aliases/SkillFrontmatter.mdx",
-            "isDeprecated": false
-          },
-          {
-            "title": "SkillResource",
-            "kind": 2097152,
-            "path": "client/type-aliases/SkillResource.mdx",
-            "isDeprecated": false
-          }
-        ]
-      },
-      {
-        "title": "Variables",
-        "children": [
-          {
-            "title": "SKILLS_EXTENSION_ID",
-            "kind": 32,
-            "path": "client/variables/SKILLS_EXTENSION_ID.mdx",
-            "isDeprecated": false
           }
         ]
       },

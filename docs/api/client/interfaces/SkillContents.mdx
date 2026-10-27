@@ -2,87 +2,34 @@
 title: "SkillContents"
 ---
 
-Defined in: [client/skills.ts:58](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/skills.ts#L58)
+Defined in: [client/results.ts:33](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/results.ts#L33)
 
-A skill read by `Client.readSkill()`: its entry and the verified bytes of each file.
+A skill read by `Client.readSkill()`: its entry and every file, verified against it.
 
 ## Properties
-
-### entry
-
-```ts
-entry: {
-  frontmatter: {
-   [key: string]: unknown;
-     description: string;
-     name: string;
-  };
-  resources:   | "dynamic"
-     | {
-     digest: string;
-     size: number;
-     uri: string;
-   }[];
-  uri: string;
-};
-```
-
-Defined in: [client/skills.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/skills.ts#L59)
-
-#### frontmatter
-
-```ts
-frontmatter: {
-[key: string]: unknown;
-  description: string;
-  name: string;
-} = SkillFrontmatterSchema;
-```
-
-##### Index Signature
-
-```ts
-[key: string]: unknown
-```
-
-##### frontmatter.description
-
-```ts
-description: string;
-```
-
-##### frontmatter.name
-
-```ts
-name: string;
-```
-
-#### resources
-
-```ts
-resources: 
-  | "dynamic"
-  | {
-  digest: string;
-  size: number;
-  uri: string;
-}[];
-```
-
-#### uri
-
-```ts
-uri: string;
-```
-
-***
 
 ### files
 
 ```ts
-files: Map<string, Uint8Array<ArrayBufferLike>>;
+files: SkillFile[];
 ```
 
-Defined in: [client/skills.ts:61](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/skills.ts#L61)
+Defined in: [client/results.ts:35](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/results.ts#L35)
 
-File bytes keyed by path relative to the skill directory, e.g. `SKILL.md` or `scripts/check.py`.
+***
+
+### skill
+
+```ts
+skill: {
+[key: string]: unknown;
+};
+```
+
+Defined in: [client/results.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/results.ts#L34)
+
+#### Index Signature
+
+```ts
+[key: string]: unknown
+```

@@ -32,18 +32,12 @@ import type {
   BlobResourceContents,
   ResourceTemplate,
   Root,
+  SkillContents,
   Tool,
 } from './results.js'
 import { normalizeCallToolResult } from './results.js'
-import type { SkillContents, SkillEntry } from './skills.js'
-import {
-  GetSkillResultSchema,
-  ListSkillsResultSchema,
-  SKILLS_EXTENSION_ID,
-  parseSkillFile,
-  skillDirectory,
-} from './skills.js'
-import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { SKILLS_EXTENSION_ID, SkillsClient } from '@modelcontextprotocol/client/ext/skills'
+import type { Skill } from '@modelcontextprotocol/client/ext/skills'
 import type { ClientTransportInput, McpConfig } from './transports.js'
 import { resolveTransport } from './transports.js'
 import type { MultiServerOptions } from './multi-server.js'
@@ -604,67 +598,54 @@ export class Client implements IClient {
     return this._skillsUnavailableReason() === undefined
   }
 
-  /** Lists every skill the server publishes, following `nextCursor` across pages. */
-  async listSkills(options?: RequestOptions): Promise<SkillEntry[]> {
-    const skills: SkillEntry[] = []
-    let cursor: string | undefined
-    do {
-      const page = await this._skillsRequest('skills/list', { cursor }, ListSkillsResultSchema, options)
-      skills.push(...page.skills)
-      cursor = page.nextCursor
-    } while (cursor)
-    return skills
+  /** Lists every skill the server publishes. */
+  async listSkills(options?: RequestOptions): Promise<Skill[]> {
+    const skills = this._skills()
+    const listing = await this._reauthRetry(() =>
+      skills.list(undefined, this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout)),
+    )
+    return listing.skills
   }
 
   /** Fetches one skill entry by the URI of its `SKILL.md` resource. */
-  async getSkill(uri: string, options?: RequestOptions): Promise<SkillEntry> {
-    const result = await this._skillsRequest('skills/get', { uri }, GetSkillResultSchema, options)
-    return result.skill
+  async getSkill(uri: string, options?: RequestOptions): Promise<Skill> {
+    const skills = this._skills()
+    const { skill } = await this._reauthRetry(() =>
+      skills.get(uri, this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout)),
+    )
+    return skill
   }
 
-  /** Reads a skill's files and checks each one's size and SHA-256 against its entry. */
+  /** Reads every file of a skill, each verified against the skill's entry. */
   async readSkill(uri: string, options?: RequestOptions): Promise<SkillContents> {
-    const entry = await this.getSkill(uri, options)
-    if (entry.resources === 'dynamic') {
+    const skill = await this.getSkill(uri, options)
+    if (skill.resources === 'dynamic') {
       throw new Error(`Skill ${uri} has no static file list to read`)
     }
-    const directory = skillDirectory(entry.uri)
+    const skills = this._skills()
+    const sdkOptions = this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout)
     const files = await Promise.all(
-      entry.resources.map(async (record) => {
-        const contents = await this.readResource(record.uri, options)
-        const path = decodeURIComponent(record.uri.slice(directory.length))
-        return [path, await parseSkillFile(record, contents)] as const
-      }),
+      skill.resources.map((file) => this._reauthRetry(() => skills.read(skill, file.uri, sdkOptions))),
     )
-    return { entry, files: new Map(files) }
+    return { skill, files }
   }
 
-  private async _skillsRequest<T extends StandardSchemaV1>(
-    method: 'skills/list' | 'skills/get',
-    params: { cursor?: string } | { uri: string },
-    resultSchema: T,
-    options: RequestOptions | undefined,
-  ): Promise<StandardSchemaV1.InferOutput<T>> {
+  private _skills(): SkillsClient {
     const reason = this._skillsUnavailableReason()
     if (reason !== undefined) throw new Error(reason)
-    return this._reauthRetry(() =>
-      this._sdk().request(
-        { method, params: { ...params, ...this._metaParams() } },
-        resultSchema,
-        this._toSdkOptions(options, undefined, this._defaultOptions.resource?.timeout),
-      ),
-    )
+    return new SkillsClient(this._sdk())
   }
 
   private _skillsUnavailableReason(): string | undefined {
-    if (!this._sdkClient) return 'Client is not connected. Call connect() first.'
-    if (this.getProtocolEra() !== 'modern') {
+    const sdk = this._sdkClient
+    if (!sdk) return 'Client is not connected. Call connect() first.'
+    if (sdk.getProtocolEra() !== 'modern') {
       return 'The Skills extension requires a modern (2026-07-28) connection'
     }
     if (this._capabilities.extensions?.[SKILLS_EXTENSION_ID] === undefined) {
       return `This client did not opt into the Skills extension; add '${SKILLS_EXTENSION_ID}' to capabilities.extensions`
     }
-    if (this.getServerCapabilities()?.extensions?.[SKILLS_EXTENSION_ID] === undefined) {
+    if (!new SkillsClient(sdk).supported) {
       return 'The server does not advertise the Skills extension'
     }
     return undefined

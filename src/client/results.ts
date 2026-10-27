@@ -1,5 +1,6 @@
 import type { CallToolResult as SdkCallToolResult } from '@modelcontextprotocol/client'
 import type { CreateMessageResult, CreateMessageResultWithTools } from "@modelcontextprotocol/server";
+import type { Skill, SkillFile } from '@modelcontextprotocol/client/ext/skills'
 
 export type {
   Tool,
@@ -26,6 +27,14 @@ export type {
   ElicitResult,
   Root,
 } from '@modelcontextprotocol/server'
+export type { Skill, SkillFile, SkillFrontmatter } from '@modelcontextprotocol/client/ext/skills'
+
+/** A skill read by `Client.readSkill()`: its entry and every file, verified against it. */
+export interface SkillContents {
+  skill: Skill
+  files: SkillFile[]
+}
+
 /** Union of the two sampling result shapes the MCP protocol defines. */
 export type AnySamplingResult = CreateMessageResult | CreateMessageResultWithTools
 /**

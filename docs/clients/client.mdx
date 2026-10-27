@@ -94,7 +94,7 @@ await client.close()
 
 The [Skills extension](https://github.com/modelcontextprotocol/ext-skills) lets a server publish agent skills, which are folders of files served as resources. Opt in through `capabilities.extensions`. Skills need a modern-era connection, and `supportsSkills()` tells you whether this one can use them.
 
-`listSkills()` returns every skill, and `getSkill(uri)` returns one. `readSkill(uri)` downloads a skill's files and checks each one against the size and SHA-256 in the skill's entry.
+`listSkills()` returns every skill, and `getSkill(uri)` returns one. `readSkill(uri)` downloads a skill's files and checks each one against the skill's entry. The parsed `SKILL.md` comes back with its frontmatter and markdown `body`.
 
 ```typescript
 import { Client, SKILLS_EXTENSION_ID } from '@prefecthq/fastmcp-ts/client'
@@ -105,7 +105,7 @@ const client = await Client.connect('http://localhost:3000', {
 
 const skills = await client.listSkills()
 const review = await client.readSkill('skill://code-review/SKILL.md')
-const instructions = new TextDecoder().decode(review.files.get('SKILL.md'))
+const instructions = review.files.find((file) => file.body !== undefined)?.body
 ```
 
 ## Error handling
