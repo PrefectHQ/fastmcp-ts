@@ -160,7 +160,7 @@ complete(
    options?): Promise<CompletionResult>;
 ```
 
-Defined in: [client/client.ts:686](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L686)
+Defined in: [client/client.ts:677](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L677)
 
 #### Parameters
 
@@ -368,7 +368,7 @@ getSkill(uri, options?): Promise<{
 }>;
 ```
 
-Defined in: [client/client.ts:625](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L625)
+Defined in: [client/client.ts:620](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L620)
 
 Fetches one skill entry by the URI of its `SKILL.md` resource.
 
@@ -516,7 +516,7 @@ listSkills(options?): Promise<{
 }[]>;
 ```
 
-Defined in: [client/client.ts:613](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L613)
+Defined in: [client/client.ts:608](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L608)
 
 Lists every skill the server publishes, following `nextCursor` across pages.
 
@@ -577,7 +577,7 @@ Defined in: [client/client.ts:382](https://github.com/PrefectHQ/fastmcp-ts/blob/
 notifyRootsChanged(): Promise<void>;
 ```
 
-Defined in: [client/client.ts:957](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L957)
+Defined in: [client/client.ts:948](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L948)
 
 Notify the connected server that the client's roots list has changed.
 The server should re-issue a roots/list request to get the updated list.
@@ -693,11 +693,9 @@ Returns the raw SDK ReadResourceResult without unwrapping.
 readSkill(uri, options?): Promise<SkillContents>;
 ```
 
-Defined in: [client/client.ts:635](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L635)
+Defined in: [client/client.ts:626](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L626)
 
-Reads every file of a skill through `resources/read` and verifies each one
-against the size and SHA-256 digest its `skills/get` entry promised. Throws
-for a `'dynamic'` skill, which has no file list to read.
+Reads a skill's files and checks each one's size and SHA-256 against its entry.
 
 #### Parameters
 
@@ -721,7 +719,7 @@ for a `'dynamic'` skill, which has no file list to read.
 setLogLevel(level, options?): Promise<void>;
 ```
 
-Defined in: [client/client.ts:715](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L715)
+Defined in: [client/client.ts:706](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L706)
 
 Sets the minimum severity level for log messages sent by the server. On a
 legacy-era connection this sends the `logging/setLevel` RPC, unchanged. On
@@ -806,12 +804,9 @@ can never fire would fail silently instead.
 supportsSkills(): boolean;
 ```
 
-Defined in: [client/client.ts:608](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L608)
+Defined in: [client/client.ts:603](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/client.ts#L603)
 
-Whether this connection can send Skills requests: it negotiated the modern
-era (servers bind `skills/*` to 2026-07-28 only), the client advertised
-[SKILLS\_EXTENSION\_ID](/api/client/variables/SKILLS_EXTENSION_ID) under `capabilities.extensions`, and the server
-advertised it back. `false` before connect().
+True when the connection is modern and both sides advertise [SKILLS\_EXTENSION\_ID](/api/client/variables/SKILLS_EXTENSION_ID).
 
 #### Returns
 

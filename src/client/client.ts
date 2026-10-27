@@ -599,12 +599,7 @@ export class Client implements IClient {
   // Skills (SEP-2640 extension)
   // -------------------------------------------------------------------------
 
-  /**
-   * Whether this connection can send Skills requests: it negotiated the modern
-   * era (servers bind `skills/*` to 2026-07-28 only), the client advertised
-   * {@link SKILLS_EXTENSION_ID} under `capabilities.extensions`, and the server
-   * advertised it back. `false` before connect().
-   */
+  /** True when the connection is modern and both sides advertise {@link SKILLS_EXTENSION_ID}. */
   supportsSkills(): boolean {
     return this._skillsUnavailableReason() === undefined
   }
@@ -627,11 +622,7 @@ export class Client implements IClient {
     return result.skill
   }
 
-  /**
-   * Reads every file of a skill through `resources/read` and verifies each one
-   * against the size and SHA-256 digest its `skills/get` entry promised. Throws
-   * for a `'dynamic'` skill, which has no file list to read.
-   */
+  /** Reads a skill's files and checks each one's size and SHA-256 against its entry. */
   async readSkill(uri: string, options?: RequestOptions): Promise<SkillContents> {
     const entry = await this.getSkill(uri, options)
     if (entry.resources === 'dynamic') {
