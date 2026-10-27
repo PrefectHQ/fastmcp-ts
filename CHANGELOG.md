@@ -1,5 +1,18 @@
 # @prefecthq/fastmcp-ts
 
+## 1.9.0
+
+### Minor Changes
+
+- a17dfbd: Add client support for the MCP Skills extension (SEP-2640). Opt in by adding `SKILLS_EXTENSION_ID` to `capabilities.extensions`, then call `listSkills()`, `getSkill(uri)`, and `readSkill(uri)` on a modern (2026-07-28) connection. `readSkill()` checks every file against the skill's entry. `supportsSkills()` reports whether the connection can use the extension. Built on the SDK's `SkillsClient`.
+
+### Patch Changes
+
+- b66f82c: Bump dependencies. The published CLI inlines its dependency tree, so it now ships `@modelcontextprotocol/node` 2.0.0 -> 2.1.0 (#134), qs 6.16.0 -> 6.17.0 (#135), body-parser 2.3.0 -> 2.4.0 (#137), zod 4.3.6 -> 4.6.7 (#138), and ip-address 10.7.2 -> 10.7.5 (#139).
+  
+  Also bumps undici 7.30.0 -> 7.30.1 (#136). It is dev-only and does not affect the published package.
+- a317917: Bump the MCP SDK packages (`client`, `core`, `server`, `server-legacy`) from 2.3.1 to 2.4.0.
+
 ## 1.8.1
 
 ### Patch Changes
