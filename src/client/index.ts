@@ -89,6 +89,9 @@ export { StdioTransport } from './transports.js'
 export type { ClientOptions, ClientDefaultOptions, RootInput, RootsValue } from './options.js'
 export { Client, ToolCallError } from './client.js'
 
+export type { Skill, SkillContents, SkillFile, SkillFrontmatter } from './results.js'
+export { SKILLS_EXTENSION_ID } from '@modelcontextprotocol/client/ext/skills'
+
 export type { MultiServerOptions } from './multi-server.js'
 export { MultiServerClient } from './multi-server.js'
 

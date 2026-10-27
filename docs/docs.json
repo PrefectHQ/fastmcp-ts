@@ -309,7 +309,8 @@
                   "api/client/interfaces/PrivateKeyJwtCredentialsOptions",
                   "api/client/interfaces/RequestOptions",
                   "api/client/interfaces/SamplingAdapter",
-                  "api/client/interfaces/SamplingAdapterOptions"
+                  "api/client/interfaces/SamplingAdapterOptions",
+                  "api/client/interfaces/SkillContents"
                 ]
               },
               {

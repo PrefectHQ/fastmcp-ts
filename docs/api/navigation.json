@@ -246,6 +246,12 @@
             "kind": 256,
             "path": "client/interfaces/SamplingAdapterOptions.mdx",
             "isDeprecated": false
+          },
+          {
+            "title": "SkillContents",
+            "kind": 256,
+            "path": "client/interfaces/SkillContents.mdx",
+            "isDeprecated": false
           }
         ]
       },
