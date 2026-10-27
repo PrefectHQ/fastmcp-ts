@@ -309,7 +309,8 @@
                   "api/client/interfaces/PrivateKeyJwtCredentialsOptions",
                   "api/client/interfaces/RequestOptions",
                   "api/client/interfaces/SamplingAdapter",
-                  "api/client/interfaces/SamplingAdapterOptions"
+                  "api/client/interfaces/SamplingAdapterOptions",
+                  "api/client/interfaces/SkillContents"
                 ]
               },
               {
@@ -339,7 +340,16 @@
                   "api/client/type-aliases/Result",
                   "api/client/type-aliases/RootInput",
                   "api/client/type-aliases/RootsValue",
-                  "api/client/type-aliases/SamplingHandler"
+                  "api/client/type-aliases/SamplingHandler",
+                  "api/client/type-aliases/SkillEntry",
+                  "api/client/type-aliases/SkillFrontmatter",
+                  "api/client/type-aliases/SkillResource"
+                ]
+              },
+              {
+                "group": "Variables",
+                "pages": [
+                  "api/client/variables/SKILLS_EXTENSION_ID"
                 ]
               },
               {

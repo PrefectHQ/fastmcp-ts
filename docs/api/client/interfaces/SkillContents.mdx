@@ -1,0 +1,88 @@
+---
+title: "SkillContents"
+---
+
+Defined in: [client/skills.ts:58](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/skills.ts#L58)
+
+A skill read by `Client.readSkill()`: its entry and the verified bytes of each file.
+
+## Properties
+
+### entry
+
+```ts
+entry: {
+  frontmatter: {
+   [key: string]: unknown;
+     description: string;
+     name: string;
+  };
+  resources:   | "dynamic"
+     | {
+     digest: string;
+     size: number;
+     uri: string;
+   }[];
+  uri: string;
+};
+```
+
+Defined in: [client/skills.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/skills.ts#L59)
+
+#### frontmatter
+
+```ts
+frontmatter: {
+[key: string]: unknown;
+  description: string;
+  name: string;
+} = SkillFrontmatterSchema;
+```
+
+##### Index Signature
+
+```ts
+[key: string]: unknown
+```
+
+##### frontmatter.description
+
+```ts
+description: string;
+```
+
+##### frontmatter.name
+
+```ts
+name: string;
+```
+
+#### resources
+
+```ts
+resources: 
+  | "dynamic"
+  | {
+  digest: string;
+  size: number;
+  uri: string;
+}[];
+```
+
+#### uri
+
+```ts
+uri: string;
+```
+
+***
+
+### files
+
+```ts
+files: Map<string, Uint8Array<ArrayBufferLike>>;
+```
+
+Defined in: [client/skills.ts:61](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/skills.ts#L61)
+
+File bytes keyed by path relative to the skill directory, e.g. `SKILL.md` or `scripts/check.py`.

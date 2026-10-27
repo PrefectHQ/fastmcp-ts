@@ -1,0 +1,11 @@
+---
+title: "SkillFrontmatter"
+---
+
+```ts
+type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
+```
+
+Defined in: [client/skills.ts:49](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/skills.ts#L49)
+
+The skill's `SKILL.md` frontmatter. `name` and `description` are required; other keys pass through.
