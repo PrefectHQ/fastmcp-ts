@@ -62,3 +62,24 @@ Pass `{ auth: requireScopes('skills:read') }` as the second argument to `mcp.ski
 For per-file policy, implement `Middleware.checkResourceAccess(uri, context)` and throw `AuthorizationError` to deny access. FastMCP calls this hook during discovery and before resource reads. Content-changing middleware must preserve the published bytes; otherwise a verifying client rejects the download.
 
 Each skill also has a `_manifest` resource for FastMCP clients that use resource-based discovery. It lists relative file paths, sizes, and hashes, allowing clients to verify downloads without negotiating the Skills extension.
+
+## Mount and proxy skills
+
+Mounting a server includes its skills. A namespace rewrites every manifest and file URI to the path the parent actually serves. Nested mounts compose those paths, so `mount(child, 'team')` serves a child's `review` skill at `skill://team/review/SKILL.md`. Child and parent resource policies both apply. Colliding skill identities are omitted from discovery and ambiguous file reads fail.
+
+A proxy forwards discovery when you enable `skills`. It negotiates a modern backend connection, fetches fresh entries per request, and serves the backend's current files. A backend without the extension continues to serve ordinary resources.
+
+```typescript
+import { FastMCP, createProxy } from '@prefecthq/fastmcp-ts/server'
+
+const backend = await createProxy({
+  type: 'http',
+  url: 'https://backend.example/mcp',
+  skills: true,
+})
+const gateway = new FastMCP({ name: 'Gateway' })
+gateway.mount(backend, 'backend')
+await gateway.run({ transport: 'http' })
+```
+
+A failing skill source logs a warning and leaves healthy sources available. Set `skillsErrorStrategy: 'raise'` on `FastMCP` to fail discovery instead. Skill loaders must return a complete catalog for the current request; successful requests cache that catalog only for their own lifetime.

@@ -11,15 +11,20 @@ export type SkillLoader = () => SkillCatalog | Promise<SkillCatalog>
 
 export interface PublishedSkill {
   entry: MCPSkill
+  owner?: object
   read(uri: string): Promise<Uint8Array>
   auth?: AuthCheck
+  discoverable?: boolean
+  checkAccess?(uri: string): Promise<void>
 }
 
-export type SkillSource = () => Promise<PublishedSkill[]>
+export type SkillSource = (context: McpContext, uri?: string) => Promise<PublishedSkill[]>
 
 export class SkillRegistry {
   private readonly sources: SkillSource[] = []
-  private readonly requests = new WeakMap<McpContext, Promise<PublishedSkill[]>>()
+  private readonly requests = new WeakMap<McpContext, Map<string, Promise<PublishedSkill[]>>>()
+
+  constructor(private readonly onSourceError?: (error: unknown) => void) {}
 
   get enabled(): boolean { return this.sources.length > 0 }
 
@@ -60,22 +65,31 @@ export class SkillRegistry {
     })
   }
 
-  load(ctx: McpContext): Promise<PublishedSkill[]> {
-    let request = this.requests.get(ctx)
+  load(ctx: McpContext, uri?: string): Promise<PublishedSkill[]> {
+    let requests = this.requests.get(ctx)
+    if (!requests) { requests = new Map(); this.requests.set(ctx, requests) }
+    const key = uri ?? ''
+    let request = requests.get(key)
     if (!request) {
-      request = Promise.all(this.sources.map((source) => source())).then((groups) => groups.flat())
-      this.requests.set(ctx, request)
+      request = Promise.all(this.sources.map(async (source) => {
+        try { return await source(ctx, uri) } catch (error) {
+          if (!this.onSourceError) throw error
+          this.onSourceError(error)
+          return []
+        }
+      })).then((groups) => groups.flat())
+      requests.set(key, request)
     }
     return request
   }
 
-  async visible(ctx: McpContext, mayRead: (source: PublishedSkill, uri: string) => Promise<boolean>): Promise<MCPSkill[]> {
-    const sources = await this.load(ctx)
+  async visible(ctx: McpContext, mayRead: (source: PublishedSkill, uri: string) => Promise<boolean>, uri?: string): Promise<MCPSkill[]> {
+    const sources = await this.load(ctx, uri)
     const counts = new Map<string, number>()
     for (const { entry } of sources) counts.set(entry.uri, (counts.get(entry.uri) ?? 0) + 1)
     const entries: MCPSkill[] = []
     for (const source of sources) {
-      if (counts.get(source.entry.uri) !== 1 || source.entry.resources === 'dynamic') continue
+      if (source.discoverable === false || counts.get(source.entry.uri) !== 1 || source.entry.resources === 'dynamic') continue
       let visible = true
       for (const file of source.entry.resources) {
         const owners = sources.filter(({ entry }) => entry.resources !== 'dynamic' && entry.resources.some((record) => record.uri === file.uri))
@@ -86,7 +100,8 @@ export class SkillRegistry {
     return entries.sort((a, b) => a.uri < b.uri ? -1 : a.uri > b.uri ? 1 : 0)
   }
 
-  async authorize(source: PublishedSkill, ctx: McpContext): Promise<void> {
+  async authorize(source: PublishedSkill, ctx: McpContext, uri: string): Promise<void> {
+    await source.checkAccess?.(uri)
     if (!source.auth) return
     if (!ctx.auth) throw new AuthorizationError('Authentication required')
     await source.auth(ctx.auth)
@@ -99,7 +114,7 @@ export class SkillRegistry {
     })
     if (matches.length !== 1) throw new ResourceNotFoundError(uri)
     const source = matches[0]
-    await this.authorize(source, ctx)
+    await this.authorize(source, ctx, uri)
     if (uri.endsWith('/_manifest') && source.entry.resources !== 'dynamic' && !source.entry.resources.some((file) => file.uri === uri)) {
       const prefix = source.entry.uri.slice(0, -'SKILL.md'.length)
       return new ResourceResult([{ uri, mimeType: 'application/json', text: JSON.stringify({ skill: source.entry.frontmatter.name,
