@@ -2,7 +2,7 @@
 title: "ToolAnnotations"
 ---
 
-Defined in: [server/FastMCP.ts:280](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L280)
+Defined in: [server/FastMCP.ts:283](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L283)
 
 Behavioral hints for a tool (MCP 2025-03-26). Advisory only — clients may use
 them for UI/UX and safety decisions (e.g. auto-approving a read-only call); the
@@ -17,7 +17,7 @@ server should not be relied upon.
 optional destructiveHint?: boolean;
 ```
 
-Defined in: [server/FastMCP.ts:286](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L286)
+Defined in: [server/FastMCP.ts:289](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L289)
 
 The tool may perform destructive updates. Only meaningful when readOnlyHint is false. Default: true.
 
@@ -29,7 +29,7 @@ The tool may perform destructive updates. Only meaningful when readOnlyHint is f
 optional idempotentHint?: boolean;
 ```
 
-Defined in: [server/FastMCP.ts:288](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L288)
+Defined in: [server/FastMCP.ts:291](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L291)
 
 Repeated calls with the same arguments have no additional effect. Only meaningful when readOnlyHint is false. Default: false.
 
@@ -41,7 +41,7 @@ Repeated calls with the same arguments have no additional effect. Only meaningfu
 optional openWorldHint?: boolean;
 ```
 
-Defined in: [server/FastMCP.ts:290](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L290)
+Defined in: [server/FastMCP.ts:293](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L293)
 
 The tool may interact with an open world of external entities. Default: true.
 
@@ -53,7 +53,7 @@ The tool may interact with an open world of external entities. Default: true.
 optional readOnlyHint?: boolean;
 ```
 
-Defined in: [server/FastMCP.ts:284](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L284)
+Defined in: [server/FastMCP.ts:287](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L287)
 
 The tool does not modify its environment. Default: false.
 
@@ -65,6 +65,6 @@ The tool does not modify its environment. Default: false.
 optional title?: string;
 ```
 
-Defined in: [server/FastMCP.ts:282](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L282)
+Defined in: [server/FastMCP.ts:285](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/FastMCP.ts#L285)
 
 Human-readable title for display.
