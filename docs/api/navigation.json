@@ -583,6 +583,12 @@
             "isDeprecated": false
           },
           {
+            "title": "Skill",
+            "kind": 128,
+            "path": "server/classes/Skill.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "ToolResult",
             "kind": 128,
             "path": "server/classes/ToolResult.mdx",
@@ -936,6 +942,12 @@
             "isDeprecated": false
           },
           {
+            "title": "SkillOptions",
+            "kind": 256,
+            "path": "server/interfaces/SkillOptions.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "SynthesizedTool",
             "kind": 256,
             "path": "server/interfaces/SynthesizedTool.mdx",
@@ -1070,6 +1082,24 @@
             "title": "RouteMapFn",
             "kind": 2097152,
             "path": "server/type-aliases/RouteMapFn.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SkillCatalog",
+            "kind": 2097152,
+            "path": "server/type-aliases/SkillCatalog.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SkillFiles",
+            "kind": 2097152,
+            "path": "server/type-aliases/SkillFiles.mdx",
+            "isDeprecated": false
+          },
+          {
+            "title": "SkillLoader",
+            "kind": 2097152,
+            "path": "server/type-aliases/SkillLoader.mdx",
             "isDeprecated": false
           },
           {

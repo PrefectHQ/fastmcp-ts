@@ -13,6 +13,9 @@ type CacheableResultMethod =
   | 'resources/templates/list'
   | 'resources/read'
   | 'server/discover'
+import { GetSkillRequestParamsSchema, ListSkillsRequestParamsSchema, SKILLS_EXTENSION_ID } from '@modelcontextprotocol/core/ext/skills'
+import { SkillRegistry } from '../skills/registry'
+import type { SkillCatalog, SkillLoader, SkillSource } from '../skills/registry'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
@@ -454,6 +457,8 @@ export class FastMCP {
   private _toolsPageSize: number
   private _resourcesPageSize: number
   private _tools = new Map<string, RegisteredTool>()
+  private readonly _skillRegistry = new SkillRegistry()
+  private _skillResourceHandler?: (params?: Record<string, string>) => Promise<ResourceResult>
   private _staticResources = new Map<string, RegisteredResource>()
   private _templateResources = new Map<string, RegisteredResource>()
   private _prompts = new Map<string, RegisteredPrompt>()
@@ -574,13 +579,14 @@ export class FastMCP {
     const state = sessionState ?? this._primaryState
     // mimeTypes announces what fastmcp can serve, symmetric with the mimeTypes the
     // client is required to declare on its own extension entry (SEP-1865).
-    const extensions = this._hasUiComponents()
-      ? { [UI_EXTENSION_KEY]: { mimeTypes: [UI_RESOURCE_MIME_TYPE] } }
-      : undefined
+    const extensions = {
+      ...(this._hasUiComponents() ? { [UI_EXTENSION_KEY]: { mimeTypes: [UI_RESOURCE_MIME_TYPE] } } : {}),
+      ...(this._skillRegistry.enabled ? { [SKILLS_EXTENSION_ID]: {} } : {}),
+    }
     const server = new Server(
       { name: this.name, version: this.version },
       {
-        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.stateless ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
+        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.stateless ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(Object.keys(extensions).length ? { extensions } : {}) },
         ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
         ...(this._requestStateCodec
           ? { requestState: { verify: this._requestStateCodec.verify.bind(this._requestStateCodec) } }
@@ -590,7 +596,71 @@ export class FastMCP {
     )
     for (const mw of this._middleware) mw.setup?.(server)
     this._setupHandlers(server, state, opts)
+    if (this._skillRegistry.enabled) this._setupSkills(server, state, opts)
     return server
+  }
+
+  private _setupSkills(server: Server, state: Map<string, unknown>, opts?: { stateless?: boolean }): void {
+    const context = async (sdkCtx: ServerContext) => createContext(server, sdkCtx,
+      await this._resolveToken(sdkCtx.http?.authInfo), state, this._requestStateCodec,
+      opts?.stateless, this._sensitiveHeaders, this._logger)
+    server.setRequestHandler('skills/list', { params: ListSkillsRequestParamsSchema }, async (params, sdkCtx) => {
+      if (server.getNegotiatedProtocolVersion() !== '2026-07-28') throw new ProtocolError(ProtocolErrorCode.MethodNotFound, 'Skills require a modern connection')
+      const ctx = await context(sdkCtx)
+      return contextStore.run(ctx, () => runMiddlewareChain(this._middleware, 'skills/list', params, ctx, async () => {
+        const entries = await this._visibleSkills(ctx)
+        const cursor = params.cursor ? Buffer.from(params.cursor, 'base64url').toString() : undefined
+        const index = cursor === undefined ? -1 : entries.findIndex((entry) => entry.uri === cursor)
+        if (cursor !== undefined && index < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
+        const page = entries.slice(index + 1, index + 1 + this._resourcesPageSize)
+        return { skills: page, ttlMs: 0, cacheScope: 'private', resultType: 'complete',
+          ...(index + 1 + page.length < entries.length ? { nextCursor: Buffer.from(page.at(-1)!.uri).toString('base64url') } : {}) }
+      }))
+    })
+    server.setRequestHandler('skills/get', { params: GetSkillRequestParamsSchema }, async (params, sdkCtx) => {
+      if (server.getNegotiatedProtocolVersion() !== '2026-07-28') throw new ProtocolError(ProtocolErrorCode.MethodNotFound, 'Skills require a modern connection')
+      const ctx = await context(sdkCtx)
+      return contextStore.run(ctx, () => runMiddlewareChain(this._middleware, 'skills/get', params, ctx, async () => {
+        const entry = (await this._visibleSkills(ctx)).find((entry) => entry.uri === params.uri)
+        if (!entry) throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown skill URI: ${params.uri}`)
+        return { skill: entry, ttlMs: 0, cacheScope: 'private', resultType: 'complete' }
+      }))
+    })
+  }
+
+  private _visibleSkills(ctx: McpContext) {
+    return this._skillRegistry.visible(ctx, async (source, uri) => {
+      if (this._resolveResource(uri)?.resource.handler !== this._skillResourceHandler) return false
+      const view = applyTransformChain<ResourceView>({ uri, name: uri, tags: [] }, this._transforms, (t, v) => t.transformResource?.(v))
+      if (!view || view.uri !== uri) return false
+      try {
+        await this._skillRegistry.authorize(source, ctx)
+        for (const mw of this._middleware) await mw.checkResourceAccess?.(uri, ctx)
+        return true
+      } catch (error) {
+        if (error instanceof AuthorizationError) return false
+        throw error
+      }
+    })
+  }
+
+  /** Publish snapshots or load a catalog once per request. */
+  skills(catalog: SkillCatalog | SkillLoader, options?: { auth?: AuthCheck }): this {
+    this._skillRegistry.publish(catalog, options?.auth)
+    this._enableSkillResources()
+    return this
+  }
+
+  /** @internal Register a source for composed and proxied skills. */
+  _addSkillSource(source: SkillSource): void {
+    this._skillRegistry.add(source)
+    this._enableSkillResources()
+  }
+
+  private _enableSkillResources(): void {
+    if (this._skillResourceHandler) return
+    this._skillResourceHandler = async (params) => this._skillRegistry.read(`skill://${(params?.path ?? '').split('/').map(encodeURIComponent).join('/')}`, this.getContext())
+    this.resource({ uri: 'skill://{path*}', name: 'skills' }, this._skillResourceHandler)
   }
 
   private async _resolveToken(authInfo: AuthInfo | undefined): Promise<AccessToken | undefined> {
@@ -833,6 +903,15 @@ export class FastMCP {
             )
           ).filter((r): r is RegisteredResource => r !== null)
 
+          if (this._skillRegistry.enabled) {
+            for (const entry of await this._visibleSkills(ctx)) {
+              if (entry.resources === 'dynamic') continue
+              for (const file of [...entry.resources, ...(entry.resources.some((file) => file.uri === entry.uri.slice(0, -'SKILL.md'.length) + '_manifest') ? [] : [{ uri: entry.uri.slice(0, -'SKILL.md'.length) + '_manifest', size: 0 }])]) {
+                allVisible.push({ config: { uri: file.uri, name: file.uri, size: file.size,
+                  ...(file.uri === entry.uri ? { description: entry.frontmatter.description, mimeType: 'text/markdown' } : {}) }, handler: this._skillResourceHandler! })
+              }
+            }
+          }
           const transformedResources = this._applyTransformsToResources(allVisible)
 
           const pageSize = this._resourcesPageSize
@@ -936,6 +1015,7 @@ export class FastMCP {
 
       const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders, this._logger)
 
+      for (const mw of this._middleware) await mw.checkResourceAccess?.(requestedUri, ctx)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
           let executePromise: Promise<unknown> = Promise.resolve(resource!.handler(templateParams))
