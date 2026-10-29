@@ -114,3 +114,7 @@ export { Approval, Choice, FileUpload, FormInput } from './apps'
 export type { FileHandle, FileStorageAdapter, FileUploadOptions, FormInputOptions, EntrypointConfig, BackendToolConfig, FastMCPAppOptions } from './apps'
 export { actionRef } from './apps'
 export type { UiToolMeta, ResourceUiMeta, CspPolicy, BrowserPermissions, Visibility } from './apps'
+
+export { Skill } from '../skills/skill'
+export type { SkillOptions, SkillFiles } from '../skills/skill'
+export type { SkillCatalog, SkillLoader } from '../skills/registry'
