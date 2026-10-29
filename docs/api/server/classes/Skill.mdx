@@ -1,0 +1,193 @@
+---
+title: "Skill"
+---
+
+Defined in: [skills/skill.ts:30](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L30)
+
+An immutable snapshot of a SKILL.md and its supporting files.
+
+## Accessors
+
+### description
+
+#### Get Signature
+
+```ts
+get description(): string;
+```
+
+Defined in: [skills/skill.ts:113](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L113)
+
+##### Returns
+
+`string`
+
+***
+
+### files
+
+#### Get Signature
+
+```ts
+get files(): Readonly<Record<string, Uint8Array>>;
+```
+
+Defined in: [skills/skill.ts:115](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L115)
+
+##### Returns
+
+`Readonly`&lt;`Record`&lt;`string`, `Uint8Array`&gt;&gt;
+
+***
+
+### frontmatter
+
+#### Get Signature
+
+```ts
+get frontmatter(): {
+[key: string]: unknown;
+};
+```
+
+Defined in: [skills/skill.ts:114](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L114)
+
+##### Returns
+
+```ts
+{
+[key: string]: unknown;
+}
+```
+
+***
+
+### name
+
+#### Get Signature
+
+```ts
+get name(): string;
+```
+
+Defined in: [skills/skill.ts:112](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L112)
+
+##### Returns
+
+`string`
+
+## Methods
+
+### toDirectory()
+
+```ts
+toDirectory(directory, options?): Promise<string>;
+```
+
+Defined in: [skills/skill.ts:138](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L138)
+
+Stage and install this snapshot into a directory named after the skill.
+
+#### Parameters
+
+##### directory
+
+`string`
+
+##### options?
+
+###### overwrite?
+
+`boolean`
+
+#### Returns
+
+`Promise`&lt;`string`&gt;
+
+***
+
+### toMCPSkill()
+
+```ts
+toMCPSkill(path?): {
+[key: string]: unknown;
+};
+```
+
+Defined in: [skills/skill.ts:119](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L119)
+
+#### Parameters
+
+##### path?
+
+`string` = `...`
+
+#### Returns
+
+```ts
+{
+[key: string]: unknown;
+}
+```
+
+***
+
+### create()
+
+```ts
+static create(options): Promise<Skill>;
+```
+
+Defined in: [skills/skill.ts:39](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L39)
+
+#### Parameters
+
+##### options
+
+[`SkillOptions`](/api/server/interfaces/SkillOptions)
+
+#### Returns
+
+`Promise`&lt;`Skill`&gt;
+
+***
+
+### fromDirectory()
+
+```ts
+static fromDirectory(directory): Promise<Skill>;
+```
+
+Defined in: [skills/skill.ts:80](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L80)
+
+Read a directory once, rejecting links and special files before reading content.
+
+#### Parameters
+
+##### directory
+
+`string` \| `URL`
+
+#### Returns
+
+`Promise`&lt;`Skill`&gt;
+
+***
+
+### fromFiles()
+
+```ts
+static fromFiles(files): Promise<Skill>;
+```
+
+Defined in: [skills/skill.ts:47](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L47)
+
+#### Parameters
+
+##### files
+
+[`SkillFiles`](/api/server/type-aliases/SkillFiles)
+
+#### Returns
+
+`Promise`&lt;`Skill`&gt;

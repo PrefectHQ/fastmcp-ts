@@ -1,4 +1,4 @@
-import { UnauthorizedError, Client as SdkClient, LOG_LEVEL_META_KEY } from "@modelcontextprotocol/client";
+import { ProtocolError, UnauthorizedError, Client as SdkClient, LOG_LEVEL_META_KEY } from "@modelcontextprotocol/client";
 import type {
   ClientCapabilities,
   RequestOptions as SdkRequestOptions,
@@ -36,6 +36,8 @@ import type {
   Tool,
 } from './results.js'
 import { normalizeCallToolResult } from './results.js'
+import { preflightSkill, readManifestSkill, skillFilePath } from './skill-files'
+import type { Skill as SkillSnapshot } from '../skills/skill'
 import { SKILLS_EXTENSION_ID, SkillsClient } from '@modelcontextprotocol/client/ext/skills'
 import type { Skill } from '@modelcontextprotocol/client/ext/skills'
 import type { ClientTransportInput, McpConfig } from './transports.js'
@@ -618,7 +620,15 @@ export class Client implements IClient {
 
   /** Reads every file of a skill, each verified against the skill's entry. */
   async readSkill(uri: string, options?: RequestOptions): Promise<SkillContents> {
-    const skill = await this.getSkill(uri, options)
+    if (!this.supportsSkills()) return readManifestSkill(this.readResource.bind(this), uri, options)
+    let skill: Skill
+    try { skill = await this.getSkill(uri, options) } catch (error) {
+      if (error instanceof ProtocolError && (error.code === -32602 || error.code === -32601)) {
+        return readManifestSkill(this.readResource.bind(this), uri, options)
+      }
+      throw error
+    }
+    preflightSkill(skill)
     if (skill.resources === 'dynamic') {
       throw new Error(`Skill ${uri} has no static file list to read`)
     }
@@ -628,6 +638,46 @@ export class Client implements IClient {
       skill.resources.map((file) => this._reauthRetry(() => skills.read(skill, file.uri, sdkOptions))),
     )
     return { skill, files }
+  }
+
+  /** Read and verify a skill as a storage-neutral snapshot that can be republished. */
+  async readSkillSnapshot(uri: string, options?: RequestOptions): Promise<SkillSnapshot> {
+    const { skill, files } = await this.readSkill(uri, options)
+    const root = skill.uri.slice(0, -'SKILL.md'.length)
+    const contents: Record<string, Uint8Array> = Object.create(null)
+    for (const file of files) {
+      const path = skillFilePath(file.uri, root)
+      if (path in contents) throw new Error(`Duplicate skill file path: ${path}`)
+      contents[path] = file.bytes
+    }
+    const { Skill } = await import('../skills/skill')
+    return Skill.fromFiles(contents)
+  }
+
+  /** Download a verified skill into a child directory named after the skill. */
+  async downloadSkill(uri: string, directory: string, options?: RequestOptions & { overwrite?: boolean }): Promise<string> {
+    const skill = await this.readSkillSnapshot(uri, options)
+    const { join } = await import('node:path')
+    return skill.toDirectory(join(directory, skill.name), options)
+  }
+
+  /** Download discoverable skills, checking every snapshot before writing any files. */
+  async syncSkills(directory: string, options?: RequestOptions & { overwrite?: boolean }): Promise<string[]> {
+    const uris = this.supportsSkills()
+      ? (await this.listSkills(options)).map((skill) => skill.uri)
+      : (await this.listResources(options)).filter((resource) => resource.uri.endsWith('/SKILL.md')).map((resource) => resource.uri)
+    const snapshots: SkillSnapshot[] = []
+    const names = new Set<string>()
+    for (const uri of uris) {
+      const snapshot = await this.readSkillSnapshot(uri, options)
+      if (names.has(snapshot.name)) throw new Error(`Duplicate skill installation name: ${snapshot.name}`)
+      names.add(snapshot.name)
+      snapshots.push(snapshot)
+    }
+    const { join } = await import('node:path')
+    const paths: string[] = []
+    for (const skill of snapshots) paths.push(await skill.toDirectory(join(directory, skill.name), options))
+    return paths
   }
 
   private _skills(): SkillsClient {

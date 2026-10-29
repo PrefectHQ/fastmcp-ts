@@ -1,0 +1,85 @@
+---
+title: Skills over MCP
+sidebarTitle: Skills
+description: Publish agent instructions and supporting files alongside your MCP tools.
+icon: wand-magic-sparkles
+---
+
+A skill is a `SKILL.md` of instructions and the files it refers to. Publish skills alongside your server's tools so agents can fetch the instructions from the same deployment. Updating the server updates the instructions for every connected client.
+
+`Skill.create()` builds an immutable snapshot. The description tells an agent when to use the skill; the instructions explain how. Supporting files can contain text or binary data. Register the snapshot with `mcp.skills()` before starting the server:
+
+```typescript
+import { FastMCP, Skill } from '@prefecthq/fastmcp-ts/server'
+
+const shopping = await Skill.create({
+  name: 'shopping',
+  description: 'Find products and manage a shopping cart.',
+  instructions: 'Search products before adding items. Use guide.md for checkout rules.',
+  files: { 'guide.md': 'Ask the user to confirm the cart before checkout.\n' },
+})
+
+const mcp = new FastMCP({ name: 'Shop' })
+mcp.skills([shopping])
+await mcp.run({ transport: 'http' })
+```
+
+Every client can read `skill://shopping/SKILL.md` and `skill://shopping/guide.md` through `resources/read`. Clients implementing the experimental [MCP Skills extension](https://modelcontextprotocol.io/seps/2640-skills-extension) can also discover skills with `skills/list` and refresh one with `skills/get` on a modern connection. Each entry contains frontmatter and a manifest of file sizes and SHA-256 digests. The host decides when to offer or activate a skill.
+
+## Load existing files
+
+`Skill.fromDirectory()` snapshots one directory whose name matches the skill's frontmatter name. `Skill.fromDirectory()` also accepts a file URL, such as `new URL("./skills/review", import.meta.url)`, for skills bundled with a package. `Skill.fromFiles()` accepts a mapping that includes `SKILL.md`. Both preserve exact bytes, including CRLF newlines and binary files. Changing the original files later does not change the snapshot.
+
+```typescript
+import { FastMCP, Skill } from '@prefecthq/fastmcp-ts/server'
+
+const review = await Skill.fromDirectory('./skills/review')
+const mcp = new FastMCP({ name: 'Team' })
+mcp.skills({ 'engineering/review': review })
+await mcp.run()
+```
+
+A mapping chooses publication paths: this skill is served at `skill://engineering/review/SKILL.md`. The final path segment must match the skill's name. Files must use relative POSIX paths. Snapshots reject symlinks, special files, conflicting file and directory names, and skills exceeding 512 files or 16 MiB.
+
+## Load once per request
+
+Pass a loader when skills come from a database or a directory that changes. FastMCP calls the loader once per request, so discovery and reads within that request use the same catalog. The loader can call `mcp.getContext()` to select skills for the current caller.
+
+```typescript
+import { FastMCP, Skill } from '@prefecthq/fastmcp-ts/server'
+
+const mcp = new FastMCP({ name: 'Live Skills' })
+mcp.skills(async () => [await Skill.fromDirectory('./skills/review')])
+await mcp.run({ transport: 'http' })
+```
+
+Manifests describe a point in time. If a file changes between discovery and a later read, the client must refresh the entry before using it. The built-in `CachingMiddleware` bypasses skills discovery and `skill://` reads so refreshing an entry cannot leave cached file bytes behind.
+
+## Control access
+
+Pass `{ auth: requireScopes('skills:read') }` as the second argument to `mcp.skills()` to restrict a catalog. Discovery omits any skill whose files the caller cannot read. A resource registered at the same URI takes precedence and removes the shadowed skill from discovery. Resource transforms that hide or rewrite a file also remove its skill from discovery.
+
+For per-file policy, implement `Middleware.checkResourceAccess(uri, context)` and throw `AuthorizationError` to deny access. FastMCP calls this hook during discovery and before resource reads. Content-changing middleware must preserve the published bytes; otherwise a verifying client rejects the download.
+
+Each skill also has a `_manifest` resource for FastMCP clients that use resource-based discovery. It lists relative file paths, sizes, and hashes, allowing clients to verify downloads without negotiating the Skills extension.
+
+## Mount and proxy skills
+
+Mounting a server includes its skills. A namespace rewrites every manifest and file URI to the path the parent actually serves. Nested mounts compose those paths, so `mount(child, 'team')` serves a child's `review` skill at `skill://team/review/SKILL.md`. Child and parent resource policies both apply. Colliding skill identities are omitted from discovery and ambiguous file reads fail.
+
+A proxy forwards discovery when you enable `skills`. It negotiates a modern backend connection, fetches fresh entries per request, and serves the backend's current files. A backend without the extension continues to serve ordinary resources.
+
+```typescript
+import { FastMCP, createProxy } from '@prefecthq/fastmcp-ts/server'
+
+const backend = await createProxy({
+  type: 'http',
+  url: 'https://backend.example/mcp',
+  skills: true,
+})
+const gateway = new FastMCP({ name: 'Gateway' })
+gateway.mount(backend, 'backend')
+await gateway.run({ transport: 'http' })
+```
+
+A failing skill source logs a warning and leaves healthy sources available. Set `skillsErrorStrategy: 'raise'` on `FastMCP` to fail discovery instead. Skill loaders must return a complete catalog for the current request; successful requests cache that catalog only for their own lifetime.
