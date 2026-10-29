@@ -77,11 +77,12 @@ export class Skill {
   }
 
   /** Read a directory once, rejecting links and special files before reading content. */
-  static async fromDirectory(directory: string): Promise<Skill> {
+  static async fromDirectory(directory: string | URL): Promise<Skill> {
     const { constants } = await import('node:fs')
     const { lstat, open, readdir } = await import('node:fs/promises')
     const { basename, join, resolve } = await import('node:path')
-    const root = resolve(directory)
+    const { fileURLToPath } = await import('node:url')
+    const root = resolve(typeof directory === 'string' ? directory : fileURLToPath(directory))
     const paths: string[] = []
     let total = 0
     async function walk(path: string, relative: string): Promise<void> {

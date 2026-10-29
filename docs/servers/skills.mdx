@@ -28,7 +28,7 @@ Every client can read `skill://shopping/SKILL.md` and `skill://shopping/guide.md
 
 ## Load existing files
 
-`Skill.fromDirectory()` snapshots one directory whose name matches the skill's frontmatter name. `Skill.fromFiles()` accepts a mapping that includes `SKILL.md`. Both preserve exact bytes, including CRLF newlines and binary files. Changing the original files later does not change the snapshot.
+`Skill.fromDirectory()` snapshots one directory whose name matches the skill's frontmatter name. `Skill.fromDirectory()` also accepts a file URL, such as `new URL("./skills/review", import.meta.url)`, for skills bundled with a package. `Skill.fromFiles()` accepts a mapping that includes `SKILL.md`. Both preserve exact bytes, including CRLF newlines and binary files. Changing the original files later does not change the snapshot.
 
 ```typescript
 import { FastMCP, Skill } from '@prefecthq/fastmcp-ts/server'
