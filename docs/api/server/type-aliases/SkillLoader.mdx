@@ -1,0 +1,16 @@
+---
+title: "SkillLoader"
+---
+
+```ts
+type SkillLoader = () => 
+  | SkillCatalog
+  | Promise<SkillCatalog>;
+```
+
+Defined in: skills/registry.ts:10
+
+## Returns
+
+  \| [`SkillCatalog`](/api/server/type-aliases/SkillCatalog)
+  \| `Promise`&lt;[`SkillCatalog`](/api/server/type-aliases/SkillCatalog)&gt;

@@ -41,6 +41,7 @@
             "pages": [
               "servers/tools",
               "servers/resources",
+              "servers/skills",
               "servers/prompts",
               "servers/context",
               "servers/running",
@@ -128,6 +129,7 @@
                   "api/server/classes/ResourceResult",
                   "api/server/classes/ResourcesAsTools",
                   "api/server/classes/SizeLimitingMiddleware",
+                  "api/server/classes/Skill",
                   "api/server/classes/ToolResult",
                   "api/server/classes/VersionFilter"
                 ]
@@ -191,6 +193,7 @@
                   "api/server/interfaces/SamplingParams",
                   "api/server/interfaces/SamplingResult",
                   "api/server/interfaces/ServerAddress",
+                  "api/server/interfaces/SkillOptions",
                   "api/server/interfaces/SynthesizedTool",
                   "api/server/interfaces/TokenVerifier",
                   "api/server/interfaces/ToolAnnotations",
@@ -218,6 +221,9 @@
                   "api/server/type-aliases/ProxyTransport",
                   "api/server/type-aliases/RemoteAuthProvider",
                   "api/server/type-aliases/RouteMapFn",
+                  "api/server/type-aliases/SkillCatalog",
+                  "api/server/type-aliases/SkillFiles",
+                  "api/server/type-aliases/SkillLoader",
                   "api/server/type-aliases/Visibility"
                 ]
               },

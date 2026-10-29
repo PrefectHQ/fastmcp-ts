@@ -23,6 +23,9 @@ export type Next<R = unknown> = () => Promise<R>
  * the call boundary.
  */
 export interface Middleware {
+  /** Authorize a resource read; also called before publishing a skill's manifest. */
+  checkResourceAccess?(uri: string, context: McpContext): void | Promise<void>
+
   /** Called once per Server instance. Use to register notification handlers or other server-level setup. */
   setup?(server: Server): void
 
@@ -241,6 +244,9 @@ export class CachingMiddleware implements Middleware {
     // Side-effectful control RPC exclusion: never serve or store a method that
     // mutates per-session state (see _nonCacheableMethods).
     if (CachingMiddleware._nonCacheableMethods.has(ctx.method)) return next()
+    if (ctx.method.startsWith('skills/')) return next()
+    if (ctx.method === 'resources/read' && typeof ctx.request === 'object' && ctx.request !== null
+      && 'uri' in ctx.request && typeof ctx.request.uri === 'string' && ctx.request.uri.startsWith('skill://')) return next()
 
     // Multi-round-trip (inputRequired) exclusion. A retry re-sends byte-identical
     // tools/call params — the SDK lifts inputResponses / requestState out of params —
