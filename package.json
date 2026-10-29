@@ -53,6 +53,7 @@
     "prepublishOnly": "npm run build && node scripts/test-dist.mjs && npm run test:browser-bundle",
     "test": "vitest run",
     "test:browser-bundle": "node scripts/test-browser-bundle.mjs",
+    "test:skills-interop": "vitest run tests/interop/skills-python.test.ts",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

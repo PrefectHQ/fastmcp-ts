@@ -16,7 +16,7 @@ An immutable snapshot of a SKILL.md and its supporting files.
 get description(): string;
 ```
 
-Defined in: [skills/skill.ts:112](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L112)
+Defined in: [skills/skill.ts:113](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L113)
 
 ##### Returns
 
@@ -32,7 +32,7 @@ Defined in: [skills/skill.ts:112](https://github.com/PrefectHQ/fastmcp-ts/blob/m
 get files(): Readonly<Record<string, Uint8Array>>;
 ```
 
-Defined in: [skills/skill.ts:114](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L114)
+Defined in: [skills/skill.ts:115](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L115)
 
 ##### Returns
 
@@ -50,7 +50,7 @@ get frontmatter(): {
 };
 ```
 
-Defined in: [skills/skill.ts:113](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L113)
+Defined in: [skills/skill.ts:114](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L114)
 
 ##### Returns
 
@@ -70,7 +70,7 @@ Defined in: [skills/skill.ts:113](https://github.com/PrefectHQ/fastmcp-ts/blob/m
 get name(): string;
 ```
 
-Defined in: [skills/skill.ts:111](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L111)
+Defined in: [skills/skill.ts:112](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L112)
 
 ##### Returns
 
@@ -84,7 +84,7 @@ Defined in: [skills/skill.ts:111](https://github.com/PrefectHQ/fastmcp-ts/blob/m
 toDirectory(directory, options?): Promise<string>;
 ```
 
-Defined in: [skills/skill.ts:137](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L137)
+Defined in: [skills/skill.ts:138](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L138)
 
 Stage and install this snapshot into a directory named after the skill.
 
@@ -114,7 +114,7 @@ toMCPSkill(path?): {
 };
 ```
 
-Defined in: [skills/skill.ts:118](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L118)
+Defined in: [skills/skill.ts:119](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/skills/skill.ts#L119)
 
 #### Parameters
 
@@ -166,7 +166,7 @@ Read a directory once, rejecting links and special files before reading content.
 
 ##### directory
 
-`string`
+`string` \| `URL`
 
 #### Returns
 
