@@ -13,7 +13,11 @@ type CacheableResultMethod =
   | 'resources/templates/list'
   | 'resources/read'
   | 'server/discover'
+import { GetSkillRequestParamsSchema, ListSkillsRequestParamsSchema, SKILLS_EXTENSION_ID } from '@modelcontextprotocol/core/ext/skills'
+import { SkillRegistry } from '../skills/registry'
+import type { SkillCatalog, SkillLoader, SkillSource } from '../skills/registry'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { parseTemplate as expandTemplate } from 'url-template'
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http'
@@ -130,6 +134,8 @@ export interface FastMCPOptions {
   resourcesPageSize?: number
   /** Maximum number of prompts returned per prompts/list page. Default: 50. */
   promptsPageSize?: number
+  /** How a failing skill source affects discovery. Default: warn and keep healthy sources. */
+  skillsErrorStrategy?: 'warn' | 'raise'
   /** Middleware applied to every request in registration order. */
   middleware?: Middleware[]
   /** Transforms applied to component list responses in registration order. */
@@ -326,6 +332,7 @@ interface RegisteredTool {
 }
 
 interface RegisteredResource {
+  skillOwner?: object
   config: ResourceConfig
   handler: (params?: Record<string, string>) => unknown
 }
@@ -454,6 +461,15 @@ export class FastMCP {
   private _toolsPageSize: number
   private _resourcesPageSize: number
   private _tools = new Map<string, RegisteredTool>()
+  private _skillsErrorStrategy: 'warn' | 'raise' = 'warn'
+  private readonly _mountedSkillChildren = new Set<FastMCP>()
+  private readonly _skillRegistry = new SkillRegistry((error) => {
+    if (this._skillsErrorStrategy === 'raise') throw error
+    this._logger.warn('Skill source failed; serving healthy sources', { component: 'skills', error })
+  })
+  private readonly _skillOwnerUpdatedCallbacks: Array<(uri: string, owner: object) => void> = []
+  private readonly _skillsRegisteredCallbacks: Array<() => void> = []
+  private _skillResourceHandler?: (params?: Record<string, string>) => Promise<ResourceResult>
   private _staticResources = new Map<string, RegisteredResource>()
   private _templateResources = new Map<string, RegisteredResource>()
   private _prompts = new Map<string, RegisteredPrompt>()
@@ -505,6 +521,7 @@ export class FastMCP {
   private _mountedChildren = new Set<FastMCP>()
 
   constructor(options: FastMCPOptions) {
+    this._skillsErrorStrategy = options.skillsErrorStrategy ?? 'warn'
     this.name = options.name
     this.version = options.version ?? '0.0.1'
     this._logger = resolveLogger(options.logger, options.logLevel)
@@ -574,13 +591,14 @@ export class FastMCP {
     const state = sessionState ?? this._primaryState
     // mimeTypes announces what fastmcp can serve, symmetric with the mimeTypes the
     // client is required to declare on its own extension entry (SEP-1865).
-    const extensions = this._hasUiComponents()
-      ? { [UI_EXTENSION_KEY]: { mimeTypes: [UI_RESOURCE_MIME_TYPE] } }
-      : undefined
+    const extensions = {
+      ...(this._hasUiComponents() ? { [UI_EXTENSION_KEY]: { mimeTypes: [UI_RESOURCE_MIME_TYPE] } } : {}),
+      ...(this._skillRegistry.enabled ? { [SKILLS_EXTENSION_ID]: {} } : {}),
+    }
     const server = new Server(
       { name: this.name, version: this.version },
       {
-        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.stateless ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
+        capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.stateless ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(Object.keys(extensions).length ? { extensions } : {}) },
         ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
         ...(this._requestStateCodec
           ? { requestState: { verify: this._requestStateCodec.verify.bind(this._requestStateCodec) } }
@@ -590,7 +608,82 @@ export class FastMCP {
     )
     for (const mw of this._middleware) mw.setup?.(server)
     this._setupHandlers(server, state, opts)
+    if (this._skillRegistry.enabled) this._setupSkills(server, state, opts)
     return server
+  }
+
+  private _setupSkills(server: Server, state: Map<string, unknown>, opts?: { stateless?: boolean }): void {
+    const context = async (sdkCtx: ServerContext) => createContext(server, sdkCtx,
+      await this._resolveToken(sdkCtx.http?.authInfo), state, this._requestStateCodec,
+      opts?.stateless, this._sensitiveHeaders, this._logger)
+    server.setRequestHandler('skills/list', { params: ListSkillsRequestParamsSchema }, async (params, sdkCtx) => {
+      if (server.getNegotiatedProtocolVersion() !== '2026-07-28') throw new ProtocolError(ProtocolErrorCode.MethodNotFound, 'Skills require a modern connection')
+      const ctx = await context(sdkCtx)
+      return contextStore.run(ctx, () => runMiddlewareChain(this._middleware, 'skills/list', params, ctx, async () => {
+        const entries = await this._visibleSkills(ctx)
+        const cursor = params.cursor ? Buffer.from(params.cursor, 'base64url').toString() : undefined
+        const index = cursor === undefined ? -1 : entries.findIndex((entry) => entry.uri === cursor)
+        if (cursor !== undefined && index < 0) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Invalid or expired cursor')
+        const page = entries.slice(index + 1, index + 1 + this._resourcesPageSize)
+        return { skills: page, ttlMs: 0, cacheScope: 'private', resultType: 'complete',
+          ...(index + 1 + page.length < entries.length ? { nextCursor: Buffer.from(page.at(-1)!.uri).toString('base64url') } : {}) }
+      }))
+    })
+    server.setRequestHandler('skills/get', { params: GetSkillRequestParamsSchema }, async (params, sdkCtx) => {
+      if (server.getNegotiatedProtocolVersion() !== '2026-07-28') throw new ProtocolError(ProtocolErrorCode.MethodNotFound, 'Skills require a modern connection')
+      const ctx = await context(sdkCtx)
+      return contextStore.run(ctx, () => runMiddlewareChain(this._middleware, 'skills/get', params, ctx, async () => {
+        const entry = (await this._visibleSkills(ctx, params.uri)).find((entry) => entry.uri === params.uri)
+        if (!entry) throw new ProtocolError(ProtocolErrorCode.InvalidParams, `Unknown skill URI: ${params.uri}`)
+        return { skill: entry, ttlMs: 0, cacheScope: 'private', resultType: 'complete' }
+      }))
+    })
+  }
+
+  private _visibleSkills(ctx: McpContext, uri?: string) {
+    return this._skillRegistry.visible(ctx, async (source, uri) => {
+      const resolved = this._resolveResource(uri)
+      if (!resolved || resolved.resource.config.disabled || (resolved.resource.handler !== this._skillResourceHandler && (!source.owner || resolved.resource.skillOwner !== source.owner))) return false
+      const view = applyTransformChain<ResourceView>({ uri, name: uri, tags: [] }, this._transforms, (t, v) => t.transformResource?.(v))
+      if (!view || view.uri !== uri) return false
+      try {
+        await this._skillRegistry.authorize(source, ctx, uri)
+        for (const mw of this._middleware) await mw.checkResourceAccess?.(uri, ctx)
+        return true
+      } catch (error) {
+        if (error instanceof AuthorizationError) return false
+        throw error
+      }
+    }, uri)
+  }
+
+  /** Publish snapshots or load a catalog once per request. */
+  skills(catalog: SkillCatalog | SkillLoader, options?: { auth?: AuthCheck }): this {
+    this._skillRegistry.publish(catalog, options?.auth)
+    this._enableSkillResources()
+    return this
+  }
+
+  /** @internal Mark a proxied resource as served by the same backend as its skills. */
+  _markSkillResourceOwner(uri: string, owner: object): void {
+    const resource = this._staticResources.get(uri) ?? this._templateResources.get(uri)
+    if (resource) {
+      resource.skillOwner = owner
+      for (const callback of this._skillOwnerUpdatedCallbacks) callback(uri, owner)
+    }
+  }
+
+  /** @internal Register a source for composed and proxied skills. */
+  _addSkillSource(source: SkillSource): void {
+    this._skillRegistry.add(source)
+    this._enableSkillResources()
+  }
+
+  private _enableSkillResources(): void {
+    if (this._skillResourceHandler) return
+    this._skillResourceHandler = async (params) => this._skillRegistry.read(`skill://${(params?.path ?? '').split('/').map(encodeURIComponent).join('/')}`, this.getContext())
+    this._notifyResourceListChanged()
+    for (const callback of this._skillsRegisteredCallbacks) callback()
   }
 
   private async _resolveToken(authInfo: AuthInfo | undefined): Promise<AccessToken | undefined> {
@@ -833,6 +926,16 @@ export class FastMCP {
             )
           ).filter((r): r is RegisteredResource => r !== null)
 
+          if (this._skillRegistry.enabled) {
+            for (const entry of await this._visibleSkills(ctx)) {
+              if (entry.resources === 'dynamic') continue
+              for (const file of [...entry.resources, ...(entry.resources.some((file) => file.uri === entry.uri.slice(0, -'SKILL.md'.length) + '_manifest') ? [] : [{ uri: entry.uri.slice(0, -'SKILL.md'.length) + '_manifest', size: 0 }])]) {
+                if (allVisible.some((resource) => resource.config.uri === file.uri)) continue
+                allVisible.push({ config: { uri: file.uri, name: file.uri, size: file.size,
+                  ...(file.uri === entry.uri ? { description: entry.frontmatter.description, mimeType: 'text/markdown' } : {}) }, handler: this._skillResourceHandler! })
+              }
+            }
+          }
           const transformedResources = this._applyTransformsToResources(allVisible)
 
           const pageSize = this._resourcesPageSize
@@ -936,6 +1039,7 @@ export class FastMCP {
 
       const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders, this._logger)
 
+      for (const mw of this._middleware) await mw.checkResourceAccess?.(requestedUri, ctx)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'resources/read', req.params, ctx, async () => {
           let executePromise: Promise<unknown> = Promise.resolve(resource!.handler(templateParams))
@@ -1390,6 +1494,10 @@ export class FastMCP {
       }
     }
 
+    if (!resource && this._skillResourceHandler && requestedUri.startsWith('skill://')) {
+      try { templateParams = { path: decodeURIComponent(requestedUri.slice('skill://'.length)) } } catch { return undefined }
+      resource = { config: { uri: 'skill://{path*}', name: 'skills' }, handler: this._skillResourceHandler }
+    }
     if (!resource) return undefined
     return { resource, templateParams }
   }
@@ -1556,7 +1664,8 @@ export class FastMCP {
       throw new ResourceNotFoundError(uri, `Unknown resource: "${uri}"`)
     }
     if (resource.config.auth) await runAuthCheck(resource.config.auth, ctx.auth)
-
+    const requestedUri = params ? expandTemplate(uri).expand(params) : uri
+    for (const mw of this._middleware) await mw.checkResourceAccess?.(requestedUri, ctx)
     return contextStore.run(ctx, () =>
       runMiddlewareChain(this._middleware, 'resources/read', { uri }, ctx, async () => {
         let executePromise: Promise<unknown> = Promise.resolve(resource.handler(params))
@@ -1660,6 +1769,7 @@ export class FastMCP {
   }
 
   private _mirrorResource(child: FastMCP, resource: RegisteredResource, prefix?: string): void {
+    if (resource.handler === child._skillResourceHandler) { this._mountSkills(child, prefix); return }
     const name = resource.config.name ?? resource.config.uri
     const originalUri = resource.config.uri
     const targetUri = prefix ? prefixResourceUri(originalUri, prefix) : originalUri
@@ -1675,8 +1785,12 @@ export class FastMCP {
     // convertResourceResult with the actual requested URI (correct for template expansions).
     this.resource(forwardedConfig, (params?: Record<string, string>) => {
       const ctx = contextStore.getStore()!
-      return child._dispatchResource(originalUri, params, ctx)
+      return child._dispatchResource(originalUri, params, ctx).then((result) =>
+        prefix && resource.skillOwner && result instanceof ResourceResult
+          ? new ResourceResult(result.contents.map((content) => ({ ...content, uri: prefixResourceUri(content.uri, prefix) })))
+          : result)
     })
+    if (resource.skillOwner) this._markSkillResourceOwner(targetUri, resource.skillOwner)
   }
 
   private _mirrorPrompt(child: FastMCP, prompt: RegisteredPrompt, prefix?: string): void {
@@ -1696,11 +1810,55 @@ export class FastMCP {
     })
   }
 
+  private _mountSkills(child: FastMCP, prefix?: string): void {
+    if (this._mountedSkillChildren.has(child)) return
+    this._mountedSkillChildren.add(child)
+    this._addSkillSource(async (ctx, uri) => {
+      const originalUri = uri && prefix ? uri.replace(`://${prefix}/`, '://') : uri
+      const visible = new Set((await child._visibleSkills(ctx, originalUri)).map((entry) => entry.uri))
+      const sources = await child._skillRegistry.load(ctx, originalUri)
+      return sources.map((source) => {
+        const rewrite = (uri: string) => prefix ? prefixResourceUri(uri, prefix) : uri
+        const entry = { ...source.entry, uri: rewrite(source.entry.uri),
+          resources: source.entry.resources === 'dynamic' ? 'dynamic' as const : source.entry.resources.map((file) => ({ ...file, uri: rewrite(file.uri) })) }
+        return {
+          entry,
+          owner: source.owner,
+          discoverable: visible.has(source.entry.uri),
+          async checkAccess(uri: string) {
+            const targetPrefix = entry.uri.slice(0, -'SKILL.md'.length)
+            const originalPrefix = source.entry.uri.slice(0, -'SKILL.md'.length)
+            const original = uri.startsWith(targetPrefix) ? originalPrefix + uri.slice(targetPrefix.length) : undefined
+            const resolved = original ? child._resolveResource(original)?.resource : undefined
+            if (!original || !resolved || resolved.config.disabled || (resolved.handler !== child._skillResourceHandler && (!source.owner || resolved.skillOwner !== source.owner))) throw new AuthorizationError('Skill file is unavailable on the child server')
+            await child._skillRegistry.authorize(source, ctx, original)
+            for (const mw of child._middleware) await mw.checkResourceAccess?.(original, ctx)
+          },
+          async read(uri: string) {
+            const original = source.entry.resources === 'dynamic' ? undefined : source.entry.resources.find((file) => rewrite(file.uri) === uri)?.uri
+            if (!original) throw new ResourceNotFoundError(uri)
+            for (const mw of child._middleware) await mw.checkResourceAccess?.(original, ctx)
+            const result = await contextStore.run(ctx, () => runMiddlewareChain(child._middleware, 'resources/read', { uri: original }, ctx,
+              () => child._skillRegistry.read(original, ctx)))
+            const content = result.contents[0]
+            if (result.contents.length !== 1 || content.uri !== original) throw new Error(`Invalid mounted skill resource: ${original}`)
+            if (content.text !== undefined) return new TextEncoder().encode(content.text)
+            if (content.blob !== undefined) return new Uint8Array(Buffer.from(content.blob, 'base64'))
+            throw new Error(`Empty mounted skill resource: ${original}`)
+          },
+        }
+      })
+    })
+  }
+
   /** Mount a child server onto this server. All tools, resources, and prompts from the child become accessible via this server. Pass a prefix to namespace names and prevent collisions. */
   mount(child: FastMCP, prefix?: string): this {
     if (child === this) throw new Error('Cannot mount a server onto itself')
     if (this._mountedChildren.has(child)) return this
     this._mountedChildren.add(child)
+    if (child._skillRegistry.enabled) this._mountSkills(child, prefix)
+    child._skillsRegisteredCallbacks.push(() => this._mountSkills(child, prefix))
+    child._skillOwnerUpdatedCallbacks.push((uri, owner) => this._markSkillResourceOwner(prefix ? prefixResourceUri(uri, prefix) : uri, owner))
 
     for (const tool of child._tools.values()) this._mirrorTool(child, tool, prefix)
     for (const resource of child._staticResources.values()) this._mirrorResource(child, resource, prefix)
