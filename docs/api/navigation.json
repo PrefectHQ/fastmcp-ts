@@ -589,6 +589,12 @@
             "isDeprecated": false
           },
           {
+            "title": "VerificationUnavailableError",
+            "kind": 128,
+            "path": "server/classes/VerificationUnavailableError.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "VersionFilter",
             "kind": 128,
             "path": "server/classes/VersionFilter.mdx",

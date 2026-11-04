@@ -49,7 +49,7 @@ const server = new FastMCP({
 })
 ```
 
-The response maps the same way a JWT does: `client_id` to `clientId`, the space-delimited `scope` to `scopes`, `exp` to `expiresAt`, and the whole response body to `claims`. An inactive token, or any non-`200` from the endpoint, is rejected.
+The response maps the same way a JWT does: `client_id` to `clientId`, the space-delimited `scope` to `scopes`, `exp` to `expiresAt`, and the whole response body to `claims`. An explicit `active: false` verdict returns HTTP `401`. When introspection cannot establish a verdict, FastMCP returns `503` without a bearer challenge. Non-success responses, connection failures, timeouts and malformed responses do not reach a handler. The default deadline is five seconds, configurable through `timeoutMs`. Redirects are refused. Valid `Retry-After` guidance is converted to seconds and limited to five minutes.
 
 ## Static tokens
 
@@ -129,6 +129,12 @@ Set `baseUrl` to the public URL that clients use, without the MCP path. FastMCP 
 `remoteAuth` also accepts a [`RequestVerifier`](/servers/auth/trusted-proxy). The optional `resourceName` and `resourceDocumentation` fields add a display name and a documentation link to the document. `remoteAuth` throws at startup if `baseUrl` or an authorization server is not a valid `http` or `https` URL. It also throws if `authorizationServers` is empty.
 
 `remoteAuth` is for servers that verify tokens from another service. If you also set the [`oauth`](/servers/auth/oauth) option, `oauth` takes precedence and `remoteAuth` publishes nothing.
+
+## Verification failures
+
+Custom token and request verifiers can throw `VerificationUnavailableError` when an external dependency prevents verification. FastMCP returns a fixed `503` message and leaves diagnostic details in the error's `cause`. Pass the upstream `Retry-After` header through the error's `retryAfter` option when available; the library validates and bounds it before sending a response.
+
+`multiAuth` still accepts the first successful verifier. If none succeeds and at least one is unavailable, it preserves that failure as `503`; only definitive rejections produce `401`.
 
 ## Header-established identity
 

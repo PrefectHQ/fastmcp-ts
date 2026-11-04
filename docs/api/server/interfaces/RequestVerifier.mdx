@@ -16,8 +16,8 @@ admit the request. The result becomes `ctx.auth`, feeds per-item `auth`
 checks and list filtering, and its `token` (hashed) keys response-cache
 partitioning. `token` MUST therefore be a stable, non-empty, per-identity
 value, such as the verified user id. The server rejects an empty `token`
-with HTTP 500. Throw `AuthorizationError` to produce 403; any other throw
-produces 401.
+with HTTP 500. Throw `AuthorizationError` to produce 403 or
+`VerificationUnavailableError` to produce 503; other errors produce 401.
 
 SECURITY: request headers are forgeable by anyone who can reach this server
 directly. Trust them only after verifying provenance: a shared secret the
