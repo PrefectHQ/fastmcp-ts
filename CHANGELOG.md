@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.9.1
+
+### Patch Changes
+
+- a056f5e: Distinguish unavailable token verification from invalid credentials.
+
 ## 1.9.0
 
 ### Minor Changes
