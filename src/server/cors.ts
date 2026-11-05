@@ -31,8 +31,8 @@ export interface CorsOptions {
    * production. */
   allowedHeaders?: string[]
   /** Extra response headers for `Access-Control-Expose-Headers`, added to
-   * the default `Mcp-Session-Id` (legacy sessionful browser clients must
-   * read it from the initialize response). */
+   * the default `Mcp-Session-Id` and `Retry-After` headers (session routing
+   * and temporary verification failure guidance). */
   exposedHeaders?: string[]
   /** Send `Access-Control-Allow-Credentials: true`. Requires an explicit
    * non-`'*'` `origin`: browsers reject `*` on credentialed requests, so
@@ -74,7 +74,7 @@ export const DEFAULT_CORS_ALLOWED_HEADERS = [
   'Mcp-Name',
 ]
 
-export const DEFAULT_CORS_EXPOSED_HEADERS = ['Mcp-Session-Id']
+export const DEFAULT_CORS_EXPOSED_HEADERS = ['Mcp-Session-Id', 'Retry-After']
 
 // Whitespace or an ASCII control character (below 0x20, or DEL 0x7F) makes a
 // value illegal header/method material — it could split or inject headers.

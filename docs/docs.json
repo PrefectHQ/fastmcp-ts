@@ -129,6 +129,7 @@
                   "api/server/classes/ResourcesAsTools",
                   "api/server/classes/SizeLimitingMiddleware",
                   "api/server/classes/ToolResult",
+                  "api/server/classes/VerificationUnavailableError",
                   "api/server/classes/VersionFilter"
                 ]
               },

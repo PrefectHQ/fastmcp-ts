@@ -137,7 +137,7 @@ The handler receives a web-standard `Request` and returns a web-standard `Respon
 
 ## CORS
 
-The listener `run()` starts serves permissive CORS by default: every origin is allowed (`Access-Control-Allow-Origin: *`), a global preflight answers `OPTIONS` with `204` on every path, and MCP responses expose `Mcp-Session-Id` so a browser client can read its session id. Most servers need no configuration.
+The listener `run()` starts serves permissive CORS by default: every origin is allowed (`Access-Control-Allow-Origin: *`), a global preflight answers `OPTIONS` with `204` on every path, and MCP responses expose `Mcp-Session-Id` for session routing and `Retry-After` for temporary failure guidance, so browser clients can read both headers. Most servers need no configuration.
 
 The `http.cors` option narrows or disables that posture:
 

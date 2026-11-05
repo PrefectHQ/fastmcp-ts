@@ -14,7 +14,7 @@ describe('resolveCors', () => {
       expect(cors.originMode).toEqual({ kind: 'any' })
       expect(cors.methods).toBe('GET, POST, DELETE, OPTIONS')
       expect(cors.allowedHeaders).toBe(DEFAULT_CORS_ALLOWED_HEADERS.join(', '))
-      expect(cors.exposedHeaders).toBe('Mcp-Session-Id')
+      expect(cors.exposedHeaders).toBe('Mcp-Session-Id, Retry-After')
       expect(cors.credentials).toBe(false)
       expect(cors.maxAge).toBeNull()
     }
@@ -51,7 +51,7 @@ describe('resolveCors', () => {
       exposedHeaders: ['X-Trace-Id', 'mcp-session-id'],
     })!
     expect(cors.allowedHeaders).toBe([...DEFAULT_CORS_ALLOWED_HEADERS, 'X-Custom'].join(', '))
-    expect(cors.exposedHeaders).toBe('Mcp-Session-Id, X-Trace-Id')
+    expect(cors.exposedHeaders).toBe('Mcp-Session-Id, Retry-After, X-Trace-Id')
   })
 
   it('methods replace the default list verbatim, uppercased and deduplicated', () => {
@@ -91,7 +91,7 @@ describe('corsPreflightHeaders / corsResponseHeaders', () => {
     expect(preflight['Access-Control-Allow-Headers']).toContain('Mcp-Session-Id')
     const response = corsResponseHeaders(cors, undefined)
     expect(response['Access-Control-Allow-Origin']).toBe('*')
-    expect(response['Access-Control-Expose-Headers']).toBe('Mcp-Session-Id')
+    expect(response['Access-Control-Expose-Headers']).toBe('Mcp-Session-Id, Retry-After')
   })
 
   it('list mode echoes an allowed origin with Vary and omits ACAO otherwise', () => {

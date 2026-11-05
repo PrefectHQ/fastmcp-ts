@@ -48,8 +48,8 @@ optional exposedHeaders?: string[];
 Defined in: [server/cors.ts:36](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/cors.ts#L36)
 
 Extra response headers for `Access-Control-Expose-Headers`, added to
-the default `Mcp-Session-Id` (legacy sessionful browser clients must
-read it from the initialize response).
+the default `Mcp-Session-Id` and `Retry-After` headers (session routing
+and temporary verification failure guidance).
 
 ***
 

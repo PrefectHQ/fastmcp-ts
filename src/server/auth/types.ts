@@ -30,8 +30,8 @@ export interface TokenVerifier {
  * checks and list filtering, and its `token` (hashed) keys response-cache
  * partitioning. `token` MUST therefore be a stable, non-empty, per-identity
  * value, such as the verified user id. The server rejects an empty `token`
- * with HTTP 500. Throw `AuthorizationError` to produce 403; any other throw
- * produces 401.
+ * with HTTP 500. Throw `AuthorizationError` to produce 403 or
+ * `VerificationUnavailableError` to produce 503; other errors produce 401.
  *
  * SECURITY: request headers are forgeable by anyone who can reach this server
  * directly. Trust them only after verifying provenance: a shared secret the
@@ -55,11 +55,34 @@ export function isRequestVerifier(
 
 /**
  * Thrown by authorization checks to produce a 403 response.
- * Any other error thrown during verification produces a 401.
+ * Other verification errors produce 401, except `VerificationUnavailableError`.
  */
 export class AuthorizationError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'AuthorizationError'
+  }
+}
+
+/**
+ * Verification could not establish whether the credential is valid.
+ * HTTP requests fail with 503, without a bearer challenge or dispatch.
+ * The public message is fixed; diagnostic details belong in `cause`.
+ */
+export class VerificationUnavailableError extends Error {
+  /** Retry delay in seconds, limited to five minutes. */
+  readonly retryAfterSeconds?: number
+
+  constructor(options: { cause?: unknown; retryAfter?: string | null } = {}) {
+    super('Token verification is temporarily unavailable', { cause: options.cause })
+    this.name = 'VerificationUnavailableError'
+    const value = options.retryAfter?.trim()
+    if (!value) return
+    let seconds: number
+    if (/^\d+$/.test(value)) seconds = Number(value)
+    else if (/^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)) {
+      seconds = Math.max(0, (Date.parse(value) - Date.now()) / 1000)
+    } else return
+    if (Number.isFinite(seconds)) this.retryAfterSeconds = Math.min(300, Math.ceil(seconds))
   }
 }

@@ -1,6 +1,6 @@
 export type { AccessToken, TokenVerifier } from './types'
 export type { RequestVerifier } from './types'
-export { AuthorizationError } from './types'
+export { AuthorizationError, VerificationUnavailableError } from './types'
 export { jwtVerifier } from './verifiers/jwt'
 export { introspectionVerifier } from './verifiers/introspection'
 export { staticTokenVerifier, debugTokenVerifier } from './verifiers/static'

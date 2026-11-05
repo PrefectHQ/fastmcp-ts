@@ -1,0 +1,57 @@
+---
+title: "VerificationUnavailableError"
+---
+
+Defined in: [server/auth/types.ts:72](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/auth/types.ts#L72)
+
+Verification could not establish whether the credential is valid.
+HTTP requests fail with 503, without a bearer challenge or dispatch.
+The public message is fixed; diagnostic details belong in `cause`.
+
+## Extends
+
+- `Error`
+
+## Constructors
+
+### Constructor
+
+```ts
+new VerificationUnavailableError(options?): VerificationUnavailableError;
+```
+
+Defined in: [server/auth/types.ts:76](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/auth/types.ts#L76)
+
+#### Parameters
+
+##### options?
+
+###### cause?
+
+`unknown`
+
+###### retryAfter?
+
+`string` \| `null`
+
+#### Returns
+
+`VerificationUnavailableError`
+
+#### Overrides
+
+```ts
+Error.constructor
+```
+
+## Properties
+
+### retryAfterSeconds?
+
+```ts
+readonly optional retryAfterSeconds?: number;
+```
+
+Defined in: [server/auth/types.ts:74](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/auth/types.ts#L74)
+
+Retry delay in seconds, limited to five minutes.
