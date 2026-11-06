@@ -79,6 +79,13 @@ export interface FastMCPOptions {
   name: string
   version?: string
   /**
+   * Guidance for clients on how to use this server, such as which tools to
+   * call first. Clients may add it to the model's context. Served on the
+   * `initialize` result (2025 era) and the `server/discover` result
+   * (2026-07-28). Omitted when unset.
+   */
+  instructions?: string
+  /**
    * Bearer-token verifier, or a RequestVerifier for header-based
    * (trusted-proxy) deployments. See each type's docs. A RequestVerifier
    * applies to HTTP transports only; stdio's FASTMCP_CLI_AUTH_TOKEN needs a
@@ -445,6 +452,7 @@ async function runAuthCheck(check: AuthCheck, token: AccessToken | undefined): P
 export class FastMCP {
   readonly name: string
   readonly version: string
+  readonly instructions: string | undefined
 
   private _auth: TokenVerifier | RequestVerifier | undefined
   /** @internal Framework logger; used by same-package modules (proxy, openapi). Not public API. */
@@ -508,6 +516,7 @@ export class FastMCP {
   constructor(options: FastMCPOptions) {
     this.name = options.name
     this.version = options.version ?? '0.0.1'
+    this.instructions = options.instructions
     this._logger = resolveLogger(options.logger, options.logLevel)
     this._auth = options.auth
     this._cors = resolveCors(options.http?.cors)
@@ -582,6 +591,7 @@ export class FastMCP {
       { name: this.name, version: this.version },
       {
         capabilities: { tools: { listChanged: true }, resources: { listChanged: true, ...(opts?.stateless ? {} : { subscribe: true }) }, prompts: { listChanged: true }, logging: {}, completions: {}, ...(extensions ? { extensions } : {}) },
+        ...(this.instructions !== undefined ? { instructions: this.instructions } : {}),
         ...(this._cacheHints ? { cacheHints: this._cacheHints } : {}),
         ...(this._requestStateCodec
           ? { requestState: { verify: this._requestStateCodec.verify.bind(this._requestStateCodec) } }
