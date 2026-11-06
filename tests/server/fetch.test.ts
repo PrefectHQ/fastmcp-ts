@@ -389,6 +389,36 @@ describe('FastMCP.fetch', () => {
   })
 })
 
+describe('FastMCP.fetch server instructions', () => {
+  const INSTRUCTIONS = 'Call list_items before get_item.'
+
+  function serverWith(instructions?: string): FastMCP {
+    const server = new FastMCP({ name: 'fetch-test', version: '1.0.0', instructions })
+    servers.add(server)
+    return server
+  }
+
+  it('serves instructions on the 2025-era initialize result', async () => {
+    const response = await serverWith(INSTRUCTIONS).fetch(legacyRequest(INITIALIZE))
+    expect(response.status).toBe(200)
+    expect((await rpcBody(response)).result?.instructions).toBe(INSTRUCTIONS)
+  })
+
+  it('serves instructions on the 2026-07-28 server/discover result', async () => {
+    const response = await serverWith(INSTRUCTIONS).fetch(modernRequest('server/discover', {}, { id: 1 }))
+    expect(response.status).toBe(200)
+    expect((await rpcBody(response)).result?.instructions).toBe(INSTRUCTIONS)
+  })
+
+  it('omits instructions from both eras when unset', async () => {
+    const server = serverWith()
+    const initialized = await rpcBody(await server.fetch(legacyRequest(INITIALIZE)))
+    const discovered = await rpcBody(await server.fetch(modernRequest('server/discover', {}, { id: 1 })))
+    expect(initialized.result).not.toHaveProperty('instructions')
+    expect(discovered.result).not.toHaveProperty('instructions')
+  })
+})
+
 describe('FastMCP.fetch MCP Apps (#113)', () => {
   const UI_URI = 'ui://demo/view.html'
   const UI_MIME = 'text/html;profile=mcp-app'
