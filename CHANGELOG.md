@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.10.0
+
+### Minor Changes
+
+- 877d795: Add a `FastMCPOptions.instructions` option. The server returns it on the 2025-era `initialize` result and the 2026-07-28 `server/discover` result, matching Python FastMCP's `instructions` parameter.
+
 ## 1.9.1
 
 ### Patch Changes
