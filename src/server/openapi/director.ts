@@ -67,13 +67,15 @@ function unflattenArguments(
 
   if (Object.keys(route.parameterMap).length > 0) {
     for (const [argName, value] of Object.entries(flatArgs)) {
-      if (value === null || value === undefined) continue // optional parameter omitted
+      if (value === undefined) continue // optional parameter omitted
 
       const mapping = route.parameterMap[argName]
       if (mapping === undefined) {
         warn(`Argument '${argName}' not found in parameter map for ${route.operationId ?? route.path}`, logger)
         continue
       }
+      const sendsNull = mapping.location === 'body' && mapping.sendsNull
+      if (value === null && !sendsNull) continue
       buckets[mapping.location][mapping.openapiName] = value
     }
   } else {

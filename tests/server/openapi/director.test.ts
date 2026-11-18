@@ -73,7 +73,7 @@ describe('buildRequest', () => {
     expect(JSON.parse(request.body as string)).toEqual({ petId: 9, name: 'Rex' })
   })
 
-  it('drops null and undefined arguments', () => {
+  it('drops null and undefined query arguments', () => {
     const request = buildRequest(
       fixtureRoute('GET', '/pets'),
       { limit: null, status: undefined, tags: ['a'] },
@@ -193,7 +193,7 @@ describe('buildRequest', () => {
           'application/json-patch+json': { type: 'array', items: { type: 'object' } },
         },
       },
-      parameterMap: { ops: { location: 'body', openapiName: 'ops' } },
+      parameterMap: { ops: { location: 'body', openapiName: 'ops', sendsNull: false } },
     })
     const request = buildRequest(route, { ops: [{ op: 'add' }] }, BASE)
     expect(request.headers['content-type']).toBe('application/json-patch+json')
@@ -226,8 +226,8 @@ describe('buildRequest', () => {
         },
       },
       parameterMap: {
-        a: { location: 'body', openapiName: 'a' },
-        b: { location: 'body', openapiName: 'b' },
+        a: { location: 'body', openapiName: 'a', sendsNull: false },
+        b: { location: 'body', openapiName: 'b', sendsNull: false },
       },
     })
     const request = buildRequest(route, { a: 'x', b: true }, BASE)
@@ -242,7 +242,7 @@ describe('buildRequest', () => {
         required: true,
         contentSchema: { 'text/plain': { type: 'string' } },
       },
-      parameterMap: { text: { location: 'body', openapiName: 'text' } },
+      parameterMap: { text: { location: 'body', openapiName: 'text', sendsNull: false } },
     })
     const request = buildRequest(route, { text: 'raw body' }, BASE)
     expect(request.body).toBe('raw body')
@@ -396,11 +396,110 @@ describe('buildRequest', () => {
         },
       },
       parameterMap: {
-        title: { location: 'body', openapiName: 'title' },
-        body: { location: 'body', openapiName: 'body' },
+        title: { location: 'body', openapiName: 'title', sendsNull: false },
+        body: { location: 'body', openapiName: 'body', sendsNull: false },
       },
     })
     const request = buildRequest(route, { title: 'Example' }, BASE)
     expect(request.body).toBe(JSON.stringify({ title: 'Example' }))
+  })
+})
+
+// Port of Python FastMCP's tests/utilities/openapi/test_null_body.py.
+describe('buildRequest explicit null body properties', () => {
+  function nullBodySpec(
+    version: string,
+    propertySchema: unknown,
+    mediaType: string,
+    extraContent: Record<string, unknown> = {},
+  ) {
+    return {
+      openapi: version,
+      info: { title: 'Files', version: '1.0' },
+      components: {
+        schemas: {
+          NullableString: version.startsWith('3.0')
+            ? { type: 'string', nullable: true }
+            : { type: ['string', 'null'] },
+        },
+      },
+      paths: {
+        '/files': {
+          patch: {
+            operationId: 'update_file',
+            parameters: [{ name: 'filter', in: 'query', schema: { type: 'string' } }],
+            requestBody: {
+              content: {
+                [mediaType]: {
+                  schema: {
+                    type: 'object',
+                    properties: { name: { type: 'string' }, folder_id: propertySchema },
+                  },
+                },
+                ...extraContent,
+              },
+            },
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    }
+  }
+
+  function updateFileRoute(spec: ReturnType<typeof nullBodySpec>): HTTPRoute {
+    return parseOpenAPIToHttpRoutes(spec)[0]
+  }
+
+  const nullableSchemas: [string, unknown][] = [
+    ['3.0.3', { type: 'string', nullable: true }],
+    ['3.1.0', { type: ['string', 'null'] }],
+    ['3.1.0', { anyOf: [{ type: 'string' }, { type: 'null' }] }],
+    ['3.1.0', { oneOf: [{ type: 'string' }, { type: 'null' }] }],
+    ['3.1.0', { $ref: '#/components/schemas/NullableString' }],
+  ]
+  const cases = nullableSchemas.flatMap(([version, propertySchema]) =>
+    ['application/json', 'application/merge-patch+json'].flatMap((mediaType) =>
+      [false, true].map((withName) => ({ version, propertySchema, mediaType, withName })),
+    ),
+  )
+
+  it.each(cases)(
+    'sends null for a nullable property ($version $propertySchema, $mediaType, withName=$withName)',
+    ({ version, propertySchema, mediaType, withName }) => {
+      const route = updateFileRoute(nullBodySpec(version, propertySchema, mediaType))
+      const args: Record<string, unknown> = { folder_id: null, filter: null }
+      const expected: Record<string, unknown> = { folder_id: null }
+      if (withName) {
+        args.name = 'report.pdf'
+        expected.name = 'report.pdf'
+      }
+
+      const request = buildRequest(route, args, BASE)
+      expect(JSON.parse(request.body as string)).toEqual(expected)
+      expect(request.headers['content-type']).toBe(mediaType)
+      expect(request.url).toBe('https://api.example.com/v1/files')
+
+      const omitted = buildRequest(route, { name: 'report.pdf' }, BASE)
+      expect(JSON.parse(omitted.body as string)).toEqual({ name: 'report.pdf' })
+    },
+  )
+
+  it.each(['multipart/form-data', 'application/x-www-form-urlencoded', 'application/json'])(
+    'drops null when the encoding or schema does not allow it (%s)',
+    (mediaType) => {
+      const propertySchema =
+        mediaType === 'application/json' ? { type: 'string' } : { type: ['string', 'null'] }
+      const route = updateFileRoute(nullBodySpec('3.1.0', propertySchema, mediaType))
+      expect(buildRequest(route, { folder_id: null }, BASE).body).toBeUndefined()
+    },
+  )
+
+  it('decides on the first declared media type', () => {
+    const spec = nullBodySpec('3.1.0', { type: 'string' }, 'application/json', {
+      'application/merge-patch+json': {
+        schema: { type: 'object', properties: { folder_id: { type: ['string', 'null'] } } },
+      },
+    })
+    expect(buildRequest(updateFileRoute(spec), { folder_id: null }, BASE).body).toBeUndefined()
   })
 })

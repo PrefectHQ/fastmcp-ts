@@ -48,10 +48,14 @@ export interface ResponseInfo {
 }
 
 /** Where a flattened tool argument goes when the HTTP request is built. */
-export interface ParameterMapping {
-  location: ParameterLocation | 'body'
-  openapiName: string
-}
+export type ParameterMapping =
+  | { location: ParameterLocation; openapiName: string }
+  | {
+      location: 'body'
+      openapiName: string
+      /** Send an explicit null instead of omitting it: the body is JSON and the property's schema accepts null. */
+      sendsNull: boolean
+    }
 
 /** Intermediate representation of a single OpenAPI operation. */
 export interface HTTPRoute {

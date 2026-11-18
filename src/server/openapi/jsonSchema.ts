@@ -217,3 +217,36 @@ function filterPropertiesByAccess(schema: JsonSchema, options: ConvertOptions): 
   }
   return result
 }
+
+/** Whether a JSON Schema accepts `null`, following `$defs` refs. */
+export function acceptsNull(
+  schema: unknown,
+  defs: Record<string, unknown>,
+  seenRefs: ReadonlySet<string> = new Set(),
+): boolean {
+  if (schema === true) return true
+  if (!isPlainObject(schema)) return false
+
+  if (typeof schema.$ref === 'string') {
+    const name = schema.$ref.slice(schema.$ref.lastIndexOf('/') + 1)
+    // A self-referencing spec would otherwise recurse forever.
+    if (seenRefs.has(name)) return false
+    if (!acceptsNull(defs[name], defs, new Set([...seenRefs, name]))) return false
+  }
+  if ('const' in schema && schema.const !== null) return false
+  if (Array.isArray(schema.enum) && !schema.enum.includes(null)) return false
+  if (schema.type !== undefined) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type]
+    if (!types.includes('null')) return false
+  }
+  for (const key of ['anyOf', 'oneOf'] as const) {
+    const branches = schema[key]
+    if (Array.isArray(branches) && !branches.some((branch) => acceptsNull(branch, defs, seenRefs))) {
+      return false
+    }
+  }
+  if (Array.isArray(schema.allOf) && !schema.allOf.every((branch) => acceptsNull(branch, defs, seenRefs))) {
+    return false
+  }
+  return true
+}
