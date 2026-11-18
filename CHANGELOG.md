@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.10.1
+
+### Patch Changes
+
+- 679861d: OpenAPI tools now send an explicit `null` for a JSON body property whose schema allows `null`, so a tool call can clear a field. Other `null` arguments are still omitted, matching Python FastMCP.
+
 ## 1.10.0
 
 ### Minor Changes
