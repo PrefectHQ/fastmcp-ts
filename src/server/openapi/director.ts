@@ -45,6 +45,55 @@ interface UnflattenedArguments {
   body: unknown
 }
 
+/** Whether a JSON Schema accepts `null`, following `$defs` refs. */
+function acceptsNull(
+  schema: unknown,
+  defs: Record<string, unknown>,
+  seenRefs: ReadonlySet<string> = new Set(),
+): boolean {
+  if (schema === true) return true
+  if (!isPlainObject(schema)) return false
+
+  if (typeof schema.$ref === 'string') {
+    const name = schema.$ref.split('/').pop() as string
+    if (seenRefs.has(name)) return false
+    if (!acceptsNull(defs[name], defs, new Set([...seenRefs, name]))) return false
+  }
+  if ('const' in schema && schema.const !== null) return false
+  if (Array.isArray(schema.enum) && !schema.enum.includes(null)) return false
+  if (schema.type !== undefined) {
+    const types = Array.isArray(schema.type) ? schema.type : [schema.type]
+    if (!types.includes('null')) return false
+  }
+  for (const key of ['anyOf', 'oneOf'] as const) {
+    const branches = schema[key]
+    if (Array.isArray(branches) && !branches.some((branch) => acceptsNull(branch, defs, seenRefs))) {
+      return false
+    }
+  }
+  if (Array.isArray(schema.allOf) && !schema.allOf.every((branch) => acceptsNull(branch, defs, seenRefs))) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Only a JSON body can carry an explicit null, and only where the argument's
+ * schema allows it. Elsewhere null means "omitted": clients often send null
+ * for optional arguments they did not set (Python parity, fastmcp#5633).
+ */
+function sendsJsonNull(route: HTTPRoute, argName: string): boolean {
+  const contentType = Object.keys(route.requestBody?.contentSchema ?? {})[0] ?? ''
+  const mediaType = contentType.split(';')[0].trim().toLowerCase()
+  if (mediaType !== 'application/json' && !mediaType.endsWith('+json')) return false
+
+  const { properties, $defs } = route.flatParamSchema
+  return (
+    isPlainObject(properties) &&
+    acceptsNull(properties[argName], isPlainObject($defs) ? $defs : {})
+  )
+}
+
 /** Map flat arguments back to their OpenAPI locations via the parameter map. */
 function unflattenArguments(
   route: HTTPRoute,
@@ -67,13 +116,14 @@ function unflattenArguments(
 
   if (Object.keys(route.parameterMap).length > 0) {
     for (const [argName, value] of Object.entries(flatArgs)) {
-      if (value === null || value === undefined) continue // optional parameter omitted
+      if (value === undefined) continue // optional parameter omitted
 
       const mapping = route.parameterMap[argName]
       if (mapping === undefined) {
         warn(`Argument '${argName}' not found in parameter map for ${route.operationId ?? route.path}`, logger)
         continue
       }
+      if (value === null && !(mapping.location === 'body' && sendsJsonNull(route, argName))) continue
       buckets[mapping.location][mapping.openapiName] = value
     }
   } else {
