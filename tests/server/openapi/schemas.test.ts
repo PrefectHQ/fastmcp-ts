@@ -151,7 +151,7 @@ describe('combineSchemasAndMapParams', () => {
       'name',
     ])
     expect(schema.required).toEqual(['petId__path', 'name'])
-    expect(map.petId).toEqual({ location: 'body', openapiName: 'petId' })
+    expect(map.petId).toEqual({ location: 'body', openapiName: 'petId', sendsNull: false })
     expect(map.petId__path).toEqual({ location: 'path', openapiName: 'petId' })
   })
 
@@ -197,7 +197,7 @@ describe('combineSchemasAndMapParams', () => {
     const [schema, map] = combineSchemasAndMapParams(route)
     expect(schema.properties).toEqual({ body: { $ref: '#/$defs/Elsewhere' } })
     expect(schema.required).toEqual(['body'])
-    expect(map.body).toEqual({ location: 'body', openapiName: 'body' })
+    expect(map.body).toEqual({ location: 'body', openapiName: 'body', sendsNull: false })
   })
 
   it('names a non-object body from its title', () => {
@@ -210,7 +210,7 @@ describe('combineSchemasAndMapParams', () => {
     const [schema, map] = combineSchemasAndMapParams(route)
     expect(Object.keys(schema.properties as Record<string, unknown>)).toEqual(['note_text'])
     expect(schema.required).toEqual(['note_text'])
-    expect(map.note_text).toEqual({ location: 'body', openapiName: 'note_text' })
+    expect(map.note_text).toEqual({ location: 'body', openapiName: 'note_text', sendsNull: false })
   })
 
   it('falls back to body_data when the title slug is unusable', () => {
@@ -459,7 +459,7 @@ describe('readOnly/writeOnly direction filtering', () => {
     expect(schema.required).toEqual(['name', 'secret'])
     // Design decision 5: the parameter map keeps the filtered name so a
     // caller that sends it anyway still routes it to the body.
-    expect(map.id).toEqual({ location: 'body', openapiName: 'id' })
+    expect(map.id).toEqual({ location: 'body', openapiName: 'id', sendsNull: false })
   })
 
   it('omits writeOnly properties from the output schema and prunes required', () => {

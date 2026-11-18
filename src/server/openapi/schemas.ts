@@ -11,7 +11,7 @@
 
 import type { HTTPRoute, JsonSchema, ParameterMapping, ResponseInfo } from './types'
 import { deepEqual, isPlainObject, truthy } from './internal'
-import { convertOpenAPISchemaToJsonSchema } from './jsonSchema'
+import { acceptsNull, convertOpenAPISchemaToJsonSchema } from './jsonSchema'
 
 export const EXTERNAL_REF_MESSAGE = 'External or non-local reference not supported'
 
@@ -236,6 +236,7 @@ export function combineSchemasAndMapParams(
   const properties: Record<string, unknown> = {}
   const required: string[] = []
   const parameterMap: Record<string, ParameterMapping> = {}
+  const bodyArgNames: string[] = []
 
   const paramNamesByLocation = {
     path: new Set<string>(),
@@ -339,11 +340,11 @@ export function combineSchemasAndMapParams(
       // The entire body is a reference: keep it as a single `body` property.
       properties.body = bodySchema
       if (requestBody.required) required.push('body')
-      parameterMap.body = { location: 'body', openapiName: 'body' }
+      bodyArgNames.push('body')
     } else if (truthy(bodyProps)) {
       for (const [propName, propSchema] of Object.entries(bodyProps)) {
         properties[propName] = propSchema
-        parameterMap[propName] = { location: 'body', openapiName: propName }
+        bodyArgNames.push(propName)
       }
       // The body schema's own required list describes the body's internal
       // structure, so it is honored even when the requestBody itself is
@@ -359,7 +360,7 @@ export function combineSchemasAndMapParams(
 
       properties[paramName] = bodySchema
       if (requestBody.required) required.push(paramName)
-      parameterMap[paramName] = { location: 'body', openapiName: paramName }
+      bodyArgNames.push(paramName)
     }
   }
 
@@ -372,6 +373,23 @@ export function combineSchemasAndMapParams(
     result = convertOpenAPISchemaToJsonSchema(result, route.openapiVersion, {
       removeReadOnly: true,
     })
+  }
+
+  // Decided on the converted schema, where OpenAPI 3.0 `nullable` is already
+  // a JSON Schema null type. Only a JSON body can carry an explicit null;
+  // elsewhere null means "omitted", since clients often send null for
+  // optional arguments they did not set (Python parity, fastmcp#5633).
+  const contentType = Object.keys(requestBody?.contentSchema ?? {})[0] ?? ''
+  const mediaType = contentType.split(';')[0].trim().toLowerCase()
+  const isJsonBody = mediaType === 'application/json' || mediaType.endsWith('+json')
+  const flatProperties = isPlainObject(result.properties) ? result.properties : {}
+  const defs = isPlainObject(result.$defs) ? result.$defs : {}
+  for (const name of bodyArgNames) {
+    parameterMap[name] = {
+      location: 'body',
+      openapiName: name,
+      sendsNull: isJsonBody && acceptsNull(flatProperties[name], defs),
+    }
   }
 
   return [result, parameterMap]
