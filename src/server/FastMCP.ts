@@ -618,7 +618,7 @@ export class FastMCP {
       const ctx = createContext(server, sdkCtx, token, sessionState, this._requestStateCodec, opts?.stateless, this._sensitiveHeaders, this._logger)
       return contextStore.run(ctx, () =>
         runMiddlewareChain(this._middleware, 'tools/list', req.params, ctx, async () => {
-          const clientIsUiCapable = shouldServeUi(server.getClientCapabilities())
+          const clientIsUiCapable = shouldServeUi(ctx.clientCapabilities)
 
           const allVisible = (
             await Promise.all(
@@ -809,7 +809,7 @@ export class FastMCP {
             // An output schema keeps structuredContent: the spec and the SDK client require it.
             const uiGateClosed =
               resolvedTool.config.ui !== undefined &&
-              !shouldServeUi(server.getClientCapabilities()) &&
+              !shouldServeUi(ctx.clientCapabilities) &&
               !resolvedTool.config.output &&
               !resolvedTool.config.outputSchema
             if (uiGateClosed && callResult.structuredContent !== undefined) {
@@ -862,7 +862,7 @@ export class FastMCP {
               ? Buffer.from(page[page.length - 1].uri).toString('base64url')
               : undefined
 
-          const clientIsUiCapableRes = shouldServeUi(server.getClientCapabilities())
+          const clientIsUiCapableRes = shouldServeUi(ctx.clientCapabilities)
           return {
             resources: page.map((r) => ({
               uri: r.uri,
@@ -967,7 +967,7 @@ export class FastMCP {
 
           const result = await executePromise
           const converted = convertResourceResult(result, requestedUri, resource!.config.mimeType, opts?.stateless)
-          return attachResourceUiMeta(converted, resource!.config.ui, shouldServeUi(server.getClientCapabilities()))
+          return attachResourceUiMeta(converted, resource!.config.ui, shouldServeUi(ctx.clientCapabilities))
         }),
       )
     })
