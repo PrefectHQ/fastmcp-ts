@@ -61,6 +61,22 @@ describeEachEra('Server — Context', (combo) => {
       }
     })
 
+    it('context.clientCapabilities reflects the capabilities the client declared', async () => {
+      const mcp = new FastMCP({ name: 'test' })
+      let capabilities: ClientCapabilities | undefined
+      mcp.tool({ name: 'caps', description: 'test' }, () => {
+        capabilities = mcp.getContext().clientCapabilities
+        return 'ok'
+      })
+      const { client, close } = await capable(combo, mcp, { elicitation: { url: {} } })
+      try {
+        await client.callTool({ name: 'caps', arguments: {} })
+        expect(capabilities?.elicitation?.url).toEqual({})
+      } finally {
+        await close()
+      }
+    })
+
     it('getContext() throws when called outside a request handler', () => {
       const mcp = new FastMCP({ name: 'test' })
       expect(() => mcp.getContext()).toThrow()

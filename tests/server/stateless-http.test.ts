@@ -188,6 +188,28 @@ describe('stateless dispatch', () => {
   })
 })
 
+describe('stateless client capabilities', () => {
+  it('leaves context.clientCapabilities undefined, since the request never saw initialize', async () => {
+    const mcp = new FastMCP({ name: 'test', version: '0.0.0' })
+    let capabilities: unknown = 'not-set'
+    mcp.tool({ name: 'caps', description: 'caps' }, () => {
+      capabilities = mcp.getContext().clientCapabilities
+      return 'ok'
+    })
+    await mcp.run({ transport: 'http', port: 0, host: '127.0.0.1', stateless: true })
+    const url = urlFor(mcp)
+
+    await rpcResult(url, 1, 'initialize', {
+      ...INITIALIZE.params,
+      capabilities: { elicitation: { url: {} } },
+    })
+    await rpcResult(url, 2, 'tools/call', { name: 'caps', arguments: {} })
+
+    expect(capabilities).toBeUndefined()
+    await mcp.close()
+  })
+})
+
 describe('sessionful mode is unchanged', () => {
   it('still 404s an unknown session id', async () => {
     const mcp = new FastMCP({ name: 'test', version: '0.0.0' })

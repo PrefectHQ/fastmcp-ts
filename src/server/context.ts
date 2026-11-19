@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { Server, ServerContext, RequestStateCodec } from '@modelcontextprotocol/server'
+import { CLIENT_CAPABILITIES_META_KEY } from '@modelcontextprotocol/server'
+import type { ClientCapabilities, Server, ServerContext, RequestStateCodec } from '@modelcontextprotocol/server'
 import type { AccessToken } from './auth/types'
 import type { InputResponses } from './mrtr'
 import { buildHttpRequestContext, resolveSensitiveHeaders } from './httpContext'
@@ -85,6 +86,16 @@ export interface McpContext {
   auth: AccessToken | undefined
   /** The MCP request ID for the current call. */
   requestId: string | undefined
+
+  /**
+   * The capabilities the client declared: per request on the modern era (2026-07-28),
+   * or at `initialize` on a legacy (2025-era) session. Check it before asking for
+   * something the client may not support, such as URL-mode elicitation
+   * (`clientCapabilities?.elicitation?.url`). `undefined` when the server cannot know
+   * them: a legacy request on a stateless HTTP server runs without the `initialize`
+   * that declared them.
+   */
+  clientCapabilities: ClientCapabilities | undefined
 
   /**
    * The HTTP request carrying the current MCP message, when serving over an
@@ -332,6 +343,15 @@ export function createContext(
   const isModernEra = sdkCtx.mcpReq.envelope !== undefined
   const isModernHttpRequest = isModernEra && sdkCtx.http !== undefined
 
+  // The SDK validates the envelope on intake, but its published RequestMetaEnvelope
+  // type is `{}`, so the key needs a narrowed read.
+  const envelope = sdkCtx.mcpReq.envelope as
+    | { [CLIENT_CAPABILITIES_META_KEY]?: ClientCapabilities }
+    | undefined
+  const clientCapabilities = isModernEra
+    ? envelope?.[CLIENT_CAPABILITIES_META_KEY]
+    : server.getClientCapabilities()
+
   // Why session state is unavailable, or null when it is available. Two HTTP
   // paths are sessionless for different reasons and need different messages:
   // the modern era has no protocol session, and a stateless server discards its
@@ -386,6 +406,7 @@ export function createContext(
   return {
     auth,
     requestId,
+    clientCapabilities,
 
     http: httpReq ? buildHttpRequestContext(httpReq, sensitive, logger) : undefined,
 
