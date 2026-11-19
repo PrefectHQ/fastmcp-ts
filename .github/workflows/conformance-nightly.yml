@@ -13,9 +13,14 @@ on:
     - cron: '17 6 * * *'
   workflow_dispatch:
 
+# Do not grant jobs any permissions by default
+permissions: {}
+
 jobs:
   conformance-server-main:
     name: MCP conformance vs main (server)
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -80,6 +85,8 @@ jobs:
 
   conformance-client-main:
     name: MCP conformance vs main (client)
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

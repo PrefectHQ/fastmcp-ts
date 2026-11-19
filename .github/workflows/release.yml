@@ -9,14 +9,16 @@ concurrency:
   group: release-${{ github.workflow }}
   cancel-in-progress: false
 
-permissions:
-  contents: write        # push the git tag + create the GitHub Release
-  pull-requests: write   # open/update the "Version Packages" PR
-  id-token: write        # npm OIDC trusted publishing
+# Do not grant jobs any permissions by default
+permissions: {}
 
 jobs:
   release:
     name: Release
+    permissions:
+      contents: write        # push the git tag + create the GitHub Release
+      pull-requests: write   # open/update the "Version Packages" PR
+      id-token: write        # npm OIDC trusted publishing
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
