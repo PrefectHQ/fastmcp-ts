@@ -285,6 +285,7 @@ export class OAuth implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    assertHttpAuthorizationUrl(authorizationUrl)
     this._armCallbackPromise()
     await this._startCallbackServer()
     if (this._onRedirect) {
@@ -967,6 +968,21 @@ export class EnterpriseManagedAuth implements AsyncHeaderAuth {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Throws unless `url` uses the `http:` or `https:` scheme. The authorization
+ * URL is built from metadata the authorization server publishes, so the
+ * providers check it before they hand it to a browser.
+ *
+ * @internal
+ */
+export function assertHttpAuthorizationUrl(url: URL): void {
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error(
+      `Refusing to open authorization URL with scheme "${url.protocol}": only http: and https: are allowed`,
+    )
+  }
+}
 
 async function openBrowser(url: string): Promise<void> {
   const { spawn } = await import('child_process')

@@ -11,7 +11,7 @@ import type { OAuthClientMetadata } from "@modelcontextprotocol/server";
 // (redirect). Because it `instanceof OAuth`, the Client connect flow
 // (connect → waitForCallback → finishAuth → reconnect) drives it unchanged.
 // ---------------------------------------------------------------------------
-import { OAuth, type OAuthOptions } from './auth.js'
+import { OAuth, assertHttpAuthorizationUrl, type OAuthOptions } from './auth.js'
 
 /** postMessage payload sent by {@link handleOAuthCallback} back to the opener. */
 const MESSAGE_TYPE = 'fastmcp:oauth'
@@ -57,6 +57,7 @@ export class BrowserOAuth extends OAuth {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    assertHttpAuthorizationUrl(authorizationUrl)
     if (this._mode === 'redirect') {
       // Navigation destroys this JS context; the app resumes via
       // resumeFromRedirect() on the return load.

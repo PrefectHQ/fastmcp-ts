@@ -90,7 +90,7 @@ OAuthClientProvider.clientMetadataUrl
 get callbackServerPort(): number | null;
 ```
 
-Defined in: [client/auth.ts:390](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L390)
+Defined in: [client/auth.ts:391](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L391)
 
 Returns the actual port the callback server bound to.
 Only populated after redirectToAuthorization() has been called.
@@ -161,7 +161,7 @@ OAuthClientProvider.redirectUrl
 protected _armCallbackPromise(): void;
 ```
 
-Defined in: [client/auth.ts:301](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L301)
+Defined in: [client/auth.ts:302](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L302)
 
 Creates the pending-callback promise that [waitForCallback](#waitforcallback) awaits.
 Subclasses (e.g. BrowserOAuth) call this before opening their own redirect.
@@ -178,7 +178,7 @@ Subclasses (e.g. BrowserOAuth) call this before opening their own redirect.
 protected _awaitCallback(timeoutMs): Promise<URLSearchParams>;
 ```
 
-Defined in: [client/auth.ts:324](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L324)
+Defined in: [client/auth.ts:325](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L325)
 
 Races the pending callback promise against a timeout and clears the
 promise state. Subclasses reuse this and add their own teardown.
@@ -224,7 +224,7 @@ Called by Client before connecting.
 protected _rejectCallback(err): void;
 ```
 
-Defined in: [client/auth.ts:316](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L316)
+Defined in: [client/auth.ts:317](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L317)
 
 Rejects the pending callback with an error.
 
@@ -246,7 +246,7 @@ Rejects the pending callback with an error.
 protected _resolveCallback(params): void;
 ```
 
-Defined in: [client/auth.ts:311](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L311)
+Defined in: [client/auth.ts:312](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L312)
 
 Resolves the pending callback with the full authorization callback params.
 
@@ -302,7 +302,7 @@ OAuthClientProvider.clientInformation
 codeVerifier(): string;
 ```
 
-Defined in: [client/auth.ts:347](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L347)
+Defined in: [client/auth.ts:348](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L348)
 
 Loads the PKCE code verifier for the current session, necessary to validate
 the authorization result.
@@ -325,7 +325,7 @@ OAuthClientProvider.codeVerifier
 discoveryState(): Promise<OAuthDiscoveryState | undefined>;
 ```
 
-Defined in: [client/auth.ts:378](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L378)
+Defined in: [client/auth.ts:379](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L379)
 
 Returns previously saved discovery state, or `undefined` if none is cached.
 
@@ -358,7 +358,7 @@ OAuthClientProvider.discoveryState
 invalidateCredentials(scope): Promise<void>;
 ```
 
-Defined in: [client/auth.ts:354](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L354)
+Defined in: [client/auth.ts:355](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L355)
 
 If implemented, provides a way for the client to invalidate (e.g. delete) the specified
 credentials, in the case where the server has indicated that they are no longer valid.
@@ -457,7 +457,7 @@ OAuthClientProvider.saveClientInformation
 saveCodeVerifier(codeVerifier): void;
 ```
 
-Defined in: [client/auth.ts:343](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L343)
+Defined in: [client/auth.ts:344](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L344)
 
 Saves a PKCE code verifier for the current session, before redirecting to
 the authorization flow.
@@ -486,7 +486,7 @@ OAuthClientProvider.saveCodeVerifier
 saveDiscoveryState(state): Promise<void>;
 ```
 
-Defined in: [client/auth.ts:374](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L374)
+Defined in: [client/auth.ts:375](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L375)
 
 Saves the OAuth discovery state after RFC 9728 and authorization server metadata
 discovery. Providers can persist this state to avoid redundant discovery requests
@@ -597,7 +597,7 @@ OAuthClientProvider.tokens
 waitForCallback(timeoutMs?): Promise<URLSearchParams>;
 ```
 
-Defined in: [client/auth.ts:402](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L402)
+Defined in: [client/auth.ts:403](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/auth.ts#L403)
 
 Waits for the OAuth authorization code to arrive via the callback server,
 then stops the server and resolves with the full callback `URLSearchParams`
