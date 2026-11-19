@@ -1,5 +1,12 @@
 # @prefecthq/fastmcp-ts
 
+## 1.12.1
+
+### Patch Changes
+
+- 4bd7cc6: `OAuth` and `BrowserOAuth` now throw from `redirectToAuthorization` when the authorization URL's scheme is not `http:` or `https:`, before they start the callback server or open a browser, popup, or tab.
+- 8c76663: The `jose` dependency is now `^6.2.17` instead of exactly `6.2.2`, so installs pick up later 6.2.x releases. The `yaml` dependency now requires 2.9.1 or later.
+
 ## 1.12.0
 
 ### Minor Changes
