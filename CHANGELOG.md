@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.13.0
+
+### Minor Changes
+
+- eec70ac: Publish immutable Skill snapshots and per-request catalogs through the MCP Skills extension, with ordinary resource reads, manifests, and caller-scoped access checks.
+
 ## 1.12.2
 
 ### Patch Changes
