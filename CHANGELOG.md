@@ -1,5 +1,11 @@
 # @prefecthq/fastmcp-ts
 
+## 1.11.0
+
+### Minor Changes
+
+- a3e349e: `componentFn` can set `annotations` on generated OpenAPI tools, and the server advertises them in `tools/list`, matching Python FastMCP's `mcp_component_fn`.
+
 ## 1.10.1
 
 ### Patch Changes
