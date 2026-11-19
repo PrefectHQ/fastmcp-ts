@@ -1,5 +1,12 @@
 # @prefecthq/fastmcp-ts
 
+## 1.14.0
+
+### Minor Changes
+
+- 4a11cf4: Carry Skills discovery through mounted servers and opt-in proxies, preserving namespaced manifests, resource access policy, and healthy sources when another source fails.
+- 442181b: Read verified skills through resource-mode manifest fallback, preflight extension limits, and add reusable snapshots, staged downloads, and synchronization. Verify interoperability with Python FastMCP in both directions and through gateways.
+
 ## 1.13.0
 
 ### Minor Changes
