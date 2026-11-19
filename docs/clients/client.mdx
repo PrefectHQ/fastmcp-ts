@@ -108,6 +108,40 @@ const review = await client.readSkill('skill://code-review/SKILL.md')
 const instructions = review.files.find((file) => file.body !== undefined)?.body
 ```
 
+### Download and republish skills
+
+`readSkill()` also works with resource-based FastMCP skill servers. When the extension is unavailable or does not know a skill, it reads that skill's `_manifest` resource and verifies every file's size and SHA-256 digest. Both paths reject manifests exceeding 512 files or 16 MiB before downloading files. A corrupt file fails the read.
+
+Use `readSkillSnapshot()` when you want to republish a downloaded skill. It returns the same immutable `Skill` value that servers accept, preserving exact file bytes. The existing `readSkill()` result remains available when you need the wire entry and per-file verification details.
+
+```typescript
+import { Client, SKILLS_EXTENSION_ID } from '@prefecthq/fastmcp-ts/client'
+import { FastMCP } from '@prefecthq/fastmcp-ts/server'
+
+const client = await Client.connect('http://localhost:3000/mcp', {
+  capabilities: { extensions: { [SKILLS_EXTENSION_ID]: {} } },
+})
+const review = await client.readSkillSnapshot('skill://review/SKILL.md')
+await client.close()
+
+const mirror = new FastMCP({ name: 'Mirror' }).skills([review])
+await mirror.run()
+```
+
+`downloadSkill(uri, directory)` writes a verified snapshot to a child folder named after the skill. `syncSkills(directory)` discovers and verifies all skills before writing any of them. It uses extension discovery when available and otherwise finds `SKILL.md` resources. Distinct server paths that would install under the same local name are rejected. Existing folders require `{ overwrite: true }`; replacement stages the new files first and removes stale files from the old snapshot.
+
+```typescript
+import { Client } from '@prefecthq/fastmcp-ts/client'
+
+const client = await Client.connect('http://localhost:3000/mcp')
+await client.downloadSkill('skill://review/SKILL.md', './agent-skills')
+await client.syncSkills('./agent-skills', { overwrite: true })
+await client.close()
+```
+
+Downloading verifies the server's manifest and file contents. The host still owns approval, server identity, and execution policy.
+
+
 ## Error handling
 
 `callTool()` throws a `ToolCallError` when the server returns `isError: true`. The error carries the server's content blocks on its `content` field:

@@ -1,0 +1,40 @@
+name: Skills interoperability
+
+on:
+  pull_request:
+    paths:
+      - 'src/client/**'
+      - 'src/server/**'
+      - 'src/skills/**'
+      - 'tests/interop/**'
+      - 'package*.json'
+      - '.github/workflows/skills-interop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python skills interoperability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - uses: actions/checkout@v4
+        with:
+          repository: PrefectHQ/fastmcp
+          ref: a7842bed837359d03254f28781a645466d737be1
+          path: .interop/fastmcp
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: '3.12'
+      - name: Install the tested Python revision
+        run: uv sync --project .interop/fastmcp --no-dev
+      - name: Verify discovery, manifests, downloads, and gateways in both directions
+        env:
+          FASTMCP_PYTHON: ${{ github.workspace }}/.interop/fastmcp/.venv/bin/python
+        run: npm run test:skills-interop
