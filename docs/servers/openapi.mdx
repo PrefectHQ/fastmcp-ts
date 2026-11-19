@@ -83,15 +83,17 @@ For decisions a declarative map cannot express, `routeMapFn` runs on every route
 
 ## Customizing components
 
-`componentFn` is the last word before registration. It receives the parsed route and the component about to be registered, and mutates it in place: rename a tool, rewrite a description for the model's benefit, adjust tags, or tighten a schema.
+`componentFn` is the last word before registration. It receives the parsed route and the component about to be registered, and mutates it in place: rename a tool, rewrite a description for the model's benefit, adjust tags, set tool annotations, or tighten a schema.
+
+Generated tools have no [annotations](/servers/tools#configuration) by default. Set them here, for example from the HTTP method:
 
 ```typescript
 const server = createOpenAPIServer({
   spec,
   componentFn: (route, component) => {
-    if (component.kind === 'tool' && route.method === 'DELETE') {
-      component.description = `${component.description} (Destructive: cannot be undone.)`
-    }
+    if (component.kind !== 'tool') return
+    if (route.method === 'GET') component.annotations = { readOnlyHint: true }
+    if (route.method === 'DELETE') component.annotations = { destructiveHint: true }
   },
 })
 ```

@@ -1,3 +1,5 @@
+import type { ToolAnnotations } from '../FastMCP'
+
 /**
  * Shared types for the OpenAPI integration.
  *
@@ -114,6 +116,8 @@ export interface OpenAPIToolComponent {
   inputSchema: JsonSchema
   outputSchema?: JsonSchema
   tags: string[]
+  /** Behavioral hints forwarded in `tools/list`. Generation sets none; set them in `componentFn`. */
+  annotations?: ToolAnnotations
 }
 
 /** Mutable pre-registration view of a generated resource. */
