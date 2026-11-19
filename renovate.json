@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>PrefectHQ/renovate-config",
+    "github>PrefectHQ/renovate-config:node",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "lockFileMaintenance": {
+    "description": "Transitive dependencies in package-lock.json and the example lock files change only through lock file maintenance. The default schedule, before 4am on Monday, never matches the org runner's Monday 15:00 UTC run.",
+    "enabled": true,
+    "schedule": [
+      "at any time"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "The MCP SDK packages release together under one version. Update them in one PR so they never mix versions.",
+      "matchPackageNames": [
+        "@modelcontextprotocol/client",
+        "@modelcontextprotocol/core",
+        "@modelcontextprotocol/node",
+        "@modelcontextprotocol/server",
+        "@modelcontextprotocol/server-legacy"
+      ],
+      "groupName": "mcp sdk"
+    },
+    {
+      "description": "The workflows test on Node 22, the engines floor in package.json, and on later lines. Change them by hand together with engines.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "node"
+      ],
+      "enabled": false
+    }
+  ]
+}
