@@ -380,6 +380,19 @@ describe('OAuth', () => {
       await oauth.waitForCallback(10).catch(() => {/* timeout expected */})
     })
 
+    it('redirectToAuthorization refuses a non-http authorization URL', async () => {
+      const onRedirect = vi.fn()
+      const oauth = new OAuth({ callbackPort: 0, onRedirect })
+      oauth._bind(SERVER_URL)
+
+      await expect(oauth.redirectToAuthorization(new URL('javascript:alert(1)'))).rejects.toThrow(
+        /only http: and https:/,
+      )
+      expect(onRedirect).not.toHaveBeenCalled()
+      // The check runs before the callback server starts.
+      expect(oauth.callbackServerPort).toBeNull()
+    })
+
     it('waitForCallback resolves with the callback params delivered to the callback server', async () => {
       const oauth = new OAuth({ callbackPort: 0, onRedirect: vi.fn() })
       oauth._bind(SERVER_URL)

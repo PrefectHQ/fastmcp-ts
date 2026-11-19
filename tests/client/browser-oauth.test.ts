@@ -92,6 +92,22 @@ describe('BrowserOAuth popup flow', () => {
       /blocked/,
     )
   })
+
+  it.each(['javascript:alert(1)', 'data:text/html,<p>x</p>', 'file:///etc/passwd'])(
+    'refuses to open a %s authorization URL',
+    async (url) => {
+      for (const mode of ['popup', 'redirect'] as const) {
+        const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback', mode })
+        o._bind('https://srv.example')
+        // Earlier tests leave window.open spied, so clear the recorded calls.
+        const openSpy = vi.spyOn(window, 'open')
+        openSpy.mockClear()
+        await expect(o.redirectToAuthorization(new URL(url))).rejects.toThrow(/only http: and https:/)
+        expect(openSpy).not.toHaveBeenCalled()
+        openSpy.mockRestore()
+      }
+    },
+  )
 })
 
 describe('BrowserOAuth redirect mode', () => {
