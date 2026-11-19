@@ -1,5 +1,12 @@
 # @prefecthq/fastmcp-ts
 
+## 1.12.2
+
+### Patch Changes
+
+- 7d36cbc: Require `express` `^5.3.0`.
+- 7d36cbc: Require `@modelcontextprotocol/node` `^2.1.2`, which accepts `@hono/node-server` 2.x.
+
 ## 1.12.1
 
 ### Patch Changes
