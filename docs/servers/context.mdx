@@ -27,7 +27,9 @@ server.tool({ name: 'summarize', input: z.object({ text: z.string() }) }, async 
 
 Because the context belongs to a request, `getContext()` throws when there is no live request — at module load, in a background timer, or anywhere outside a handler's execution. That is by design: the methods below have no meaning without a client on the other end. If you need to do work after a request finishes, capture what you need from the context while the handler is still running.
 
-The context also carries two read-only fields about the request itself: `auth`, the verified `AccessToken` for the caller when [authentication](/servers/auth/overview) is configured, and `requestId`, the MCP request ID from the incoming message.
+The context also carries three read-only fields about the request itself: `auth`, the verified `AccessToken` for the caller when [authentication](/servers/auth/overview) is configured, `requestId`, the MCP request ID from the incoming message, and `clientCapabilities`, the capabilities the client declared.
+
+Check `clientCapabilities` before asking for something the client may not support. For example, return a URL-mode elicitation only when `ctx.clientCapabilities?.elicitation?.url` is set, and return the link as plain text otherwise. A modern client declares its capabilities on every request, and a legacy client declares them once at `initialize`. On a legacy HTTP server running in [stateless mode](/servers/running#stateless-mode), each request runs without that `initialize`, so `clientCapabilities` is `undefined`.
 
 ## HTTP request context
 

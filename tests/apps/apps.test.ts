@@ -14,6 +14,7 @@ import { Client } from '@modelcontextprotocol/client'
 import { InMemoryTransport } from '@modelcontextprotocol/server'
 import { createTestClient } from '../helpers/createTestClient'
 import { createUiTestClient } from '../helpers/createUiTestClient'
+import { connectEra, describeEachEra } from '../helpers/eras'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -698,5 +699,33 @@ describe('Apps', () => {
         await close()
       }
     })
+  })
+})
+
+describeEachEra('Apps capability gating', (combo) => {
+  it('omits UI metadata for a client that did not declare the UI extension', async () => {
+    const { client, close } = await connectEra(makeUiServer(), combo)
+    try {
+      const { tools } = await client.listTools()
+      expect(tools.find((tool) => tool.name === 'show_dashboard')?._meta).toBeUndefined()
+    } finally {
+      await close()
+    }
+  })
+
+  it('sends UI metadata to a client that declared the UI extension', async () => {
+    const { client, close } = await connectEra(makeUiServer(), combo, {
+      capabilities: {
+        extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } },
+      },
+    })
+    try {
+      const { tools } = await client.listTools()
+      expect(tools.find((tool) => tool.name === 'show_dashboard')?._meta).toEqual({
+        ui: { resourceUri: 'ui://test-app/view' },
+      })
+    } finally {
+      await close()
+    }
   })
 })

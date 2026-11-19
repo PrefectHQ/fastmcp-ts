@@ -2,7 +2,7 @@
 title: "McpContext"
 ---
 
-Defined in: [server/context.ts:83](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L83)
+Defined in: [server/context.ts:89](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L89)
 
 ## Properties
 
@@ -12,9 +12,29 @@ Defined in: [server/context.ts:83](https://github.com/PrefectHQ/fastmcp-ts/blob/
 auth: AccessToken | undefined;
 ```
 
-Defined in: [server/context.ts:85](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L85)
+Defined in: [server/context.ts:91](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L91)
 
 Auth token for the current request, if any.
+
+***
+
+### clientCapabilities
+
+```ts
+clientCapabilities: 
+  | {
+}
+  | undefined;
+```
+
+Defined in: [server/context.ts:103](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L103)
+
+The capabilities the client declared: per request on the modern era (2026-07-28),
+or at `initialize` on a legacy (2025-era) session. Check it before asking for
+something the client may not support, such as URL-mode elicitation
+(`clientCapabilities?.elicitation?.url`). `undefined` when the server cannot know
+them: a legacy request on a stateless HTTP server runs without the `initialize`
+that declared them.
 
 ***
 
@@ -24,7 +44,7 @@ Auth token for the current request, if any.
 http: HttpRequestContext | undefined;
 ```
 
-Defined in: [server/context.ts:98](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L98)
+Defined in: [server/context.ts:114](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L114)
 
 The HTTP request carrying the current MCP message, when serving over an
 HTTP transport; `undefined` on stdio. Fresh per request: on a sessionful
@@ -42,7 +62,7 @@ authorization from it.
 inputResponses: InputResponses | undefined;
 ```
 
-Defined in: [server/context.ts:174](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L174)
+Defined in: [server/context.ts:190](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L190)
 
 The current round's embedded input responses, when this request is a retry of an
 earlier `inputRequired(...)` return. `undefined` on the flow's first call (no
@@ -59,7 +79,7 @@ validate shape and, for `acceptedContent`, optionally the content against a sche
 requestId: string | undefined;
 ```
 
-Defined in: [server/context.ts:87](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L87)
+Defined in: [server/context.ts:93](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L93)
 
 The MCP request ID for the current call.
 
@@ -71,7 +91,7 @@ The MCP request ID for the current call.
 alert(message, loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:110](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L110)
+Defined in: [server/context.ts:126](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L126)
 
 #### Parameters
 
@@ -95,7 +115,7 @@ Defined in: [server/context.ts:110](https://github.com/PrefectHQ/fastmcp-ts/blob
 critical(message, loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:109](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L109)
+Defined in: [server/context.ts:125](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L125)
 
 #### Parameters
 
@@ -119,7 +139,7 @@ Defined in: [server/context.ts:109](https://github.com/PrefectHQ/fastmcp-ts/blob
 debug(message, loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:104](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L104)
+Defined in: [server/context.ts:120](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L120)
 
 #### Parameters
 
@@ -143,7 +163,7 @@ Defined in: [server/context.ts:104](https://github.com/PrefectHQ/fastmcp-ts/blob
 deleteState(key): void;
 ```
 
-Defined in: [server/context.ts:201](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L201)
+Defined in: [server/context.ts:217](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L217)
 
 Remove a value from session-scoped state.
 
@@ -165,7 +185,7 @@ Remove a value from session-scoped state.
 elicit(message, schema): Promise<ElicitationResult>;
 ```
 
-Defined in: [server/context.ts:149](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L149)
+Defined in: [server/context.ts:165](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L165)
 
 Ask the client to collect input from the user via a form dialog.
 Throws if the client has not advertised the `elicitation` capability.
@@ -199,7 +219,7 @@ write-once, serve-both-eras guidance applies).
 emergency(message, loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:111](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L111)
+Defined in: [server/context.ts:127](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L127)
 
 #### Parameters
 
@@ -223,7 +243,7 @@ Defined in: [server/context.ts:111](https://github.com/PrefectHQ/fastmcp-ts/blob
 error(message, loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:108](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L108)
+Defined in: [server/context.ts:124](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L124)
 
 #### Parameters
 
@@ -247,7 +267,7 @@ Defined in: [server/context.ts:108](https://github.com/PrefectHQ/fastmcp-ts/blob
 getState(key): unknown;
 ```
 
-Defined in: [server/context.ts:197](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L197)
+Defined in: [server/context.ts:213](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L213)
 
 Retrieve a value from session-scoped state. Returns undefined if not set.
 
@@ -269,7 +289,7 @@ Retrieve a value from session-scoped state. Returns undefined if not set.
 info(message, loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:105](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L105)
+Defined in: [server/context.ts:121](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L121)
 
 #### Parameters
 
@@ -293,7 +313,7 @@ Defined in: [server/context.ts:105](https://github.com/PrefectHQ/fastmcp-ts/blob
 listRoots(): Promise<Root[]>;
 ```
 
-Defined in: [server/context.ts:162](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L162)
+Defined in: [server/context.ts:178](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L178)
 
 Request the list of filesystem roots the client has declared.
 Throws if the client has not advertised the `roots` capability.
@@ -320,7 +340,7 @@ log(
    loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:103](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L103)
+Defined in: [server/context.ts:119](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L119)
 
 Send a log message to the client at the specified RFC 5424 severity level.
 
@@ -350,7 +370,7 @@ Send a log message to the client at the specified RFC 5424 severity level.
 mintRequestState<T>(payload): Promise<string>;
 ```
 
-Defined in: [server/context.ts:192](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L192)
+Defined in: [server/context.ts:208](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L208)
 
 Seals `payload` into the opaque `requestState` string to return from
 `inputRequired({ requestState })`. HMAC-signed via `FastMCPOptions.requestState`
@@ -383,7 +403,7 @@ client can read and tamper with it) unless `FastMCPOptions.requestState` is set.
 notice(message, loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:106](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L106)
+Defined in: [server/context.ts:122](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L122)
 
 #### Parameters
 
@@ -407,7 +427,7 @@ Defined in: [server/context.ts:106](https://github.com/PrefectHQ/fastmcp-ts/blob
 onClose(callback): void;
 ```
 
-Defined in: [server/context.ts:219](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L219)
+Defined in: [server/context.ts:235](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L235)
 
 Register a callback that runs when the current session closes.
 Useful for releasing per-session resources (e.g. uploaded files).
@@ -434,7 +454,7 @@ reportProgress(
    message?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:119](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L119)
+Defined in: [server/context.ts:135](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L135)
 
 Send a progress notification to the client.
 No-op if the request did not include a `progressToken` in its `_meta`.
@@ -465,7 +485,7 @@ No-op if the request did not include a `progressToken` in its `_meta`.
 requestState<T>(): T | undefined;
 ```
 
-Defined in: [server/context.ts:182](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L182)
+Defined in: [server/context.ts:198](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L198)
 
 Reads the current round's `requestState`, already verified and decoded when
 `FastMCPOptions.requestState` is configured (the payload `verify` resolved with);
@@ -490,7 +510,7 @@ attacker-controlled input. `undefined` when the round carried no state.
 resolveToolName(name): string;
 ```
 
-Defined in: [server/context.ts:210](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L210)
+Defined in: [server/context.ts:226](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L226)
 
 Resolve a logical tool name to its current external name, accounting for
 any namespace prefix applied when the owning FastMCPApp was mounted.
@@ -514,7 +534,7 @@ Returns the name unchanged when called outside a mounted context.
 sample(params): Promise<SamplingResult>;
 ```
 
-Defined in: [server/context.ts:136](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L136)
+Defined in: [server/context.ts:152](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L152)
 
 Ask the client to perform an LLM inference call and return the result.
 Throws if the client has not advertised the `sampling` capability.
@@ -548,7 +568,7 @@ there is rarely a reason to keep calling `ctx.sample()` directly in new code.
 setState(key, value): void;
 ```
 
-Defined in: [server/context.ts:199](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L199)
+Defined in: [server/context.ts:215](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L215)
 
 Store a value in session-scoped state. Persists for the lifetime of the session.
 
@@ -574,7 +594,7 @@ Store a value in session-scoped state. Persists for the lifetime of the session.
 warning(message, loggerName?): Promise<void>;
 ```
 
-Defined in: [server/context.ts:107](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L107)
+Defined in: [server/context.ts:123](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/server/context.ts#L123)
 
 #### Parameters
 
