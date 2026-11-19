@@ -1,3 +1,5 @@
+import { SkillsClient, SKILLS_EXTENSION_ID } from '@modelcontextprotocol/client/ext/skills'
+import { ProtocolError } from '@modelcontextprotocol/client'
 import { Client } from "@modelcontextprotocol/client";
 import type { CallToolResult } from "@modelcontextprotocol/client";
 import { parseTemplate } from 'url-template'
@@ -9,6 +11,8 @@ import type { PromptMessage } from './prompt'
 import type { Logger, ResolvedLogger, FrameworkLogLevel } from './logger'
 
 type StdioTransport = {
+  /** Forward Skills discovery and files from a modern backend. Default false. */
+  skills?: boolean
   type: 'stdio'
   command: string
   args?: string[]
@@ -23,6 +27,8 @@ type StdioTransport = {
 }
 
 type HttpTransport = {
+  /** Forward Skills discovery and files from a modern backend. Default false. */
+  skills?: boolean
   type: 'http'
   url: string
   requestInit?: RequestInit
@@ -54,7 +60,7 @@ function logProbeFailure(logger: ResolvedLogger, what: string, err: unknown): vo
  */
 export async function buildProxyFromClient(
   client: Client,
-  options?: { cacheTtl?: number; name?: string; logger?: Logger; logLevel?: FrameworkLogLevel },
+  options?: { skills?: boolean; cacheTtl?: number; name?: string; logger?: Logger; logLevel?: FrameworkLogLevel },
 ): Promise<FastMCP> {
   const cacheTtl = options?.cacheTtl ?? 30_000
 
@@ -69,6 +75,31 @@ export async function buildProxyFromClient(
     ...(options?.logLevel !== undefined ? { logLevel: options.logLevel } : {}),
   })
   const logger = proxy._logger
+  const skills = options?.skills ? new SkillsClient(client) : undefined
+  const forwardsSkills = skills?.supported && client.getProtocolEra() === 'modern'
+  const skillOwner = {}
+  if (forwardsSkills) {
+    proxy._addSkillSource(async (_ctx, uri) => {
+      let entries
+      if (uri) {
+        try { entries = [(await skills.get(uri)).skill] } catch (error) {
+          if (error instanceof ProtocolError && error.code === -32602) return []
+          throw error
+        }
+      } else entries = (await skills.list()).skills
+      return entries.map((entry) => ({
+        entry,
+        owner: skillOwner,
+        async read(uri: string) {
+          const result = await client.readResource({ uri })
+          if (result.contents.length !== 1 || result.contents[0].uri !== uri) throw new Error(`Invalid proxied skill resource: ${uri}`)
+          const content = result.contents[0]
+          if ('text' in content) return new TextEncoder().encode(content.text)
+          return new Uint8Array(Buffer.from(content.blob, 'base64'))
+        },
+      }))
+    })
+  }
 
   // Track which component identifiers were registered by this proxy so we can diff on resync.
   const proxiedTools = new Set<string>()
@@ -149,6 +180,7 @@ export async function buildProxyFromClient(
               )
             },
           )
+          if (forwardsSkills) proxy._markSkillResourceOwner(resource.uri, skillOwner)
           proxiedResources.add(resource.uri)
         }
       }
@@ -187,6 +219,7 @@ export async function buildProxyFromClient(
               )
             },
           )
+          if (forwardsSkills) proxy._markSkillResourceOwner(uriTemplate, skillOwner)
           proxiedResources.add(uriTemplate)
         }
       }
@@ -314,12 +347,14 @@ export async function createProxy(config: ProxyTransport, name?: string): Promis
 
   const client = new Client(
     { name: name ?? 'fastmcp-proxy', version: '0.0.1' },
-    { capabilities: {} },
+    { capabilities: config.skills ? { extensions: { [SKILLS_EXTENSION_ID]: {} } } : {},
+      ...(config.skills ? { versionNegotiation: { mode: 'auto' as const } } : {}) },
   )
 
   await client.connect(transport)
 
   return buildProxyFromClient(client, {
+    skills: config.skills,
     cacheTtl: config.cacheTtl,
     name,
     logger: config.logger,
