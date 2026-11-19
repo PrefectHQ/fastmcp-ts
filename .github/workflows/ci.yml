@@ -10,6 +10,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Do not grant jobs any permissions by default
+permissions: {}
+
 jobs:
   # A PR that changes npm-visible files must carry a changeset — without one
   # the Release workflow versions nothing and silently ships no release
@@ -19,6 +22,8 @@ jobs:
   # PR diff to police there, and the changesets already merged.
   changeset-guard:
     name: Changeset guard
+    permissions:
+      contents: read
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -71,6 +76,8 @@ jobs:
   # `npm run docs:api` and commit the result.
   docs-freshness:
     name: API docs freshness
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -102,6 +109,8 @@ jobs:
 
   test:
     name: Test (Node ${{ matrix.node }})
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -137,6 +146,8 @@ jobs:
 
   e2e:
     name: Browser e2e (OAuth)
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -159,6 +170,8 @@ jobs:
 
   conformance-server:
     name: MCP conformance (server)
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -182,6 +195,8 @@ jobs:
 
   conformance-client:
     name: MCP conformance (client)
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
