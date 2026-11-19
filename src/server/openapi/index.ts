@@ -251,6 +251,7 @@ function createTool(
       description: component.description,
       inputSchema: component.inputSchema,
       ...(component.outputSchema !== undefined ? { outputSchema: component.outputSchema } : {}),
+      ...(component.annotations !== undefined ? { annotations: component.annotations } : {}),
       tags: component.tags,
     },
     async (args: unknown) =>

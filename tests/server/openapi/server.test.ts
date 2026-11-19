@@ -311,4 +311,23 @@ describe('createOpenAPIServer options', () => {
       await close()
     }
   })
+
+  it('advertises tool annotations set in componentFn', async () => {
+    const server = createOpenAPIServer({
+      spec: spec(),
+      componentFn: (route, component) => {
+        if (component.kind === 'tool' && route.method === 'DELETE') {
+          component.annotations = { destructiveHint: true }
+        }
+      },
+    })
+    const { client, close } = await createTestClient(server)
+    try {
+      const { tools } = await client.listTools()
+      expect(tools.find((t) => t.name === 'deletePet')?.annotations).toEqual({ destructiveHint: true })
+      expect(tools.find((t) => t.name === 'listPets')?.annotations).toBeUndefined()
+    } finally {
+      await close()
+    }
+  })
 })
