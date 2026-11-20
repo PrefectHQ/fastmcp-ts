@@ -68,6 +68,31 @@ jobs:
           npm ci
           npx changeset status --since="$base"
 
+  # Git applies .gitattributes when it stages a file. A commit from a branch
+  # created before .gitattributes existed, or from a tool that writes Git
+  # objects directly, can still add CRLF. `git ls-files --eol` reports each
+  # file's line endings as stored in the index. This job fails on any CRLF
+  # or mixed text file.
+  line-endings:
+    name: Line endings
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fail on CRLF line endings
+        run: |
+          bad=$(git ls-files --eol | awk '$1 == "i/crlf" || $1 == "i/mixed"')
+          if [ -n "$bad" ]; then
+            echo "::error::These files have CRLF line endings. Run 'git add --renormalize .' and commit the result."
+            echo "$bad"
+            exit 1
+          fi
+          echo "All text files use LF line endings."
+
   # docs/api is generated output of `npm run docs:api`. typedoc pins its
   # source links via sourceLinkTemplate, so regeneration is deterministic:
   # on an up-to-date tree it is a byte-identical no-op. A change to
