@@ -1,6 +1,22 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
-import { BrowserOAuth, OAuth } from 'fastmcp-ts/client'
+import { afterEach, describe, it, expect, vi } from 'vitest'
+import { AuthorizationRequiredError, BrowserOAuth, OAuth, handleOAuthCallback } from 'fastmcp-ts/client'
+
+const AUTHORIZATION_URL = 'https://auth.example/authorize?state=s1'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+function fakePopup() {
+  return { closed: false, close: vi.fn() }
+}
+
+function postFromCallback(search: string, origin = 'https://app.example') {
+  window.dispatchEvent(
+    new MessageEvent('message', { origin, data: { type: 'fastmcp:oauth', search } }),
+  )
+}
 
 describe('BrowserOAuth popup flow', () => {
   it('is an instanceof OAuth (so the client flow drives it)', () => {
@@ -14,40 +30,30 @@ describe('BrowserOAuth popup flow', () => {
     expect(o.clientMetadata.redirect_uris).toEqual(['https://app.example/callback'])
   })
 
-  it('opens a popup and resolves waitForCallback from a postMessage', async () => {
+  it('opens a popup and resolves waitForCallback from the callback page', async () => {
     const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
     o._bind('https://srv.example')
-    const popup = { closed: false, close: vi.fn() }
+    const popup = fakePopup()
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(popup as unknown as Window)
 
-    await o.redirectToAuthorization(new URL('https://auth.example/authorize?x=1'))
+    await o.redirectToAuthorization(new URL(AUTHORIZATION_URL))
     expect(openSpy).toHaveBeenCalledOnce()
 
     const wait = o.waitForCallback(5000)
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        origin: 'https://app.example',
-        data: { type: 'fastmcp:oauth', code: 'THE_CODE' },
-      }),
-    )
+    postFromCallback('?code=THE_CODE&state=s1')
     const params = await wait
     expect(params.get('code')).toBe('THE_CODE')
     expect(popup.close).toHaveBeenCalled()
   })
 
-  it('carries the RFC 9207 iss parameter through from the postMessage', async () => {
+  it('carries the RFC 9207 iss parameter through from the callback page', async () => {
     const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
     o._bind('https://srv.example')
-    vi.spyOn(window, 'open').mockReturnValue({ closed: false, close: vi.fn() } as unknown as Window)
-    await o.redirectToAuthorization(new URL('https://auth.example/authorize'))
+    vi.spyOn(window, 'open').mockReturnValue(fakePopup() as unknown as Window)
+    await o.redirectToAuthorization(new URL(AUTHORIZATION_URL))
 
     const wait = o.waitForCallback(5000)
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        origin: 'https://app.example',
-        data: { type: 'fastmcp:oauth', code: 'THE_CODE', iss: 'https://auth.example' },
-      }),
-    )
+    postFromCallback(`?code=THE_CODE&state=s1&iss=${encodeURIComponent('https://auth.example')}`)
     const params = await wait
     expect(params.get('code')).toBe('THE_CODE')
     expect(params.get('iss')).toBe('https://auth.example')
@@ -56,31 +62,21 @@ describe('BrowserOAuth popup flow', () => {
   it('ignores messages from an unexpected origin', async () => {
     const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
     o._bind('https://srv.example')
-    vi.spyOn(window, 'open').mockReturnValue({ closed: false, close: vi.fn() } as unknown as Window)
-    await o.redirectToAuthorization(new URL('https://auth.example/authorize'))
+    vi.spyOn(window, 'open').mockReturnValue(fakePopup() as unknown as Window)
+    await o.redirectToAuthorization(new URL(AUTHORIZATION_URL))
     const wait = o.waitForCallback(300)
     // Malicious/foreign origin — must be ignored, so the call times out.
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        origin: 'https://evil.example',
-        data: { type: 'fastmcp:oauth', code: 'STOLEN' },
-      }),
-    )
+    postFromCallback('?code=STOLEN&state=s1', 'https://evil.example')
     await expect(wait).rejects.toThrow(/timed out/)
   })
 
-  it('rejects waitForCallback on an error message', async () => {
+  it('rejects waitForCallback when the provider returns an error', async () => {
     const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
     o._bind('https://srv.example')
-    vi.spyOn(window, 'open').mockReturnValue({ closed: false, close: vi.fn() } as unknown as Window)
-    await o.redirectToAuthorization(new URL('https://auth.example/authorize'))
+    vi.spyOn(window, 'open').mockReturnValue(fakePopup() as unknown as Window)
+    await o.redirectToAuthorization(new URL(AUTHORIZATION_URL))
     const wait = o.waitForCallback(5000)
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        origin: 'https://app.example',
-        data: { type: 'fastmcp:oauth', error: 'access_denied' },
-      }),
-    )
+    postFromCallback('?error=access_denied&state=s1')
     await expect(wait).rejects.toThrow(/access_denied/)
   })
 
@@ -88,9 +84,16 @@ describe('BrowserOAuth popup flow', () => {
     const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
     o._bind('https://srv.example')
     vi.spyOn(window, 'open').mockReturnValue(null)
-    await expect(o.redirectToAuthorization(new URL('https://auth.example/authorize'))).rejects.toThrow(
-      /blocked/,
-    )
+    await expect(o.redirectToAuthorization(new URL(AUTHORIZATION_URL))).rejects.toThrow(/blocked/)
+  })
+
+  it('refuses an authorization URL without a state to match its callback against', async () => {
+    const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
+    const openSpy = vi.spyOn(window, 'open')
+    await expect(
+      o.redirectToAuthorization(new URL('https://auth.example/authorize')),
+    ).rejects.toThrow(/no state parameter/)
+    expect(openSpy).not.toHaveBeenCalled()
   })
 
   it.each(['javascript:alert(1)', 'data:text/html,<p>x</p>', 'file:///etc/passwd'])(
@@ -99,7 +102,6 @@ describe('BrowserOAuth popup flow', () => {
       for (const mode of ['popup', 'redirect'] as const) {
         const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback', mode })
         o._bind('https://srv.example')
-        // Earlier tests leave window.open spied, so clear the recorded calls.
         const openSpy = vi.spyOn(window, 'open')
         openSpy.mockClear()
         await expect(o.redirectToAuthorization(new URL(url))).rejects.toThrow(/only http: and https:/)
@@ -108,6 +110,100 @@ describe('BrowserOAuth popup flow', () => {
       }
     },
   )
+})
+
+describe('BrowserOAuth callback matching', () => {
+  it('issues a fresh state for each authorization request', () => {
+    const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
+    const first = o.state()
+    expect(first).toMatch(/^[0-9a-f-]{36}$/)
+    expect(o.state()).not.toBe(first)
+  })
+
+  it("ignores a reply carrying another request's state", async () => {
+    const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
+    o._bind('https://srv.example')
+    vi.spyOn(window, 'open').mockReturnValue(fakePopup() as unknown as Window)
+    await o.redirectToAuthorization(new URL(AUTHORIZATION_URL))
+
+    const wait = o.waitForCallback(5000)
+    postFromCallback('?code=CODE_FOR_THEM&state=theirs')
+    postFromCallback('?code=CODE_FOR_ME&state=s1')
+    const params = await wait
+    expect(params.get('code')).toBe('CODE_FOR_ME')
+  })
+
+  it('resolves from the BroadcastChannel when the opener link is gone', async () => {
+    const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback' })
+    o._bind('https://srv.example')
+    vi.spyOn(window, 'open').mockReturnValue(fakePopup() as unknown as Window)
+    await o.redirectToAuthorization(new URL(AUTHORIZATION_URL))
+
+    const wait = o.waitForCallback(5000)
+    const channel = new BroadcastChannel('fastmcp:oauth')
+    channel.postMessage({ type: 'fastmcp:oauth', search: '?code=THE_CODE&state=s1' })
+    channel.close()
+
+    const params = await wait
+    expect(params.get('code')).toBe('THE_CODE')
+  })
+
+  it('handleOAuthCallback relays the callback query string on the BroadcastChannel', async () => {
+    window.history.replaceState(null, '', '/callback?code=THE_CODE&state=s1')
+    const close = vi.spyOn(window, 'close').mockImplementation(() => undefined)
+    const channel = new BroadcastChannel('fastmcp:oauth')
+    const received = new Promise<unknown>((resolve) =>
+      channel.addEventListener('message', (e) => resolve(e.data), { once: true }),
+    )
+
+    handleOAuthCallback()
+
+    await expect(received).resolves.toEqual({
+      type: 'fastmcp:oauth',
+      search: '?code=THE_CODE&state=s1',
+    })
+    expect(close).toHaveBeenCalledOnce()
+    channel.close()
+  })
+})
+
+describe('BrowserOAuth deferred mode', () => {
+  async function requireAuthorization(): Promise<{ o: BrowserOAuth; error: AuthorizationRequiredError }> {
+    const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback', mode: 'deferred' })
+    o._bind('https://srv.example')
+    const error = await o.redirectToAuthorization(new URL(AUTHORIZATION_URL)).catch((e: unknown) => e)
+    if (!(error instanceof AuthorizationRequiredError)) throw new Error('Expected AuthorizationRequiredError')
+    return { o, error }
+  }
+
+  it('reports the authorization instead of opening a popup', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(fakePopup() as unknown as Window)
+
+    const { o, error } = await requireAuthorization()
+    expect(error.url.href).toBe(AUTHORIZATION_URL)
+    expect(openSpy).not.toHaveBeenCalled()
+
+    expect(error.openPopup()).toBe(true)
+    expect(openSpy).toHaveBeenCalledWith(AUTHORIZATION_URL, 'fastmcp-oauth', expect.any(String))
+
+    const wait = o.waitForCallback(5000)
+    postFromCallback('?code=THE_CODE&state=s1')
+    const params = await wait
+    expect(params.get('code')).toBe('THE_CODE')
+  })
+
+  it('reports a blocked popup and lets the app try again', async () => {
+    const openSpy = vi
+      .spyOn(window, 'open')
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(fakePopup() as unknown as Window)
+
+    const { error } = await requireAuthorization()
+
+    expect(error.openPopup()).toBe(false)
+    expect(error.openPopup()).toBe(true)
+    expect(openSpy).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('BrowserOAuth redirect mode', () => {

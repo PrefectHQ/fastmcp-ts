@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type BrowserContext, type Page } from '@playwright/test'
 import { build } from 'esbuild'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -29,7 +29,7 @@ const APP_HTML =
   '<!doctype html><meta charset="utf-8"><button id="connect">Connect</button>' +
   '<pre id="out">idle</pre><script type="module" src="/e2e-app.js"></script>'
 
-const APP_JS = `
+const POPUP_APP_JS = `
 import { Client, BrowserOAuth, IndexedDBStore } from '/e2e-client.js'
 document.getElementById('connect').addEventListener('click', async () => {
   const out = document.getElementById('out')
@@ -46,6 +46,35 @@ document.getElementById('connect').addEventListener('click', async () => {
     out.textContent = 'ERR:' + (e && e.message ? e.message : String(e))
   }
 })
+`
+
+// Deferred mode connects on page load, with no user gesture: connect() fails
+// with AuthorizationRequiredError, and the popup opens when Authorize is clicked.
+const DEFERRED_APP_JS = `
+import { AuthorizationRequiredError, Client, BrowserOAuth } from '/e2e-client.js'
+const out = document.getElementById('out')
+const authorize = document.createElement('button')
+authorize.id = 'authorize'
+authorize.textContent = 'Authorize'
+authorize.hidden = true
+document.body.append(authorize)
+const serverUrl = location.origin + '/mcp'
+const auth = new BrowserOAuth({ redirectUri: location.origin + '/callback', mode: 'deferred' })
+const client = new Client(serverUrl, { auth })
+async function connect() {
+  try {
+    await client.connect()
+  } catch (error) {
+    if (!(error instanceof AuthorizationRequiredError)) throw error
+    authorize.hidden = false
+    authorize.onclick = () => { out.textContent = error.openPopup() ? 'authorizing' : 'blocked' }
+    await auth.completeAuthorization(serverUrl)
+    await client.connect()
+  }
+  const tools = await client.listTools()
+  out.textContent = 'OK:' + tools.length
+}
+connect().catch((e) => { out.textContent = 'ERR:' + (e && e.message ? e.message : String(e)) })
 `
 
 test.beforeAll(async () => {
@@ -93,7 +122,18 @@ test.afterAll(async () => {
   await mcp?.close()
 })
 
-test('completes popup OAuth in a real browser and lists tools', async ({ page, context }) => {
+/**
+ * Serves the app shell, its script, and the client bundle on the server's
+ * origin, plus an /authorize stand-in that hands the real authorization code to
+ * the real handleOAuthCallback(). `authorizeHeaders` lets a test send the
+ * headers a real provider's consent page would, such as
+ * Cross-Origin-Opener-Policy.
+ */
+async function routeApp(
+  context: BrowserContext,
+  appJs: string,
+  authorizeHeaders: Record<string, string> = {},
+): Promise<void> {
   await context.route('**/*', async (route) => {
     const url = new URL(route.request().url())
     if (`${url.protocol}//${url.host}` !== baseUrl) return route.continue()
@@ -101,7 +141,7 @@ test('completes popup OAuth in a real browser and lists tools', async ({ page, c
       case '/e2e-app':
         return route.fulfill({ contentType: 'text/html', body: APP_HTML })
       case '/e2e-app.js':
-        return route.fulfill({ contentType: 'text/javascript', body: APP_JS })
+        return route.fulfill({ contentType: 'text/javascript', body: appJs })
       case '/e2e-client.js':
         return route.fulfill({ contentType: 'text/javascript', body: clientBundle })
       case '/authorize': {
@@ -110,7 +150,7 @@ test('completes popup OAuth in a real browser and lists tools', async ({ page, c
         // 302 WITHOUT following it, take the issued code from its Location, and
         // serve a page at this URL that rewrites its own URL to /callback?code=
         // (via history.replaceState — no navigation) and runs the real
-        // handleOAuthCallback(), which posts the code back to the opener.
+        // handleOAuthCallback(), which reports the code back to the app.
         const resp = await route.fetch({ maxRedirects: 0 })
         const location = resp.headers()['location'] ?? ''
         const target = new URL(location, baseUrl)
@@ -121,17 +161,23 @@ test('completes popup OAuth in a real browser and lists tools', async ({ page, c
           `history.replaceState(null, '', '/callback${search}');` +
           `handleOAuthCallback();` +
           '</script>'
-        return route.fulfill({ contentType: 'text/html', body: html })
+        return route.fulfill({ contentType: 'text/html', headers: authorizeHeaders, body: html })
       }
       default:
         // /token, /register, /.well-known/*, /mcp → real server.
         return route.continue()
     }
   })
+}
 
-  // Surface in-page errors to the test log if something goes wrong.
+function logPageErrors(page: Page, context: BrowserContext): void {
   page.on('pageerror', (e) => console.log('[page:pageerror]', e.message))
   context.on('page', (p) => p.on('pageerror', (e) => console.log('[popup:pageerror]', e.message)))
+}
+
+test('completes popup OAuth in a real browser and lists tools', async ({ page, context }) => {
+  await routeApp(context, POPUP_APP_JS)
+  logPageErrors(page, context)
 
   await page.goto(`${baseUrl}/e2e-app`)
   const popupPromise = context.waitForEvent('page')
@@ -141,5 +187,30 @@ test('completes popup OAuth in a real browser and lists tools', async ({ page, c
 
   // #out becomes "OK:<toolCount>" only after the full popup OAuth dance,
   // real token exchange, reconnect, and a successful listTools() call.
+  await expect(page.locator('#out')).toHaveText(/^OK:\d+/, { timeout: 30_000 })
+})
+
+test('completes popup OAuth when the provider page severs window.opener', async ({ page, context }) => {
+  // Cross-Origin-Opener-Policy on the consent page moves the popup into a new
+  // browsing context group, so window.opener stays null even after the popup
+  // returns to the app's origin. Only the BroadcastChannel reply gets through.
+  await routeApp(context, POPUP_APP_JS, { 'Cross-Origin-Opener-Policy': 'same-origin' })
+  logPageErrors(page, context)
+
+  await page.goto(`${baseUrl}/e2e-app`)
+  await page.click('#connect')
+
+  await expect(page.locator('#out')).toHaveText(/^OK:\d+/, { timeout: 30_000 })
+})
+
+test('deferred mode connects on load and opens the popup on a click', async ({ page, context }) => {
+  await routeApp(context, DEFERRED_APP_JS)
+  logPageErrors(page, context)
+
+  await page.goto(`${baseUrl}/e2e-app`)
+  const authorize = page.locator('#authorize')
+  await expect(authorize).toBeVisible({ timeout: 30_000 })
+  await authorize.click()
+
   await expect(page.locator('#out')).toHaveText(/^OK:\d+/, { timeout: 30_000 })
 })

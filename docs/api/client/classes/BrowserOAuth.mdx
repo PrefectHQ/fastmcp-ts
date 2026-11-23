@@ -2,7 +2,7 @@
 title: "BrowserOAuth"
 ---
 
-Defined in: [client/browser-oauth.ts:37](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L37)
+Defined in: [client/browser-oauth.ts:80](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L80)
 
 ## Extends
 
@@ -16,7 +16,7 @@ Defined in: [client/browser-oauth.ts:37](https://github.com/PrefectHQ/fastmcp-ts
 new BrowserOAuth(options): BrowserOAuth;
 ```
 
-Defined in: [client/browser-oauth.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L44)
+Defined in: [client/browser-oauth.ts:85](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L85)
 
 #### Parameters
 
@@ -124,7 +124,7 @@ get clientMetadata(): {
 };
 ```
 
-Defined in: [client/browser-oauth.ts:55](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L55)
+Defined in: [client/browser-oauth.ts:94](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L94)
 
 Metadata about this OAuth client.
 
@@ -149,7 +149,7 @@ Metadata about this OAuth client.
 get redirectUrl(): string;
 ```
 
-Defined in: [client/browser-oauth.ts:51](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L51)
+Defined in: [client/browser-oauth.ts:90](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L90)
 
 The URL to redirect the user agent to after authorization.
 Return `undefined` for non-interactive flows that don't require user interaction
@@ -345,6 +345,35 @@ the authorization result.
 
 ***
 
+### completeAuthorization()
+
+```ts
+completeAuthorization(serverUrl, timeoutMs?): Promise<void>;
+```
+
+Defined in: [client/browser-oauth.ts:154](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L154)
+
+Deferred mode: waits for the user to finish the authorization an
+[AuthorizationRequiredError](/api/client/classes/AuthorizationRequiredError) reported, then exchanges the code for
+tokens. `serverUrl` is the MCP server URL the connection uses. Reconnect or
+retry the request afterwards; it reads the stored tokens.
+
+#### Parameters
+
+##### serverUrl
+
+`string` \| `URL`
+
+##### timeoutMs?
+
+`number`
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
 ### discoveryState()
 
 ```ts
@@ -410,7 +439,7 @@ This avoids requiring the user to intervene manually.
 redirectToAuthorization(authorizationUrl): Promise<void>;
 ```
 
-Defined in: [client/browser-oauth.ts:59](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L59)
+Defined in: [client/browser-oauth.ts:107](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L107)
 
 Invoked to redirect the user agent to the given URL to begin the authorization flow.
 
@@ -436,7 +465,7 @@ Invoked to redirect the user agent to the given URL to begin the authorization f
 resumeFromRedirect(href?): URLSearchParams | null;
 ```
 
-Defined in: [client/browser-oauth.ts:107](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L107)
+Defined in: [client/browser-oauth.ts:168](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L168)
 
 Redirect-mode resume: parse the authorization callback params from a
 returned URL (defaults to the current location). Returns the full
@@ -593,6 +622,24 @@ Carries the resolved authorization-server `issuer`. Providers
 
 ***
 
+### state()
+
+```ts
+state(): string;
+```
+
+Defined in: [client/browser-oauth.ts:103](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L103)
+
+A fresh `state` for each authorization request. The callback echoes it
+back, which is how a reply is matched to this provider's request when every
+tab on the origin hears it over the BroadcastChannel.
+
+#### Returns
+
+`string`
+
+***
+
 ### tokens()
 
 ```ts
@@ -633,7 +680,7 @@ Carries the resolved authorization-server `issuer`. Providers
 waitForCallback(timeoutMs?): Promise<URLSearchParams>;
 ```
 
-Defined in: [client/browser-oauth.ts:92](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L92)
+Defined in: [client/browser-oauth.ts:140](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L140)
 
 Waits for the OAuth authorization code to arrive via the callback server,
 then stops the server and resolves with the full callback `URLSearchParams`

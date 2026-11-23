@@ -15,6 +15,12 @@
             "isDeprecated": false
           },
           {
+            "title": "AuthorizationRequiredError",
+            "kind": 128,
+            "path": "client/classes/AuthorizationRequiredError.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "BearerAuth",
             "kind": 128,
             "path": "client/classes/BearerAuth.mdx",

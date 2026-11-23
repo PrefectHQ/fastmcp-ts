@@ -2,7 +2,7 @@
 title: "BrowserOAuthOptions"
 ---
 
-Defined in: [client/browser-oauth.ts:19](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L19)
+Defined in: [client/browser-oauth.ts:60](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L60)
 
 ## Extends
 
@@ -83,14 +83,16 @@ Pre-registered client secret.
 ### mode?
 
 ```ts
-optional mode?: "redirect" | "popup";
+optional mode?: "redirect" | "popup" | "deferred";
 ```
 
-Defined in: [client/browser-oauth.ts:32](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L32)
+Defined in: [client/browser-oauth.ts:75](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L75)
 
-'popup' (default) opens the authorization URL in a popup window and listens
-for a postMessage from the callback page. 'redirect' navigates the whole
-tab; resume with [BrowserOAuth.resumeFromRedirect](/api/client/classes/BrowserOAuth#resumefromredirect) on return.
+'popup' (default) opens the authorization URL in a popup window as soon as
+authorization is needed. 'deferred' opens nothing on its own: the connect
+or request fails with [AuthorizationRequiredError](/api/client/classes/AuthorizationRequiredError), and the app opens
+the popup from a user gesture. 'redirect' navigates the whole tab; resume
+with [BrowserOAuth.resumeFromRedirect](/api/client/classes/BrowserOAuth#resumefromredirect) on return.
 
 ***
 
@@ -100,9 +102,9 @@ tab; resume with [BrowserOAuth.resumeFromRedirect](/api/client/classes/BrowserOA
 optional popupFeatures?: string;
 ```
 
-Defined in: [client/browser-oauth.ts:34](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L34)
+Defined in: [client/browser-oauth.ts:77](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L77)
 
-`window.open` features string for popup mode.
+`window.open` features string for popup and deferred modes.
 
 ***
 
@@ -112,11 +114,11 @@ Defined in: [client/browser-oauth.ts:34](https://github.com/PrefectHQ/fastmcp-ts
 redirectUri: string;
 ```
 
-Defined in: [client/browser-oauth.ts:26](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L26)
+Defined in: [client/browser-oauth.ts:67](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L67)
 
 Redirect URI registered with the provider. Must serve a page that calls
-[handleOAuthCallback](/api/client/functions/handleOAuthCallback) (popup mode) or is your app route that reads the
-returned `?code=` (redirect mode).
+[handleOAuthCallback](/api/client/functions/handleOAuthCallback) (popup and deferred modes) or is your app route
+that reads the returned `?code=` (redirect mode).
 
 ***
 
