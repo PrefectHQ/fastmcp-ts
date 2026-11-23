@@ -297,7 +297,6 @@
                 "group": "Interfaces",
                 "pages": [
                   "api/client/interfaces/AsyncHeaderAuth",
-                  "api/client/interfaces/BrowserOAuthOptions",
                   "api/client/interfaces/CallToolOptions",
                   "api/client/interfaces/ClientDefaultOptions",
                   "api/client/interfaces/ClientHandlers",
@@ -313,6 +312,7 @@
                   "api/client/interfaces/McpServerLike",
                   "api/client/interfaces/MultiServerOptions",
                   "api/client/interfaces/OAuthOptions",
+                  "api/client/interfaces/PendingAuthorization",
                   "api/client/interfaces/PrivateKeyJwtCredentialsOptions",
                   "api/client/interfaces/RequestOptions",
                   "api/client/interfaces/SamplingAdapter",
@@ -325,6 +325,7 @@
                 "pages": [
                   "api/client/type-aliases/AnySamplingResult",
                   "api/client/type-aliases/AssertionSource",
+                  "api/client/type-aliases/BrowserOAuthOptions",
                   "api/client/type-aliases/CallToolResult",
                   "api/client/type-aliases/ClientCredentialsOptions",
                   "api/client/type-aliases/ClientSecretAuthMethod",

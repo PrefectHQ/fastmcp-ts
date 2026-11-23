@@ -141,7 +141,7 @@ Both hops are unattended once you supply the ID token. Set `audience` to the aut
 
 The [`OAuth`](#oauth) strategy assumes a desktop environment: it opens the system browser, runs a throwaway HTTP server on `localhost` to catch the redirect, and writes tokens to a file. None of that exists inside a browser tab. `BrowserOAuth` runs the same authorization-code-with-PKCE flow and the same transparent refresh, but drives the redirect the way a web app can and reads tokens from web storage instead of disk. It is an `OAuth` provider underneath, so the [connection](/clients/client) treats it identically — only the construction differs.
 
-The authorization step opens the provider in a **popup** by default. You give `BrowserOAuth` a `redirectUri` on your own origin; the page served there hands the authorization code back to the opener by calling `handleOAuthCallback`. The popup closes itself, the original page receives the code over `postMessage`, and the connection completes without the user ever leaving your app.
+The authorization step opens the provider in a **popup** by default. You give `BrowserOAuth` a `redirectUri` on your own origin; the page served there hands the authorization code back to your app by calling `handleOAuthCallback`. The popup closes itself, the original page receives the code, and the connection completes without the user ever leaving your app.
 
 ```typescript
 import { Client, BrowserOAuth, IndexedDBStore } from '@prefecthq/fastmcp-ts/client'
@@ -154,7 +154,7 @@ const client = await Client.connect('https://mcp.example.com', {
 })
 ```
 
-The page at that `redirectUri` only needs to forward the result back to the opener:
+The page at that `redirectUri` only needs to forward the result back to your app:
 
 ```typescript
 import { handleOAuthCallback } from '@prefecthq/fastmcp-ts/client'
@@ -163,7 +163,25 @@ import { handleOAuthCallback } from '@prefecthq/fastmcp-ts/client'
 handleOAuthCallback()
 ```
 
-Browsers only open popups in response to a user gesture, so trigger `connect()` from a click rather than on page load, or the window is blocked. Where popups are impractical — stricter mobile browsers, for instance — construct `BrowserOAuth` with `mode: 'redirect'` to navigate the whole tab to the provider instead. The tab returns to your `redirectUri` with the code in the query string, and `resumeFromRedirect()` reads it so the page that loads can finish connecting.
+`handleOAuthCallback` relays the callback's query string to the opener and also broadcasts it on a same-origin `BroadcastChannel`. Many providers serve their consent page with a `Cross-Origin-Opener-Policy` header, which permanently cuts the popup off from the window that opened it; the broadcast still reaches your app. Each authorization request carries a random `state`, and `BrowserOAuth` only accepts the reply that echoes its own, so another tab on your origin never picks up the wrong code.
+
+Browsers only open popups in response to a user gesture, so in the default popup mode, trigger `connect()` from a click rather than on page load, or the window is blocked. If your app connects on its own — on page load, or when a request needs a broader scope mid-session — use `mode: 'deferred'`. The provider then opens nothing by itself: it hands the pending authorization to `onAuthorizationRequired` and waits while you show a control whose click handler calls its `openPopup()`. Calling `openPopup()` again reopens the same authorization, and it returns `false` if the browser still blocks the popup.
+
+```typescript
+const auth = new BrowserOAuth({
+  redirectUri: `${location.origin}/oauth/callback`,
+  mode: 'deferred',
+  onAuthorizationRequired: ({ openPopup }) => {
+    authorizeButton.hidden = false
+    authorizeButton.onclick = () => openPopup()
+  },
+})
+
+// Resolves once the user has authorized in the popup.
+const client = await Client.connect('https://mcp.example.com', { auth })
+```
+
+Where popups are impractical — stricter mobile browsers, for instance — construct `BrowserOAuth` with `mode: 'redirect'` to navigate the whole tab to the provider instead. The tab returns to your `redirectUri` with the code in the query string, and `resumeFromRedirect()` reads it so the page that loads can finish connecting.
 
 Tokens persist through the same pluggable store the Node provider uses, with browser-backed implementations standing in for the filesystem. `LocalStorageStore` keeps tokens in `localStorage` for a small, synchronous store; `IndexedDBStore` uses IndexedDB when you want larger or more durable storage. Either lets a returning user skip the authorization flow, exactly as `FileTokenStorage` does on a server.
 

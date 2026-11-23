@@ -6,85 +6,134 @@ import type { OAuthClientMetadata } from "@modelcontextprotocol/server";
 // Extends the Node OAuth provider, reusing all of its PKCE / token / discovery
 // logic (which is already browser-safe), and replaces only the redirect
 // mechanism: instead of opening the system browser and listening on a localhost
-// HTTP callback server, it opens a popup (default) or navigates the tab, and
-// receives the authorization code via postMessage (popup) or the returned URL
-// (redirect). Because it `instanceof OAuth`, the Client connect flow
+// HTTP callback server, it opens a popup (immediately, or when the app asks in
+// deferred mode) or navigates the tab, and receives the authorization callback
+// from the callback page (popup and deferred) or the returned URL (redirect).
+// Because it `instanceof OAuth`, the Client connect flow
 // (connect → waitForCallback → finishAuth → reconnect) drives it unchanged.
 // ---------------------------------------------------------------------------
 import { OAuth, assertHttpAuthorizationUrl, type OAuthOptions } from './auth.js'
 
-/** postMessage payload sent by {@link handleOAuthCallback} back to the opener. */
+/** Message type sent by {@link handleOAuthCallback} back to the app. */
 const MESSAGE_TYPE = 'fastmcp:oauth'
+/** Same-origin BroadcastChannel {@link handleOAuthCallback} also reports on. */
+const CHANNEL_NAME = 'fastmcp:oauth'
 
-export interface BrowserOAuthOptions
-  extends Omit<OAuthOptions, 'callbackPort' | 'onRedirect'> {
-  /**
-   * Redirect URI registered with the provider. Must serve a page that calls
-   * {@link handleOAuthCallback} (popup mode) or is your app route that reads the
-   * returned `?code=` (redirect mode).
-   */
-  redirectUri: string
-  /**
-   * 'popup' (default) opens the authorization URL in a popup window and listens
-   * for a postMessage from the callback page. 'redirect' navigates the whole
-   * tab; resume with {@link BrowserOAuth.resumeFromRedirect} on return.
-   */
-  mode?: 'popup' | 'redirect'
-  /** `window.open` features string for popup mode. */
-  popupFeatures?: string
+/** The callback page relays its query string untouched. */
+type CallbackReply = { type: typeof MESSAGE_TYPE; search: string }
+
+function isCallbackReply(data: unknown): data is CallbackReply {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'type' in data &&
+    data.type === MESSAGE_TYPE &&
+    'search' in data &&
+    typeof data.search === 'string'
+  )
 }
 
+/** An authorization waiting for the user, handed to the app in deferred mode. */
+export interface PendingAuthorization {
+  url: URL
+  /**
+   * Opens the authorization in a popup. Call it from a user gesture such as a
+   * click, or the browser blocks the popup. Calling it again reopens the same
+   * authorization. Returns `false` when the popup was blocked.
+   */
+  openPopup: () => boolean
+}
+
+export type BrowserOAuthOptions = Omit<OAuthOptions, 'callbackPort' | 'onRedirect'> & {
+  /**
+   * Redirect URI registered with the provider. Must serve a page that calls
+   * {@link handleOAuthCallback} (popup and deferred modes) or is your app route
+   * that reads the returned `?code=` (redirect mode).
+   */
+  redirectUri: string
+  /** `window.open` features string for popup and deferred modes. */
+  popupFeatures?: string
+} & (
+    | {
+        /**
+         * 'popup' (default) opens the authorization URL in a popup window as
+         * soon as authorization is needed. 'redirect' navigates the whole tab;
+         * resume with {@link BrowserOAuth.resumeFromRedirect} on return.
+         */
+        mode?: 'popup' | 'redirect'
+      }
+    | {
+        /**
+         * 'deferred' opens nothing on its own. It hands the pending
+         * authorization to `onAuthorizationRequired`, and the app opens the
+         * popup from a user gesture.
+         */
+        mode: 'deferred'
+        /**
+         * Called when the user must authorize. Show a control whose click
+         * handler calls `authorization.openPopup()`.
+         */
+        onAuthorizationRequired: (authorization: PendingAuthorization) => void
+      }
+  )
+
 export class BrowserOAuth extends OAuth {
-  private readonly _redirectUri: string
-  private readonly _mode: 'popup' | 'redirect'
-  private readonly _popupFeatures: string
+  private readonly _options: BrowserOAuthOptions
   private _popup: Window | null = null
-  private _messageHandler: ((e: MessageEvent) => void) | null = null
+  private _stopListening: (() => void) | null = null
 
   constructor(options: BrowserOAuthOptions) {
     super(options)
-    this._redirectUri = options.redirectUri
-    this._mode = options.mode ?? 'popup'
-    this._popupFeatures = options.popupFeatures ?? 'width=600,height=720'
+    this._options = options
   }
 
   get redirectUrl(): string {
-    return this._redirectUri
+    return this._options.redirectUri
   }
 
   get clientMetadata(): OAuthClientMetadata {
-    return { ...super.clientMetadata, redirect_uris: [this._redirectUri] }
+    return { ...super.clientMetadata, redirect_uris: [this._options.redirectUri] }
+  }
+
+  /**
+   * A fresh `state` for each authorization request. The callback echoes it
+   * back, which is how a reply is matched to this provider's request when every
+   * tab on the origin hears it over the BroadcastChannel.
+   */
+  state(): string {
+    return crypto.randomUUID()
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
     assertHttpAuthorizationUrl(authorizationUrl)
-    if (this._mode === 'redirect') {
+    if (this._options.mode === 'redirect') {
       // Navigation destroys this JS context; the app resumes via
       // resumeFromRedirect() on the return load.
       window.location.assign(authorizationUrl.toString())
       return
     }
 
-    const expectedOrigin = new URL(this._redirectUri).origin
-    this._messageHandler = (e: MessageEvent) => {
-      if (e.origin !== expectedOrigin) return
-      const data = e.data as { type?: string; code?: string; iss?: string; error?: string }
-      if (data?.type !== MESSAGE_TYPE) return
-      if (data.error) {
-        this._rejectCallback(new Error(`OAuth authorization denied: ${data.error}`))
-      } else if (data.code) {
-        const params = new URLSearchParams({ code: data.code, ...(data.iss ? { iss: data.iss } : {}) })
-        this._resolveCallback(params)
-      }
+    const state = authorizationUrl.searchParams.get('state')
+    if (!state) {
+      throw new Error('The authorization URL has no state parameter to match its callback against.')
     }
-    window.addEventListener('message', this._messageHandler)
+    this._teardown()
+    this._stopListening = this._listenForCallback(state)
     // Arm the callback promise before opening so a fast provider can't race us.
     this._armCallbackPromise()
-    this._popup = window.open(authorizationUrl.toString(), 'fastmcp-oauth', this._popupFeatures)
-    if (!this._popup) {
+
+    const openPopup = () => {
+      this._popup = window.open(authorizationUrl.toString(), 'fastmcp-oauth', this._options.popupFeatures ?? 'width=600,height=720')
+      return this._popup !== null
+    }
+    if (this._options.mode === 'deferred') {
+      this._options.onAuthorizationRequired({ url: authorizationUrl, openPopup })
+      return
+    }
+    if (!openPopup()) {
       this._teardown()
       throw new Error(
-        'Failed to open OAuth popup — it was likely blocked. Trigger connect from a user gesture or use mode: "redirect".',
+        'Failed to open OAuth popup — it was likely blocked. Trigger connect from a user gesture, or use mode: "deferred" or mode: "redirect".',
       )
     }
   }
@@ -111,9 +160,36 @@ export class BrowserOAuth extends OAuth {
     return params.has('code') ? params : null
   }
 
+  /** Listens on both callback routes until the returned function is called. */
+  private _listenForCallback(expectedState: string): () => void {
+    const receive = (data: unknown) => {
+      if (!isCallbackReply(data)) return
+      const params = new URLSearchParams(data.search)
+      if (params.get('state') !== expectedState) return
+      const error = params.get('error_description') ?? params.get('error')
+      if (error) {
+        this._rejectCallback(new Error(`OAuth authorization denied: ${error}`))
+      } else if (params.has('code')) {
+        this._resolveCallback(params)
+      }
+    }
+
+    const expectedOrigin = new URL(this._options.redirectUri).origin
+    const onWindowMessage = (e: MessageEvent) => {
+      if (e.origin === expectedOrigin) receive(e.data)
+    }
+    const channel = new BroadcastChannel(CHANNEL_NAME)
+    channel.addEventListener('message', (e: MessageEvent) => receive(e.data))
+    window.addEventListener('message', onWindowMessage)
+    return () => {
+      window.removeEventListener('message', onWindowMessage)
+      channel.close()
+    }
+  }
+
   private _teardown(): void {
-    if (this._messageHandler) window.removeEventListener('message', this._messageHandler)
-    this._messageHandler = null
+    this._stopListening?.()
+    this._stopListening = null
     try {
       this._popup?.close()
     } catch {
@@ -124,15 +200,17 @@ export class BrowserOAuth extends OAuth {
 }
 
 /**
- * Call from the redirect_uri page (popup mode) to deliver the authorization
- * code back to the opener window and close the popup.
+ * Call from the redirect_uri page (popup and deferred modes) to deliver the
+ * authorization callback back to the app and close the popup.
  */
 export function handleOAuthCallback(opts: { targetOrigin?: string } = {}): void {
-  const params = new URLSearchParams(window.location.search)
-  const code = params.get('code') ?? undefined
-  const iss = params.get('iss') ?? undefined
-  const error = params.get('error_description') ?? params.get('error') ?? undefined
-  const target = opts.targetOrigin ?? window.location.origin
-  window.opener?.postMessage({ type: MESSAGE_TYPE, code, iss, error }, target)
+  const reply: CallbackReply = { type: MESSAGE_TYPE, search: window.location.search }
+  window.opener?.postMessage(reply, opts.targetOrigin ?? window.location.origin)
+  // A provider page served with Cross-Origin-Opener-Policy severs
+  // window.opener for the rest of the popup's life, so the reply also goes out
+  // on a same-origin channel the app listens on.
+  const channel = new BroadcastChannel(CHANNEL_NAME)
+  channel.postMessage(reply)
+  channel.close()
   window.close()
 }
