@@ -48,29 +48,33 @@ document.getElementById('connect').addEventListener('click', async () => {
 })
 `
 
-// Deferred mode connects on page load, with no user gesture, and only opens the
-// popup when the Authorize button is clicked.
+// Deferred mode connects on page load, with no user gesture: connect() fails
+// with AuthorizationRequiredError, and the popup opens when Authorize is clicked.
 const DEFERRED_APP_JS = `
-import { Client, BrowserOAuth } from '/e2e-client.js'
+import { AuthorizationRequiredError, Client, BrowserOAuth } from '/e2e-client.js'
 const out = document.getElementById('out')
 const authorize = document.createElement('button')
 authorize.id = 'authorize'
 authorize.textContent = 'Authorize'
 authorize.hidden = true
 document.body.append(authorize)
-const auth = new BrowserOAuth({
-  redirectUri: location.origin + '/callback',
-  mode: 'deferred',
-  onAuthorizationRequired: ({ openPopup }) => {
+const serverUrl = location.origin + '/mcp'
+const auth = new BrowserOAuth({ redirectUri: location.origin + '/callback', mode: 'deferred' })
+const client = new Client(serverUrl, { auth })
+async function connect() {
+  try {
+    await client.connect()
+  } catch (error) {
+    if (!(error instanceof AuthorizationRequiredError)) throw error
     authorize.hidden = false
-    authorize.onclick = () => { out.textContent = openPopup() ? 'authorizing' : 'blocked' }
-  },
-})
-const client = new Client(location.origin + '/mcp', { auth })
-client.connect()
-  .then(() => client.listTools())
-  .then((tools) => { out.textContent = 'OK:' + tools.length })
-  .catch((e) => { out.textContent = 'ERR:' + (e && e.message ? e.message : String(e)) })
+    authorize.onclick = () => { out.textContent = error.openPopup() ? 'authorizing' : 'blocked' }
+    await auth.completeAuthorization(serverUrl)
+    await client.connect()
+  }
+  const tools = await client.listTools()
+  out.textContent = 'OK:' + tools.length
+}
+connect().catch((e) => { out.textContent = 'ERR:' + (e && e.message ? e.message : String(e)) })
 `
 
 test.beforeAll(async () => {

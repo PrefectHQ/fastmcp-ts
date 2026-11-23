@@ -1,3 +1,4 @@
+import { auth } from "@modelcontextprotocol/client";
 import type { OAuthClientMetadata } from "@modelcontextprotocol/server";
 
 // ---------------------------------------------------------------------------
@@ -33,49 +34,48 @@ function isCallbackReply(data: unknown): data is CallbackReply {
   )
 }
 
-/** An authorization waiting for the user, handed to the app in deferred mode. */
-export interface PendingAuthorization {
-  url: URL
+/**
+ * Thrown in deferred mode when the user must authorize. Show a control whose
+ * click handler calls {@link AuthorizationRequiredError.openPopup}, await
+ * {@link BrowserOAuth.completeAuthorization}, then reconnect or retry the
+ * request.
+ */
+export class AuthorizationRequiredError extends Error {
+  readonly url: URL
   /**
    * Opens the authorization in a popup. Call it from a user gesture such as a
    * click, or the browser blocks the popup. Calling it again reopens the same
    * authorization. Returns `false` when the popup was blocked.
    */
-  openPopup: () => boolean
+  readonly openPopup: () => boolean
+
+  constructor(url: URL, openPopup: () => boolean) {
+    super('OAuth authorization is required. Call openPopup() from a user gesture, then await completeAuthorization().')
+    this.name = 'AuthorizationRequiredError'
+    this.url = url
+    this.openPopup = openPopup
+  }
 }
 
-export type BrowserOAuthOptions = Omit<OAuthOptions, 'callbackPort' | 'onRedirect'> & {
+export interface BrowserOAuthOptions
+  extends Omit<OAuthOptions, 'callbackPort' | 'onRedirect'> {
   /**
    * Redirect URI registered with the provider. Must serve a page that calls
    * {@link handleOAuthCallback} (popup and deferred modes) or is your app route
    * that reads the returned `?code=` (redirect mode).
    */
   redirectUri: string
+  /**
+   * 'popup' (default) opens the authorization URL in a popup window as soon as
+   * authorization is needed. 'deferred' opens nothing on its own: the connect
+   * or request fails with {@link AuthorizationRequiredError}, and the app opens
+   * the popup from a user gesture. 'redirect' navigates the whole tab; resume
+   * with {@link BrowserOAuth.resumeFromRedirect} on return.
+   */
+  mode?: 'popup' | 'deferred' | 'redirect'
   /** `window.open` features string for popup and deferred modes. */
   popupFeatures?: string
-} & (
-    | {
-        /**
-         * 'popup' (default) opens the authorization URL in a popup window as
-         * soon as authorization is needed. 'redirect' navigates the whole tab;
-         * resume with {@link BrowserOAuth.resumeFromRedirect} on return.
-         */
-        mode?: 'popup' | 'redirect'
-      }
-    | {
-        /**
-         * 'deferred' opens nothing on its own. It hands the pending
-         * authorization to `onAuthorizationRequired`, and the app opens the
-         * popup from a user gesture.
-         */
-        mode: 'deferred'
-        /**
-         * Called when the user must authorize. Show a control whose click
-         * handler calls `authorization.openPopup()`.
-         */
-        onAuthorizationRequired: (authorization: PendingAuthorization) => void
-      }
-  )
+}
 
 export class BrowserOAuth extends OAuth {
   private readonly _options: BrowserOAuthOptions
@@ -127,8 +127,7 @@ export class BrowserOAuth extends OAuth {
       return this._popup !== null
     }
     if (this._options.mode === 'deferred') {
-      this._options.onAuthorizationRequired({ url: authorizationUrl, openPopup })
-      return
+      throw new AuthorizationRequiredError(authorizationUrl, openPopup)
     }
     if (!openPopup()) {
       this._teardown()
@@ -144,6 +143,19 @@ export class BrowserOAuth extends OAuth {
     } finally {
       this._teardown()
     }
+  }
+
+  /**
+   * Deferred mode: waits for the user to finish the authorization an
+   * {@link AuthorizationRequiredError} reported, then exchanges the code for
+   * tokens. `serverUrl` is the MCP server URL the connection uses. Reconnect or
+   * retry the request afterwards; it reads the stored tokens.
+   */
+  async completeAuthorization(serverUrl: string | URL, timeoutMs?: number): Promise<void> {
+    const callback = await this.waitForCallback(timeoutMs)
+    const code = callback.get('code')
+    if (code === null) throw new Error('The OAuth callback resolved without an authorization code.')
+    await auth(this, { serverUrl, authorizationCode: code, iss: callback.get('iss') ?? undefined })
   }
 
   /**

@@ -165,20 +165,24 @@ handleOAuthCallback()
 
 `handleOAuthCallback` relays the callback's query string to the opener and also broadcasts it on a same-origin `BroadcastChannel`. Many providers serve their consent page with a `Cross-Origin-Opener-Policy` header, which permanently cuts the popup off from the window that opened it; the broadcast still reaches your app. Each authorization request carries a random `state`, and `BrowserOAuth` only accepts the reply that echoes its own, so another tab on your origin never picks up the wrong code.
 
-Browsers only open popups in response to a user gesture, so in the default popup mode, trigger `connect()` from a click rather than on page load, or the window is blocked. If your app connects on its own — on page load, or when a request needs a broader scope mid-session — use `mode: 'deferred'`. The provider then opens nothing by itself: it hands the pending authorization to `onAuthorizationRequired` and waits while you show a control whose click handler calls its `openPopup()`. Calling `openPopup()` again reopens the same authorization, and it returns `false` if the browser still blocks the popup.
+Browsers only open popups in response to a user gesture, so in the default popup mode, trigger `connect()` from a click rather than on page load, or the window is blocked. If your app connects on its own — on page load, or when a request needs a broader scope mid-session — use `mode: 'deferred'`. The provider then opens nothing by itself: the connection or request fails with an `AuthorizationRequiredError`. Show a control whose click handler calls the error's `openPopup()`, await `completeAuthorization()` to receive the code and exchange it for tokens, then connect again. `openPopup()` returns `false` if the browser still blocks the popup, and calling it again reopens the same authorization.
 
 ```typescript
-const auth = new BrowserOAuth({
-  redirectUri: `${location.origin}/oauth/callback`,
-  mode: 'deferred',
-  onAuthorizationRequired: ({ openPopup }) => {
-    authorizeButton.hidden = false
-    authorizeButton.onclick = () => openPopup()
-  },
-})
+import { AuthorizationRequiredError, BrowserOAuth, Client } from '@prefecthq/fastmcp-ts/client'
 
-// Resolves once the user has authorized in the popup.
-const client = await Client.connect('https://mcp.example.com', { auth })
+const serverUrl = 'https://mcp.example.com'
+const auth = new BrowserOAuth({ redirectUri: `${location.origin}/oauth/callback`, mode: 'deferred' })
+const client = new Client(serverUrl, { auth })
+
+try {
+  await client.connect()
+} catch (error) {
+  if (!(error instanceof AuthorizationRequiredError)) throw error
+  authorizeButton.hidden = false
+  authorizeButton.onclick = () => error.openPopup()
+  await auth.completeAuthorization(serverUrl)
+  await client.connect()
+}
 ```
 
 Where popups are impractical — stricter mobile browsers, for instance — construct `BrowserOAuth` with `mode: 'redirect'` to navigate the whole tab to the provider instead. The tab returns to your `redirectUri` with the code in the query string, and `resumeFromRedirect()` reads it so the page that loads can finish connecting.

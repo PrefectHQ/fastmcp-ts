@@ -15,6 +15,12 @@
             "isDeprecated": false
           },
           {
+            "title": "AuthorizationRequiredError",
+            "kind": 128,
+            "path": "client/classes/AuthorizationRequiredError.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "BearerAuth",
             "kind": 128,
             "path": "client/classes/BearerAuth.mdx",
@@ -128,6 +134,12 @@
             "isDeprecated": false
           },
           {
+            "title": "BrowserOAuthOptions",
+            "kind": 256,
+            "path": "client/interfaces/BrowserOAuthOptions.mdx",
+            "isDeprecated": false
+          },
+          {
             "title": "CallToolOptions",
             "kind": 256,
             "path": "client/interfaces/CallToolOptions.mdx",
@@ -218,12 +230,6 @@
             "isDeprecated": false
           },
           {
-            "title": "PendingAuthorization",
-            "kind": 256,
-            "path": "client/interfaces/PendingAuthorization.mdx",
-            "isDeprecated": false
-          },
-          {
             "title": "PrivateKeyJwtCredentialsOptions",
             "kind": 256,
             "path": "client/interfaces/PrivateKeyJwtCredentialsOptions.mdx",
@@ -268,12 +274,6 @@
             "title": "AssertionSource",
             "kind": 2097152,
             "path": "client/type-aliases/AssertionSource.mdx",
-            "isDeprecated": false
-          },
-          {
-            "title": "BrowserOAuthOptions",
-            "kind": 2097152,
-            "path": "client/type-aliases/BrowserOAuthOptions.mdx",
             "isDeprecated": false
           },
           {

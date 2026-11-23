@@ -74,8 +74,8 @@ export {
 } from './auth.js'
 
 export { LocalStorageStore, IndexedDBStore } from './browser-stores.js'
-export { BrowserOAuth, handleOAuthCallback } from './browser-oauth.js'
-export type { BrowserOAuthOptions, PendingAuthorization } from './browser-oauth.js'
+export { AuthorizationRequiredError, BrowserOAuth, handleOAuthCallback } from './browser-oauth.js'
+export type { BrowserOAuthOptions } from './browser-oauth.js'
 
 export type {
   McpServerLike,

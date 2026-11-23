@@ -800,15 +800,16 @@ export class Client implements IClient {
    * arms the callback promise before the transport re-throws. Two browser-only
    * caveats apply, honestly: in **popup** mode `window.open` needs a user gesture,
    * so a step-up fired from a request not within one is blocked and the re-auth
-   * error propagates (call from a click, or use **deferred** mode, which waits
-   * for the app to open the popup from one); **redirect** mode navigates the whole
+   * error propagates (call from a click, or use **deferred** mode, which hands the
+   * app an `AuthorizationRequiredError` instead); **redirect** mode navigates the whole
    * tab away (`window.location.assign`), destroying this in-flight retry — the app
    * recovers via `resumeFromRedirect()` on the return load and a fresh request,
    * not by this wrapper. The migration second round inherits the popup caveat: it
    * runs outside the original user gesture, so under `BrowserOAuth` popup mode it
    * hits the user-gesture block and surfaces as that error rather than opening a
-   * second popup. Deferred mode has no such block: each round waits for the app's
-   * next `openPopup()` call.
+   * second popup. Deferred mode never reaches this wrapper: its
+   * `AuthorizationRequiredError` is not an `UnauthorizedError`, so it propagates
+   * to the app, which completes authorization and retries.
    */
   private async _reauthRetry<T>(op: () => Promise<T>): Promise<T> {
     let rounds = 0

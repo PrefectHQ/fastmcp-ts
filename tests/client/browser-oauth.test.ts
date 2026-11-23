@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { BrowserOAuth, OAuth, handleOAuthCallback, type PendingAuthorization } from 'fastmcp-ts/client'
+import { AuthorizationRequiredError, BrowserOAuth, OAuth, handleOAuthCallback } from 'fastmcp-ts/client'
 
 const AUTHORIZATION_URL = 'https://auth.example/authorize?state=s1'
 
@@ -168,29 +168,22 @@ describe('BrowserOAuth callback matching', () => {
 })
 
 describe('BrowserOAuth deferred mode', () => {
-  async function requireAuthorization(): Promise<{ o: BrowserOAuth; authorization: PendingAuthorization }> {
-    let authorization: PendingAuthorization | undefined
-    const o = new BrowserOAuth({
-      redirectUri: 'https://app.example/callback',
-      mode: 'deferred',
-      onAuthorizationRequired: (pending) => {
-        authorization = pending
-      },
-    })
+  async function requireAuthorization(): Promise<{ o: BrowserOAuth; error: AuthorizationRequiredError }> {
+    const o = new BrowserOAuth({ redirectUri: 'https://app.example/callback', mode: 'deferred' })
     o._bind('https://srv.example')
-    await o.redirectToAuthorization(new URL(AUTHORIZATION_URL))
-    if (!authorization) throw new Error('onAuthorizationRequired was not called')
-    return { o, authorization }
+    const error = await o.redirectToAuthorization(new URL(AUTHORIZATION_URL)).catch((e: unknown) => e)
+    if (!(error instanceof AuthorizationRequiredError)) throw new Error('Expected AuthorizationRequiredError')
+    return { o, error }
   }
 
-  it('hands the pending authorization to the app instead of opening a popup', async () => {
+  it('reports the authorization instead of opening a popup', async () => {
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(fakePopup() as unknown as Window)
 
-    const { o, authorization } = await requireAuthorization()
-    expect(authorization.url.href).toBe(AUTHORIZATION_URL)
+    const { o, error } = await requireAuthorization()
+    expect(error.url.href).toBe(AUTHORIZATION_URL)
     expect(openSpy).not.toHaveBeenCalled()
 
-    expect(authorization.openPopup()).toBe(true)
+    expect(error.openPopup()).toBe(true)
     expect(openSpy).toHaveBeenCalledWith(AUTHORIZATION_URL, 'fastmcp-oauth', expect.any(String))
 
     const wait = o.waitForCallback(5000)
@@ -205,10 +198,10 @@ describe('BrowserOAuth deferred mode', () => {
       .mockReturnValueOnce(null)
       .mockReturnValueOnce(fakePopup() as unknown as Window)
 
-    const { authorization } = await requireAuthorization()
+    const { error } = await requireAuthorization()
 
-    expect(authorization.openPopup()).toBe(false)
-    expect(authorization.openPopup()).toBe(true)
+    expect(error.openPopup()).toBe(false)
+    expect(error.openPopup()).toBe(true)
     expect(openSpy).toHaveBeenCalledTimes(2)
   })
 })

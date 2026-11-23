@@ -22,7 +22,7 @@ Defined in: [client/browser-oauth.ts:85](https://github.com/PrefectHQ/fastmcp-ts
 
 ##### options
 
-[`BrowserOAuthOptions`](/api/client/type-aliases/BrowserOAuthOptions)
+[`BrowserOAuthOptions`](/api/client/interfaces/BrowserOAuthOptions)
 
 #### Returns
 
@@ -345,6 +345,35 @@ the authorization result.
 
 ***
 
+### completeAuthorization()
+
+```ts
+completeAuthorization(serverUrl, timeoutMs?): Promise<void>;
+```
+
+Defined in: [client/browser-oauth.ts:154](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L154)
+
+Deferred mode: waits for the user to finish the authorization an
+[AuthorizationRequiredError](/api/client/classes/AuthorizationRequiredError) reported, then exchanges the code for
+tokens. `serverUrl` is the MCP server URL the connection uses. Reconnect or
+retry the request afterwards; it reads the stored tokens.
+
+#### Parameters
+
+##### serverUrl
+
+`string` \| `URL`
+
+##### timeoutMs?
+
+`number`
+
+#### Returns
+
+`Promise`&lt;`void`&gt;
+
+***
+
 ### discoveryState()
 
 ```ts
@@ -436,7 +465,7 @@ Invoked to redirect the user agent to the given URL to begin the authorization f
 resumeFromRedirect(href?): URLSearchParams | null;
 ```
 
-Defined in: [client/browser-oauth.ts:156](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L156)
+Defined in: [client/browser-oauth.ts:168](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L168)
 
 Redirect-mode resume: parse the authorization callback params from a
 returned URL (defaults to the current location). Returns the full
@@ -651,7 +680,7 @@ Carries the resolved authorization-server `issuer`. Providers
 waitForCallback(timeoutMs?): Promise<URLSearchParams>;
 ```
 
-Defined in: [client/browser-oauth.ts:141](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L141)
+Defined in: [client/browser-oauth.ts:140](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L140)
 
 Waits for the OAuth authorization code to arrive via the callback server,
 then stops the server and resolves with the full callback `URLSearchParams`

@@ -1,0 +1,72 @@
+---
+title: "AuthorizationRequiredError"
+---
+
+Defined in: [client/browser-oauth.ts:43](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L43)
+
+Thrown in deferred mode when the user must authorize. Show a control whose
+click handler calls [AuthorizationRequiredError.openPopup](#openpopup), await
+[BrowserOAuth.completeAuthorization](/api/client/classes/BrowserOAuth#completeauthorization), then reconnect or retry the
+request.
+
+## Extends
+
+- `Error`
+
+## Constructors
+
+### Constructor
+
+```ts
+new AuthorizationRequiredError(url, openPopup): AuthorizationRequiredError;
+```
+
+Defined in: [client/browser-oauth.ts:52](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L52)
+
+#### Parameters
+
+##### url
+
+`URL`
+
+##### openPopup
+
+() => `boolean`
+
+#### Returns
+
+`AuthorizationRequiredError`
+
+#### Overrides
+
+```ts
+Error.constructor
+```
+
+## Properties
+
+### openPopup
+
+```ts
+readonly openPopup: () => boolean;
+```
+
+Defined in: [client/browser-oauth.ts:50](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L50)
+
+Opens the authorization in a popup. Call it from a user gesture such as a
+click, or the browser blocks the popup. Calling it again reopens the same
+authorization. Returns `false` when the popup was blocked.
+
+#### Returns
+
+`boolean`
+
+***
+
+### url
+
+```ts
+readonly url: URL;
+```
+
+Defined in: [client/browser-oauth.ts:44](https://github.com/PrefectHQ/fastmcp-ts/blob/main/src/client/browser-oauth.ts#L44)
